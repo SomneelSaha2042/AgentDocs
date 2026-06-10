@@ -5,6 +5,7 @@ import { InitConfigError } from "./init.js";
 import { IngestError } from "./ingest.js";
 import { ConfigValidationError } from "@agentdocs/shared";
 import { CrawlError } from "@agentdocs/crawler";
+import { BuildError } from "./build.js";
 
 try {
   await createProgram().parseAsync();
@@ -13,6 +14,8 @@ try {
   process.stderr.write(`Error: ${message}\n`);
   process.exitCode = error instanceof IngestError || error instanceof CrawlError
     ? 3
+    : error instanceof BuildError
+      ? 4
     : error instanceof InitConfigError || error instanceof ConfigValidationError
       ? 2
       : 1;

@@ -8,6 +8,7 @@ export {
 export type { AgentDocsConfig } from "./config.js";
 export {
   CodeBlockSchema,
+  ChunkSchema,
   CrawlManifestSchema,
   DocPageSchema,
   HeadingSchema,
@@ -16,6 +17,7 @@ export {
 } from "./models.js";
 export type {
   CodeBlock,
+  Chunk,
   CrawlManifest,
   DocPage,
   Heading,

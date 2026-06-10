@@ -2,7 +2,7 @@
 
 Fixtures are deterministic, local inputs used by AgentDocs tests.
 
-`basic-docs` currently covers Markdown and MDX, frontmatter, nested directories and headings, fenced code blocks, relative and absolute links, an install command, and an environment variable. Later phases will add focused fixtures for the remaining extraction and integration contracts.
+`basic-docs` covers Markdown and MDX, frontmatter, nested headings, fenced code blocks, relative and absolute links, install commands, imports, environment variables, an HTTP route, a version hint, a deprecated marker, and a warning admonition.
 
 `invalid-config.yaml` provides a deterministic invalid configuration for CLI error and exit-code checks.
 

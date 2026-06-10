@@ -8,6 +8,7 @@ import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { initConfig } from "./init.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
+import { buildFromSources } from "./build.js";
 
 type GlobalOptions = {
   config: string;
@@ -166,13 +167,37 @@ export function createProgram(): Command {
       }
     });
 
-  addPlaceholderAction(
-    program
-      .command("build")
-      .description("Build AgentDocs artifacts")
-      .option("--clean", "Clean generated state before building")
-      .option("--skip-crawl", "Build without crawling configured website sources"),
-  );
+  program
+    .command("build")
+    .description("Build AgentDocs artifacts")
+    .option("--clean", "Clean generated state before building")
+    .option("--skip-crawl", "Build without crawling configured website sources")
+    .action(
+      async (
+        options: { clean?: boolean; skipCrawl?: boolean },
+        command: Command,
+      ) => {
+        if (options.clean) {
+          throw new CommanderError(
+            1,
+            "agentdocs.cleanNotImplemented",
+            'The "build --clean" option is not implemented yet.',
+          );
+        }
+        const globals = command.optsWithGlobals<GlobalOptions>();
+        const result = await buildFromSources({
+          cwd: globals.cwd ?? process.cwd(),
+          out: globals.out,
+        });
+        if (globals.json) {
+          process.stdout.write(`${JSON.stringify(result)}\n`);
+        } else if (!globals.quiet) {
+          process.stdout.write(
+            `Built ${result.chunkCount} chunk(s) from ${result.pageCount} page(s) to ${result.chunksPath}\n`,
+          );
+        }
+      },
+    );
 
   addPlaceholderAction(
     program

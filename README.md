@@ -2,7 +2,7 @@
 
 AgentDocs is a deterministic, local-first compiler and auditor for agent-readable technical documentation.
 
-This repository is currently at Phase 3: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Artifact generation, search, and MCP behavior are intentionally not implemented yet.
+This repository is currently at Phase 4: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Builds produce deterministic heading-aware chunks and extract packages, imports, environment variables, commands, HTTP routes, versions, deprecations, and warnings. Graphing, agent-facing artifact generation, search, doctor reports, and MCP behavior are intentionally not implemented yet.
 
 ## Initialize
 
@@ -29,6 +29,14 @@ pnpm exec agentdocs crawl https://docs.example.com --out .agentdocs-test
 ```
 
 The crawler attempts sitemap discovery first, then falls back to same-origin links. It stores raw HTML, normalized Markdown, validated page JSON, and a crawl manifest.
+
+## Build Chunks
+
+```bash
+pnpm exec agentdocs build --skip-crawl --out .agentdocs-test
+```
+
+The build reads existing normalized pages and writes schema-valid `.agentdocs-test/chunks.jsonl`. Documentation commands are extracted as text and never executed.
 
 ## Development
 

@@ -65,6 +65,19 @@ export const DocPageSchema = z
   })
   .strict();
 
+export const ChunkSchema = z
+  .object({
+    id: z.string().min(1),
+    pageId: z.string().min(1),
+    headingPath: z.array(z.string()),
+    text: z.string().min(1),
+    tokenEstimate: z.number().int().positive(),
+    links: z.array(z.string()),
+    entityIds: z.array(z.string()),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -111,5 +124,6 @@ export type Heading = z.infer<typeof HeadingSchema>;
 export type Link = z.infer<typeof LinkSchema>;
 export type CodeBlock = z.infer<typeof CodeBlockSchema>;
 export type DocPage = z.infer<typeof DocPageSchema>;
+export type Chunk = z.infer<typeof ChunkSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;
