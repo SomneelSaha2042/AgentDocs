@@ -1,0 +1,26 @@
+{
+  "name": "@agentdocs/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agentdocs": "./bin/agentdocs.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "pretest": "pnpm --filter @agentdocs/crawler build",
+    "test": "vitest run",
+    "pretypecheck": "pnpm --filter @agentdocs/crawler build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentdocs/crawler": "workspace:*",
+    "@agentdocs/normalizer": "workspace:*",
+    "@agentdocs/shared": "workspace:*",
+    "commander": "^14.0.0"
+  }
+}
