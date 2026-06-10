@@ -1,0 +1,103 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildAgentMap > builds a deterministic evidence-linked graph 1`] = `
+{
+  "edges": [
+    {
+      "from": "example_71f87ac4b355aee1",
+      "to": "cli_command_33e90a81834240df",
+      "type": "example_for",
+    },
+    {
+      "from": "example_71f87ac4b355aee1",
+      "to": "package_4d12ce918d03b7cb",
+      "type": "example_for",
+    },
+    {
+      "from": "example_97c23e77e0d421c0",
+      "to": "env_var_7efbae1a1b0baad7",
+      "type": "example_for",
+    },
+    {
+      "from": "example_97c23e77e0d421c0",
+      "to": "package_4d12ce918d03b7cb",
+      "type": "example_for",
+    },
+    {
+      "from": "page_19fdf17f25a6d209",
+      "to": "example_71f87ac4b355aee1",
+      "type": "defines",
+    },
+    {
+      "from": "page_19fdf17f25a6d209",
+      "to": "page_4f74d660e0823e45",
+      "type": "links_to",
+    },
+    {
+      "from": "page_19fdf17f25a6d209",
+      "to": "package_4d12ce918d03b7cb",
+      "type": "requires",
+    },
+    {
+      "from": "page_19fdf17f25a6d209",
+      "to": "cli_command_33e90a81834240df",
+      "type": "uses",
+    },
+    {
+      "from": "page_4f74d660e0823e45",
+      "to": "example_97c23e77e0d421c0",
+      "type": "defines",
+    },
+    {
+      "from": "page_4f74d660e0823e45",
+      "to": "api_e0be5039ada71400",
+      "type": "uses",
+    },
+    {
+      "from": "page_4f74d660e0823e45",
+      "to": "env_var_7efbae1a1b0baad7",
+      "type": "uses",
+    },
+    {
+      "from": "page_4f74d660e0823e45",
+      "to": "package_4d12ce918d03b7cb",
+      "type": "uses",
+    },
+    {
+      "from": "page_4f74d660e0823e45",
+      "to": "version_ef10e7a5fde448c1",
+      "type": "versioned_as",
+    },
+  ],
+  "entities": [
+    {
+      "name": "GET /v1/widgets",
+      "type": "api",
+    },
+    {
+      "name": "pnpm add @acme/sdk",
+      "type": "cli_command",
+    },
+    {
+      "name": "ACME_API_KEY",
+      "type": "env_var",
+    },
+    {
+      "name": "Index example code_e60e18265863bf51",
+      "type": "example",
+    },
+    {
+      "name": "Setup example code_23510434584ef896",
+      "type": "example",
+    },
+    {
+      "name": "@acme/sdk",
+      "type": "package",
+    },
+    {
+      "name": "v2",
+      "type": "version",
+    },
+  ],
+}
+`;

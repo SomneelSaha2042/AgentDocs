@@ -131,14 +131,18 @@ Behavior:
 Outputs:
 
 ```txt
-llms.txt
-AGENTS.md
+.agentdocs/llms.txt
+.agentdocs/AGENTS.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/index.sqlite
 ```
+
+Local builds keep generated `llms.txt` and `AGENTS.md` inside `--out` so the
+source project's existing files are never overwritten silently. A later export
+or publishing phase may place reviewed copies at the target project root.
 
 ### 2.5 `agentdocs doctor`
 

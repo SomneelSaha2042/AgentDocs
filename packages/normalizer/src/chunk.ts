@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import { ChunkSchema, type Chunk, type DocPage } from "@agentdocs/shared";
 
-import { extractDeterministicEntities } from "./extract.js";
+import {
+  deterministicEntityId,
+  extractDeterministicEntities,
+} from "./extract.js";
 
 export type ChunkMarkdownOptions = {
   maxTokens?: number;
@@ -177,19 +180,18 @@ function extractionEntityIds(
   extraction: ReturnType<typeof extractDeterministicEntities>,
 ): string[] {
   const entries: Array<[string, string[]]> = [
-    ["package", extraction.packages],
-    ["import", extraction.imports],
+    ["package", [...extraction.packages, ...extraction.imports]],
     ["env_var", extraction.envVars],
     ["cli_command", extraction.cliCommands],
-    ["http_route", extraction.httpRoutes],
-    ["deprecated", extraction.deprecatedMarkers],
+    ["api", extraction.httpRoutes],
+    ["concept", [...extraction.deprecatedMarkers, ...extraction.warnings]],
     ["version", extraction.versionHints],
-    ["warning", extraction.warnings],
   ];
   return entries
     .flatMap(([type, values]) =>
-      values.map((value) => `${type}_${hash(`${type}:${value}`).slice(0, 16)}`),
+      values.map((value) => deterministicEntityId(type, value)),
     )
+    .filter((id, index, ids) => ids.indexOf(id) === index)
     .sort(compareStrings);
 }
 

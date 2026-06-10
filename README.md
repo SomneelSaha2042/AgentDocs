@@ -2,7 +2,7 @@
 
 AgentDocs is a deterministic, local-first compiler and auditor for agent-readable technical documentation.
 
-This repository is currently at Phase 4: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Builds produce deterministic heading-aware chunks and extract packages, imports, environment variables, commands, HTTP routes, versions, deprecations, and warnings. Graphing, agent-facing artifact generation, search, doctor reports, and MCP behavior are intentionally not implemented yet.
+This repository is currently at Phase 6: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Builds produce deterministic chunks, an evidence-linked graph, compact task packs, `llms.txt`, generated `AGENTS.md`, and a build manifest. Search, doctor reports, and MCP behavior are intentionally not implemented yet.
 
 ## Initialize
 
@@ -30,13 +30,24 @@ pnpm exec agentdocs crawl https://docs.example.com --out .agentdocs-test
 
 The crawler attempts sitemap discovery first, then falls back to same-origin links. It stores raw HTML, normalized Markdown, validated page JSON, and a crawl manifest.
 
-## Build Chunks
+## Build Graph
 
 ```bash
 pnpm exec agentdocs build --skip-crawl --out .agentdocs-test
 ```
 
-The build reads existing normalized pages and writes schema-valid `.agentdocs-test/chunks.jsonl`. Documentation commands are extracted as text and never executed.
+The build reads existing normalized pages and writes schema-valid `.agentdocs-test/chunks.jsonl`, `.agentdocs-test/agent-map.json`, `.agentdocs-test/manifest.json`, compact task packs, `.agentdocs-test/llms.txt`, and `.agentdocs-test/AGENTS.md`. Documentation commands are extracted as text and never executed.
+
+Generated `llms.txt` and `AGENTS.md` are kept inside the output directory so AgentDocs never overwrites the source project's instruction files.
+
+## Inspect Graph
+
+```bash
+pnpm exec agentdocs inspect entities --out .agentdocs-test
+pnpm exec agentdocs inspect links --out .agentdocs-test
+```
+
+Entities and relationships include deterministic source evidence.
 
 ## Development
 

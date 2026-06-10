@@ -59,7 +59,7 @@ curl https://example.test
 This endpoint is deprecated and no longer supported.
 :::
 `;
-    expect(extractVersionHints(value)).toEqual(["3.4.0", "v2.1"]);
+    expect(extractVersionHints(`${value}\nGET /v1/users`)).toEqual(["3.4.0", "v2.1"]);
     expect(extractDeprecatedMarkers(value)).toEqual([
       "This endpoint is deprecated and no longer supported.",
     ]);

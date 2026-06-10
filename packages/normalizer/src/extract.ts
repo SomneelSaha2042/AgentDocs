@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
+
 const PACKAGE_MANAGERS =
   "(?:npm\\s+(?:install|i)|yarn\\s+add|pnpm\\s+add|bun\\s+add|pip(?:3)?\\s+install|python\\s+-m\\s+pip\\s+install|cargo\\s+add|go\\s+get)";
 const HTTP_METHODS = "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT";
 const VERSION_PATTERN =
-  /\b(?:v\d+(?:\.\d+){0,2}|version\s+\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/gi;
+  /(?<!\/)\b(?:v\d+(?:\.\d+){0,2}|version\s+\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/gi;
 
 export type DeterministicExtraction = {
   packages: string[];
@@ -124,6 +126,10 @@ export function extractDeterministicEntities(
     versionHints: extractVersionHints(value),
     warnings: extractWarnings(value),
   };
+}
+
+export function deterministicEntityId(type: string, name: string): string {
+  return `${type}_${createHash("sha256").update(`${type}:${name}`).digest("hex").slice(0, 16)}`;
 }
 
 function shellWords(value: string): string[] {

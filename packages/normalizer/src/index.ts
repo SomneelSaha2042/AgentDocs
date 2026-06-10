@@ -5,6 +5,7 @@ export type { NormalizeHtmlOptions } from "./html.js";
 export { chunkMarkdownByHeading, estimateTokens } from "./chunk.js";
 export type { ChunkMarkdownOptions } from "./chunk.js";
 export {
+  deterministicEntityId,
   extractCliCommands,
   extractDeprecatedMarkers,
   extractDeterministicEntities,

@@ -16,6 +16,8 @@
   "devDependencies": {
     "@agentdocs/cli": "workspace:*",
     "@agentdocs/crawler": "workspace:*",
+    "@agentdocs/graph": "workspace:*",
+    "@agentdocs/generator": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
     "@types/node": "^22.15.30",
     "typescript": "^5.8.3",

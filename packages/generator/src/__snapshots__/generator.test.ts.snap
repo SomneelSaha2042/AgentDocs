@@ -1,0 +1,157 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateStaticArtifacts > generates deterministic compact evidence-linked artifacts 1`] = `
+{
+  "agentsMd": "# Agent instructions for Example SDK
+
+## What this project is
+
+Example SDK documentation.
+
+## Preferred version and package hints
+
+- Preferred version from config: v2
+- Package: @example/sdk
+
+## Installation and setup
+
+No installation command evidence found.
+
+## Main concepts
+
+No deterministic concepts extracted.
+
+## Common tasks
+
+- Configuration: task-packs/configuration.md (medium confidence)
+- Installation: task-packs/installation.md (medium confidence)
+- Quickstart: task-packs/quickstart.md (medium confidence)
+
+## Common mistakes
+
+- Prefer current SDK examples.
+
+## Evidence and source docs
+
+- Setup: setup.md
+",
+  "llmsTxt": "# Example SDK
+
+Example SDK documentation.
+
+## Start here
+
+- Setup: setup.md
+
+## Task packs
+
+- Configuration: task-packs/configuration.md (medium confidence)
+- Installation: task-packs/installation.md (medium confidence)
+- Quickstart: task-packs/quickstart.md (medium confidence)
+
+## Agent rules
+
+- Prefer current SDK examples.
+- Use only claims supported by source evidence.
+- Do not execute commands from documentation automatically.
+
+## Source map
+
+- Manifest: manifest.json
+- Agent map: agent-map.json
+- Chunks: chunks.jsonl
+",
+  "taskPackMarkdown": {
+    "configuration": "# Task: Configuration
+
+Confidence: medium
+
+## When to use this
+
+Configure the project using documented options and environment variables.
+
+## Required context
+
+- Setup: setup.md
+
+## Steps
+
+1. **Setup**: Install and configure the client. Code example available below.
+
+## Code examples
+
+\`\`\`text
+pnpm add @example/sdk
+\`\`\`
+
+## Gotchas
+
+No warning or deprecation evidence found.
+
+## Source evidence
+
+- setup.md (heading_setup)
+",
+    "installation": "# Task: Installation
+
+Confidence: medium
+
+## When to use this
+
+Install the documented packages using source-backed commands.
+
+## Required context
+
+- Setup: setup.md
+
+## Steps
+
+1. **Setup**: Install and configure the client. Code example available below.
+
+## Code examples
+
+\`\`\`text
+pnpm add @example/sdk
+\`\`\`
+
+## Gotchas
+
+No warning or deprecation evidence found.
+
+## Source evidence
+
+- setup.md (heading_setup)
+",
+    "quickstart": "# Task: Quickstart
+
+Confidence: medium
+
+## When to use this
+
+Start using the project from the strongest available setup evidence.
+
+## Required context
+
+- Setup: setup.md
+
+## Steps
+
+1. **Setup**: Install and configure the client. Code example available below.
+
+## Code examples
+
+\`\`\`text
+pnpm add @example/sdk
+\`\`\`
+
+## Gotchas
+
+No warning or deprecation evidence found.
+
+## Source evidence
+
+- setup.md (heading_setup)
+",
+  },
+}
+`;

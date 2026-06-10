@@ -2,7 +2,13 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { ChunkSchema, DocPageSchema } from "@agentdocs/shared";
+import {
+  AgentMapSchema,
+  ChunkSchema,
+  DocPageSchema,
+  ManifestSchema,
+  TaskPackSchema,
+} from "@agentdocs/shared";
 import { describe, expect, it } from "vitest";
 
 import { buildFromSources } from "./build.js";
@@ -22,8 +28,21 @@ describe("buildFromSources", () => {
 
     const first = await buildFromSources({ cwd: REPOSITORY_ROOT, out: output });
     const firstContents = await readFile(first.chunksPath, "utf8");
+    const firstAgentMap = await readFile(first.agentMapPath, "utf8");
+    const firstLlmsTxt = await readFile(first.llmsTxtPath!, "utf8");
+    const firstAgentsMd = await readFile(first.agentsMdPath!, "utf8");
+    const firstManifest = await readFile(first.manifestPath!, "utf8");
+    const firstTaskPacks = await Promise.all(
+      first.taskPackPaths.map((file) => readFile(file, "utf8")),
+    );
     const second = await buildFromSources({ cwd: REPOSITORY_ROOT, out: output });
     expect(await readFile(second.chunksPath, "utf8")).toBe(firstContents);
+    expect(await readFile(second.agentMapPath, "utf8")).toBe(firstAgentMap);
+    expect(await readFile(second.llmsTxtPath!, "utf8")).toBe(firstLlmsTxt);
+    expect(await readFile(second.agentsMdPath!, "utf8")).toBe(firstAgentsMd);
+    expect(await readFile(second.manifestPath!, "utf8")).toBe(firstManifest);
+    expect(await Promise.all(second.taskPackPaths.map((file) => readFile(file, "utf8"))))
+      .toEqual(firstTaskPacks);
 
     const chunks = firstContents
       .trim()
@@ -31,6 +50,22 @@ describe("buildFromSources", () => {
       .map((line) => ChunkSchema.parse(JSON.parse(line)));
     expect(chunks.length).toBeGreaterThanOrEqual(3);
     expect(chunks.some((chunk) => chunk.headingPath.includes("Create a client"))).toBe(true);
+    const agentMap = AgentMapSchema.parse(JSON.parse(firstAgentMap));
+    expect(agentMap.entities.length).toBeGreaterThan(0);
+    expect(agentMap.edges.some((edge) => edge.type === "links_to")).toBe(true);
+    expect(agentMap.edges.every((edge) => edge.evidence.length > 0)).toBe(true);
+    expect(agentMap.taskPacks.length).toBeGreaterThan(0);
+    for (const taskPack of agentMap.taskPacks) {
+      expect(TaskPackSchema.parse(taskPack)).toEqual(taskPack);
+      expect(taskPack.steps.length).toBeGreaterThan(0);
+      expect(taskPack.evidence.length).toBeGreaterThan(0);
+    }
+    const manifest = ManifestSchema.parse(JSON.parse(firstManifest));
+    expect(manifest.counts.taskPacks).toBe(agentMap.taskPacks.length);
+    expect(manifest.project.name).toBe("Basic Docs Fixture");
+    expect(firstLlmsTxt).toContain("## Task packs");
+    expect(firstAgentsMd).toContain("## Common tasks");
+    expect(firstTaskPacks.some((pack) => pack.includes("## Gotchas"))).toBe(true);
 
     const pageFiles = await import("node:fs/promises").then(({ readdir }) =>
       readdir(path.join(output, "sources", "pages")),

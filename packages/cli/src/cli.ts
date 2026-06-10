@@ -9,6 +9,7 @@ import { initConfig } from "./init.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
 import { buildFromSources } from "./build.js";
+import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 
 type GlobalOptions = {
   config: string;
@@ -185,15 +186,26 @@ export function createProgram(): Command {
           );
         }
         const globals = command.optsWithGlobals<GlobalOptions>();
+        const config = await readOptionalConfig(
+          path.resolve(globals.cwd ?? process.cwd(), globals.config),
+        );
         const result = await buildFromSources({
           cwd: globals.cwd ?? process.cwd(),
           out: globals.out,
+          project: config === undefined
+            ? undefined
+            : { name: config.name, slug: config.slug, version: config.version },
+          rules: config?.agent.rules,
+          writeAgentsMd: config?.output.writeAgentsMd,
+          writeLlmsTxt: config?.output.writeLlmsTxt,
+          writeManifest: config?.output.writeMcpManifest,
+          writeTaskPacks: config?.output.writeTaskPacks,
         });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result)}\n`);
         } else if (!globals.quiet) {
           process.stdout.write(
-            `Built ${result.chunkCount} chunk(s) from ${result.pageCount} page(s) to ${result.chunksPath}\n`,
+            `Built ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}\n`,
           );
         }
       },
@@ -213,11 +225,22 @@ export function createProgram(): Command {
       .description("Search the local documentation index"),
   );
 
-  addPlaceholderAction(
-    program
-      .command("inspect <target>")
-      .description("Inspect generated AgentDocs state"),
-  );
+  program
+    .command("inspect <target>")
+    .description("Inspect generated AgentDocs state")
+    .action(async (target: string, _options: unknown, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const result = await inspectAgentMap({
+        cwd: globals.cwd ?? process.cwd(),
+        out: globals.out,
+        target,
+      });
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatInspectResult(result));
+      }
+    });
 
   addPlaceholderAction(
     program
@@ -232,4 +255,15 @@ export function createProgram(): Command {
   );
 
   return program;
+}
+
+async function readOptionalConfig(configPath: string) {
+  try {
+    return parseConfig(await readFile(configPath, "utf8"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
 }
