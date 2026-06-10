@@ -1,30 +1,59 @@
 {
-  "name": "@agentdocs/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "agentdocs",
+  "version": "0.1.0-beta.1",
+  "description": "Deterministic, local-first tooling that compiles technical documentation into an evidence-linked context layer for coding agents.",
+  "license": "MIT",
+  "author": "Somneel Saha",
+  "homepage": "https://somneelsaha2042.github.io/AgentDocs/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SomneelSaha2042/AgentDocs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SomneelSaha2042/AgentDocs/issues"
+  },
+  "keywords": [
+    "agents",
+    "documentation",
+    "llms.txt",
+    "mcp",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "beta"
+  },
   "type": "module",
   "bin": {
-    "agentdocs": "./bin/agentdocs.js"
+    "agentdocs": "dist/agentdocs.js"
   },
   "files": [
-    "bin",
-    "dist"
+    "dist/agentdocs.js",
+    "LICENSE",
+    "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "pretest": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build",
+    "build": "node scripts/build-package.mjs",
+    "prepack": "node scripts/build-package.mjs",
+    "pretest": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/mcp-server build",
     "test": "vitest run",
-    "pretypecheck": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/mcp-server build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {
+  "devDependencies": {
     "@agentdocs/crawler": "workspace:*",
     "@agentdocs/doctor": "workspace:*",
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/graph": "workspace:*",
     "@agentdocs/indexer": "workspace:*",
+    "@agentdocs/mcp-server": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*",
-    "commander": "^14.0.0"
+    "commander": "^14.0.0",
+    "minimatch": "^10.0.3"
   }
 }

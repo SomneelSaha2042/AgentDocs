@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an evidence-linked, local-first AgentDocs improvement.
+title: "feature: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What agent-documentation workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user-visible behavior and how success should be measured.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Example documentation
+      description: Provide a public example or sanitized fixture when possible.

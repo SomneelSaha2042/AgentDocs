@@ -8,10 +8,11 @@ import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { initConfig } from "./init.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
-import { buildFromSources } from "./build.js";
+import { BuildError, buildFromSources } from "./build.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 import { ReadinessThresholdError, runDoctor } from "./doctor.js";
 import { formatSearchResponse, searchIndex } from "@agentdocs/indexer";
+import type { AgentDocsConfig } from "@agentdocs/shared";
 
 type GlobalOptions = {
   config: string;
@@ -21,6 +22,12 @@ type GlobalOptions = {
   quiet?: boolean;
   verbose?: boolean;
 };
+
+declare const __AGENTDOCS_VERSION__: string | undefined;
+
+export const AGENTDOCS_VERSION = typeof __AGENTDOCS_VERSION__ === "string"
+  ? __AGENTDOCS_VERSION__
+  : "0.1.0-beta.1";
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
@@ -80,7 +87,7 @@ export function createProgram(): Command {
     .description(
       "Deterministic, local-first tooling for agent-readable documentation.",
     )
-    .version("0.0.0")
+    .version(AGENTDOCS_VERSION)
     .option(
       "--config <path>",
       "Path to AgentDocs config",
@@ -199,6 +206,7 @@ export function createProgram(): Command {
         }
         const globals = command.optsWithGlobals<GlobalOptions>();
         const { config, cwd, out } = await resolveCommandContext(command, globals);
+        await collectConfiguredSources(config, cwd, out, options.skipCrawl ?? false);
         const result = await buildFromSources({
           cwd,
           out,
@@ -250,6 +258,21 @@ export function createProgram(): Command {
         if (minScore !== undefined && result.report.score < minScore) {
           throw new ReadinessThresholdError(
             `Agent-readiness score ${result.report.score} is below the required minimum of ${minScore}.`,
+          );
+        }
+        const policyFailures = [
+          config?.doctor.failOnBrokenLinks
+            && result.report.checks.find((check) => check.id === "has_broken_internal_links")?.status === "fail"
+            ? "broken internal links"
+            : undefined,
+          config?.doctor.failOnMissingTaskPacks
+            && result.report.checks.find((check) => check.id === "has_task_packs")?.status === "fail"
+            ? "missing task packs"
+            : undefined,
+        ].filter((value): value is string => value !== undefined);
+        if (policyFailures.length > 0) {
+          throw new ReadinessThresholdError(
+            `Agent-readiness policy failed: ${policyFailures.join(", ")}.`,
           );
         }
       },
@@ -307,11 +330,60 @@ export function createProgram(): Command {
       .requiredOption("--to <path>", "Export destination"),
   );
 
-  addPlaceholderAction(
-    program.command("serve-mcp").description("Start the local AgentDocs MCP server"),
-  );
+  program
+    .command("serve-mcp")
+    .description("Start the local AgentDocs MCP server")
+    .action(async (_options: unknown, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const context = await resolveCommandContext(command, globals);
+      const { serveAgentDocsMcp } = await import("@agentdocs/mcp-server");
+      await serveAgentDocsMcp({
+        cwd: context.cwd,
+        out: context.out,
+        version: AGENTDOCS_VERSION,
+      });
+    });
 
   return program;
+}
+
+async function collectConfiguredSources(
+  config: AgentDocsConfig | undefined,
+  cwd: string,
+  out: string,
+  skipCrawl: boolean,
+): Promise<void> {
+  if (config === undefined) {
+    return;
+  }
+  for (const source of config.sources) {
+    if (source.type === "local_markdown") {
+      await ingestLocalMarkdown({
+        cwd,
+        out,
+        source: source.path,
+        include: source.include,
+        exclude: source.exclude,
+      });
+      continue;
+    }
+    if (source.type === "website") {
+      if (!skipCrawl) {
+        await crawlToDisk({
+          cwd,
+          out,
+          startUrl: source.url,
+          include: source.include,
+          exclude: source.exclude,
+          sitemap: source.sitemap,
+        });
+      }
+      continue;
+    }
+    throw new BuildError(
+      `Configured ${source.type} sources are not implemented yet. Remove the source or use a supported local_markdown or website source.`,
+    );
+  }
 }
 
 async function readOptionalConfig(configPath: string) {

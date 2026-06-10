@@ -1,20 +1,60 @@
 # AgentDocs
 
+[![CI](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml/badge.svg)](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/agentdocs/beta.svg)](https://www.npmjs.com/package/agentdocs)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-6f42c1.svg)](https://somneelsaha2042.github.io/AgentDocs/)
+
 **Deterministic, local-first tooling that compiles existing technical documentation into an evidence-linked context layer for coding agents.**
 
-AgentDocs turns Markdown, MDX, and public documentation websites into compact, task-oriented artifacts that agents can navigate and audit. It runs locally, does not require an LLM, never executes commands found in documentation, and keeps every generated recommendation traceable to source evidence.
+AgentDocs turns Markdown, MDX, and public documentation websites into compact task packs, searchable artifacts, readiness findings, and read-only MCP tools. It does not require an LLM, execute commands found in documentation, or mutate source docs.
 
-> **Project status:** Active development. Phases 0-8 are implemented, covering ingestion, crawling, normalization, chunking, graph extraction, artifact generation, readiness auditing, and offline search. Export and MCP serving are planned.
+> **Beta status:** MVP phases 0-9 are implemented. The core ingest, crawl, build, audit, search, and MCP workflows are ready for real-repository testing.
 
-## What AgentDocs Produces
+## Install
+
+AgentDocs requires Node.js 20 or later and supports Windows and Linux.
+
+```bash
+npm install --global agentdocs
+agentdocs --version
+```
+
+Run without installing:
+
+```bash
+npx agentdocs@beta --help
+```
+
+Or add it to a project:
+
+```bash
+npm install --save-dev agentdocs
+npx agentdocs init
+```
+
+See the [installation guide](https://somneelsaha2042.github.io/AgentDocs/guide/installation) for PowerShell and Linux setup details.
+
+## Five-Minute Walkthrough
+
+From the repository whose docs you want to compile:
+
+```bash
+agentdocs init
+```
+
+Review the generated `agentdocs.config.yaml`, then run:
+
+```bash
+agentdocs build
+agentdocs doctor
+agentdocs search "authentication"
+```
+
+AgentDocs writes a separate `.agentdocs/` context layer:
 
 ```txt
-Existing documentation
-        |
-        v
-ingest / crawl -> normalize -> chunk -> extract graph -> generate -> audit
-        |
-        v
 .agentdocs/
   llms.txt
   AGENTS.md
@@ -27,121 +67,89 @@ ingest / crawl -> normalize -> chunk -> extract graph -> generate -> audit
   reports/agent-readiness.json
 ```
 
-The output is designed for task execution rather than document browsing:
+The generated output is designed for task execution rather than document browsing:
 
-- `llms.txt` provides a concise entry point and navigation map.
-- Generated `AGENTS.md` captures setup, concepts, common tasks, and common mistakes.
+- `llms.txt` provides a concise entry point.
+- Generated `AGENTS.md` captures setup, concepts, tasks, and common mistakes.
 - Task packs bundle evidence-backed instructions for detected task families.
-- `agent-map.json` exposes pages, chunks, entities, edges, and task packs as structured data.
-- `index.sqlite` provides ranked offline search over titles, headings, and chunks.
-- The readiness report identifies concrete documentation gaps and their supporting evidence.
+- `agent-map.json` exposes pages, chunks, entities, edges, and evidence.
+- `index.sqlite` provides ranked offline search.
+- The readiness report identifies actionable documentation gaps.
 
-## Why AgentDocs
+## Website Documentation
 
-- **Deterministic first:** core builds and audits work without an LLM.
-- **Evidence linked:** generated steps, entities, and findings point back to source material.
-- **Local first:** artifacts are generated locally with no account or hosted service required.
-- **Offline after collection:** builds and audits do not require network access after ingest or crawl.
-- **Untrusted-input aware:** documentation code blocks and commands are parsed, never executed.
-- **Schema validated:** JSON and JSONL artifacts are validated before a build succeeds.
-- **Source preserving:** AgentDocs writes a separate context layer and does not mutate source docs.
-
-## Quick Start
-
-AgentDocs currently runs from this repository and requires Node.js 20 or later with pnpm.
+Collect same-origin public documentation, then build completely offline:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
+agentdocs crawl https://docs.example.com
+agentdocs build --skip-crawl
+agentdocs doctor
 ```
 
-Build agent artifacts from the included Markdown fixture:
+Configured website sources are crawled automatically by `agentdocs build` unless `--skip-crawl` is passed. Crawled content is treated as untrusted input and commands in docs are never executed.
+
+## Audit And Search
+
+Use readiness scoring as a local or CI quality gate:
 
 ```bash
-pnpm exec agentdocs ingest fixtures/basic-docs --out .agentdocs-test
-pnpm exec agentdocs build --skip-crawl --out .agentdocs-test
-pnpm exec agentdocs doctor --out .agentdocs-test
-pnpm exec agentdocs search "API key" --out .agentdocs-test
+agentdocs doctor --min-score 80
+agentdocs doctor --json
 ```
 
-Inspect the generated output:
+Search built artifacts without network access:
 
 ```bash
-pnpm exec agentdocs inspect entities --out .agentdocs-test
-pnpm exec agentdocs inspect links --out .agentdocs-test
+agentdocs search "webhook signature verification"
+agentdocs search "API key" --json
 ```
 
-## Common Workflows
+## MCP
 
-### Local Markdown and MDX
+Expose only built AgentDocs artifacts to an MCP-compatible coding agent:
 
 ```bash
-pnpm exec agentdocs ingest ./docs
-pnpm exec agentdocs build --skip-crawl
-pnpm exec agentdocs doctor
+agentdocs serve-mcp
 ```
 
-### Public Documentation Website
+The server provides six read-only tools for search, pages, task packs, start context, code examples, and related pages. It cannot crawl, execute documentation commands, or read arbitrary filesystem paths.
 
-```bash
-pnpm exec agentdocs crawl https://docs.example.com
-pnpm exec agentdocs build --skip-crawl
-pnpm exec agentdocs doctor
+See the [MCP setup guide](https://somneelsaha2042.github.io/AgentDocs/guide/search-mcp).
+
+## How It Works
+
+```txt
+config and sources
+        |
+        v
+ingest / crawl -> normalize -> chunk -> extract graph -> generate -> index -> audit
+        |
+        v
+static artifacts + offline search + read-only MCP
 ```
 
-Website crawling stays on the configured origin by default, supports sitemap discovery and fallback link crawling, and can respect `robots.txt`. Crawled content is treated as untrusted input.
+AgentDocs uses stable IDs, deterministic ordering, explicit schemas, and evidence-linked outputs. When evidence is weak or missing, generated artifacts say so rather than inventing instructions.
 
-### Enforce a Readiness Threshold
+## Engineering Quality
 
-```bash
-pnpm exec agentdocs doctor --min-score 80
-```
+The beta is built as a strict TypeScript monorepo with focused package boundaries for collection, normalization, graph extraction, generation, readiness auditing, search, and MCP serving.
 
-The doctor command exits with code `5` when the overall readiness score is below the configured threshold, making it suitable for CI gates.
+Release gates cover:
 
-## Generated Artifacts
-
-| Artifact | Purpose |
-| --- | --- |
-| `llms.txt` | Concise agent-facing navigation and project rules |
-| `AGENTS.md` | Generated setup, concepts, tasks, mistakes, and source links |
-| `manifest.json` | Build metadata and artifact inventory |
-| `agent-map.json` | Machine-readable pages, chunks, entities, edges, and task packs |
-| `chunks.jsonl` | Stable, source-linked normalized chunks |
-| `index.sqlite` | Offline FTS5 or deterministic fallback lexical search index |
-| `task-packs/*.md` | Compact instructions grouped by detected task family |
-| `reports/agent-readiness.md` | Human-readable readiness findings |
-| `reports/agent-readiness.json` | Machine-readable readiness findings |
-
-The default output directory is `.agentdocs`. Use `--out <directory>` or configure `output.dir` to change it.
-
-## Readiness Audit
-
-`agentdocs doctor` evaluates six categories:
-
-| Category | What It Evaluates |
-| --- | --- |
-| Discoverability | Whether agents can find useful starting points |
-| Structure | Whether content is organized into usable chunks and relationships |
-| Task coverage | Whether common task families have supporting documentation |
-| Version safety | Whether version and deprecation signals are clear |
-| Agent safety | Whether generated guidance avoids unsupported assumptions |
-| Runtime readiness | Whether generated artifacts are complete and internally consistent |
-
-Findings are deterministic, actionable, and linked to inspected evidence. Use `--json` for machine-readable command output or `--category <name>` to focus an audit.
+- deterministic fixture-based unit, snapshot, integration, and CLI tests;
+- schema validation for generated JSON and JSONL artifacts;
+- repeated-build artifact hash checks;
+- SQLite/FTS5 search on Node 22 and deterministic lexical fallback on Node 20;
+- Windows and Linux CI;
+- npm tarball contents and clean global-install verification;
+- real CLI workflow and MCP stdio smoke tests;
+- path traversal, invalid artifacts, broken links, and untrusted-input behavior.
 
 ## Configuration
 
-Create a starter configuration:
-
-```bash
-pnpm exec agentdocs init
-```
-
-Example `agentdocs.config.yaml`:
-
 ```yaml
 name: Example Project
+slug: example-project
 
 sources:
   - type: local_markdown
@@ -154,70 +162,37 @@ doctor:
   minScore: 80
 ```
 
-Configuration and command contracts are documented in [APIS_AND_DOCUMENTATION.md](APIS_AND_DOCUMENTATION.md).
+`agentdocs build` automatically collects configured local Markdown sources and websites. See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/reference/configuration).
 
-## CLI Status
+## Current Limitations
 
-| Command | Status | Description |
-| --- | --- | --- |
-| `agentdocs init` | Ready | Create a starter configuration |
-| `agentdocs ingest` | Ready | Ingest local Markdown and MDX |
-| `agentdocs crawl` | Ready | Crawl same-origin public HTML documentation |
-| `agentdocs build` | Ready | Generate artifacts from collected source state |
-| `agentdocs doctor` | Ready | Generate readiness reports and enforce score thresholds |
-| `agentdocs inspect entities` | Ready | Inspect extracted entities |
-| `agentdocs inspect links` | Ready | Inspect extracted links |
-| `agentdocs search` | Ready | Search titles, headings, and chunks offline |
-| `agentdocs export` | Planned | Export selected generated content |
-| `agentdocs serve-mcp` | Planned | Serve built artifacts through MCP |
+- OpenAPI and repository source ingestion are planned but not implemented.
+- Export is not implemented.
+- Removing configured sources does not prune previously collected pages; use a fresh output directory when changing source sets.
+- `build --clean` and additional inspect targets are not implemented.
+- Broken-link checks do not validate heading fragments.
+- The crawler is intended for public, statically accessible documentation.
+- MCP implements the Phase 9 read-only surface, not every optional protocol feature.
 
-Run `pnpm exec agentdocs --help` or `pnpm exec agentdocs <command> --help` for the current command-line interface.
-
-## Architecture
-
-The implementation is split into focused TypeScript packages:
-
-| Package | Responsibility |
-| --- | --- |
-| `packages/shared` | Schemas, configuration, IDs, errors, and shared models |
-| `packages/cli` | Command-line interface and workflow orchestration |
-| `packages/crawler` | Same-origin website collection |
-| `packages/normalizer` | Markdown normalization and deterministic chunking |
-| `packages/graph` | Entity and relationship extraction |
-| `packages/generator` | Agent-facing artifact and task-pack generation |
-| `packages/doctor` | Readiness scoring, findings, and reports |
-
-## Development
+## Contributing
 
 ```bash
+corepack enable
 pnpm install --frozen-lockfile
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm docs:build
+pnpm pack:verify
+pnpm smoke:bundle
 ```
 
-Tests are deterministic and do not make network calls by default.
-
-## Current Limitations
-
-- Export and MCP serving are not implemented yet.
-- Node.js runtimes without `node:sqlite` or FTS5 build a deterministic lexical fallback at `index.sqlite`.
-- OpenAPI and repository source declarations are recognized by configuration but are not yet ingested.
-- Broken-link checks do not validate heading fragments.
-- Oversized fenced code blocks may exceed normal chunk-size guidance.
-- Identical source-relative paths across multiple sources can be ambiguous.
-- `robots.txt` handling does not yet implement the complete specification.
-
-See [BUILD_PLAN.md](BUILD_PLAN.md) for phase gates and planned work.
-
-## Project Documentation
-
-- [PRD.md](PRD.md): product requirements and scope
-- [BUILD_PLAN.md](BUILD_PLAN.md): phased implementation plan and gates
-- [APIS_AND_DOCUMENTATION.md](APIS_AND_DOCUMENTATION.md): CLI, API, and data-model contracts
-- [AGENTS.md](AGENTS.md): repository engineering rules
-- [fixtures/README.md](fixtures/README.md): fixture catalog and coverage
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting. Repository
+engineering rules are in [AGENTS.md](AGENTS.md). Product requirements and
+contracts live in [PRD.md](PRD.md), [BUILD_PLAN.md](BUILD_PLAN.md), and
+[APIS_AND_DOCUMENTATION.md](APIS_AND_DOCUMENTATION.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -144,6 +144,10 @@ function generateTaskPack(
   if (ranked.length === 0) {
     return undefined;
   }
+  const strongest = ranked[0]!.score;
+  if (strongest < 3 && !hasStrongTaskEvidence(family, ranked.map(({ chunk }) => chunk.text))) {
+    return undefined;
+  }
   const requiredPages = stableUnique(ranked.map(({ chunk }) => chunk.pageId));
   const evidence = stableEvidence(
     ranked.map(({ chunk }) => evidenceForChunk(agentMap, chunk.pageId, chunk.headingPath, chunk.text)),
@@ -186,7 +190,6 @@ function generateTaskPack(
         .map((block) => block.value),
     )
     .slice(0, 4);
-  const strongest = ranked[0]!.score;
   return TaskPackSchema.parse({
     id: family.id,
     title: family.title,
@@ -203,6 +206,12 @@ function generateTaskPack(
     codeExamples,
     evidence,
   });
+}
+
+function hasStrongTaskEvidence(family: TaskFamily, texts: string[]): boolean {
+  return family.id === "installation" && texts.some((text) =>
+    /(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(text),
+  );
 }
 
 function taskScore(family: TaskFamily, text: string, headingPath: string[]): number {

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/SomneelSaha2042/AgentDocs/security/advisories/new
+    about: Report vulnerabilities privately.
+  - name: Documentation
+    url: https://somneelsaha2042.github.io/AgentDocs/
+    about: Read the installation, usage, and troubleshooting guides.

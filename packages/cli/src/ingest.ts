@@ -9,11 +9,14 @@ import {
   type DocPage,
   type IngestManifest,
 } from "@agentdocs/shared";
+import { minimatch } from "minimatch";
 
 export type IngestOptions = {
   cwd: string;
   out: string;
   source: string;
+  include?: string[];
+  exclude?: string[];
 };
 
 export type IngestResult = {
@@ -41,7 +44,14 @@ export async function ingestLocalMarkdown(
     "state",
     `ingest-${hash(sourceIdentity)}.json`,
   );
-  const files = await discoverMarkdownFiles(sourcePath, outputRoot);
+  const sourceStats = await statSource(sourcePath);
+  const files = (await discoverMarkdownFiles(sourcePath, outputRoot)).filter((filePath) => {
+    const relative = toPosixPath(path.relative(
+      sourceStats.isDirectory() ? sourcePath : path.dirname(sourcePath),
+      filePath,
+    ));
+    return matchesFilters(relative, options.include, options.exclude);
+  });
 
   if (files.length === 0) {
     throw new IngestError(
@@ -50,7 +60,6 @@ export async function ingestLocalMarkdown(
   }
 
   const pages: DocPage[] = [];
-  const sourceStats = await stat(sourcePath);
   for (const filePath of files) {
     const markdown = await readFile(filePath, "utf8");
     const repoPath = sourceStats.isDirectory()
@@ -97,6 +106,28 @@ export async function ingestLocalMarkdown(
   await writeJson(stateManifestPath, manifest);
 
   return { manifestPath, pages: validatedPages };
+}
+
+async function statSource(sourcePath: string) {
+  try {
+    return await stat(sourcePath);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      throw new IngestError(`Source path not found: ${sourcePath}`);
+    }
+    throw error;
+  }
+}
+
+function matchesFilters(
+  relativePath: string,
+  include?: string[],
+  exclude?: string[],
+): boolean {
+  const included = include === undefined || include.length === 0
+    || include.some((pattern) => minimatch(relativePath, pattern));
+  const excluded = exclude?.some((pattern) => minimatch(relativePath, pattern)) ?? false;
+  return included && !excluded;
 }
 
 async function discoverMarkdownFiles(

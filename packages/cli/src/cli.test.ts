@@ -27,11 +27,15 @@ describe("agentdocs CLI", () => {
     const search = createProgram().commands.find(
       (command) => command.name() === "search",
     );
+    const serveMcp = createProgram().commands.find(
+      (command) => command.name() === "serve-mcp",
+    );
 
     expect(crawl?.helpInformation()).toContain("--max-pages <n>");
     expect(crawl?.helpInformation()).toContain("--include <glob>");
     expect(doctor?.helpInformation()).toContain("--min-score <n>");
     expect(search?.helpInformation()).toContain("--limit <n>");
+    expect(serveMcp?.description()).toContain("local AgentDocs MCP server");
   });
 
   it("creates a schema-valid starter config in --out", async () => {
@@ -147,6 +151,40 @@ doctor:
 
     await expect(readFile(path.join(cwd, ".config", "agentdocs.yaml"), "utf8"))
       .resolves.toContain("slug: my-project");
+  });
+
+  it("builds configured local sources without a separate ingest command", async () => {
+    const cwd = await createTemporaryDirectory();
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.join(cwd, "docs", "drafts"), { recursive: true });
+    await writeFile(path.join(cwd, "docs", "README.md"), "# Configured Docs\n\n## Install\n", "utf8");
+    await writeFile(path.join(cwd, "docs", "drafts", "hidden.md"), "# Hidden\n", "utf8");
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Configured Docs
+slug: configured-docs
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md"]
+    exclude: ["**/drafts/**"]
+doctor:
+  minScore: 0
+`, "utf8");
+
+    await createProgram().exitOverride().parseAsync([
+      "node",
+      "agentdocs",
+      "--cwd",
+      cwd,
+      "--quiet",
+      "build",
+    ]);
+
+    const map = JSON.parse(
+      await readFile(path.join(cwd, ".agentdocs", "agent-map.json"), "utf8"),
+    );
+    expect(map.pages.map((page: { repoPath: string }) => page.repoPath))
+      .toEqual(["README.md"]);
   });
 });
 

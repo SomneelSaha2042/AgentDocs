@@ -1,7 +1,11 @@
 node_modules/
+.pnpm-store/
 dist/
 coverage/
 .agentdocs/
 .agentdocs-test/
+.release/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/.vitepress/.temp/
 *.tsbuildinfo
-

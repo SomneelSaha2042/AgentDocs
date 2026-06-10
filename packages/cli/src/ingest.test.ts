@@ -80,4 +80,22 @@ describe("ingestLocalMarkdown", () => {
     expect(files).toContain(`${first.pages[0]!.id}.json`);
     expect(files).toContain(`${second.pages[0]!.id}.json`);
   });
+
+  it("honors configured include and exclude filters", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-filter-"));
+    await mkdir(path.join(cwd, "docs", "drafts"), { recursive: true });
+    await writeFile(path.join(cwd, "docs", "keep.md"), "# Keep\n", "utf8");
+    await writeFile(path.join(cwd, "docs", "drafts", "skip.md"), "# Skip\n", "utf8");
+
+    const result = await ingestLocalMarkdown({
+      cwd,
+      out: ".agentdocs",
+      source: "./docs",
+      include: ["**/*.md"],
+      exclude: ["**/drafts/**"],
+    });
+
+    expect(result.pages.map((page) => page.repoPath)).toEqual(["keep.md"]);
+  });
 });

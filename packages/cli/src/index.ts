@@ -20,6 +20,8 @@ try {
   process.stderr.write(`Error: ${message}\n`);
   process.exitCode = error instanceof ReadinessThresholdError
     ? 5
+    : error instanceof Error && error.name === "McpArtifactError"
+    ? 6
     : error instanceof IngestError || error instanceof CrawlError
     ? 3
     : error instanceof BuildError || error instanceof InspectError || error instanceof DoctorError

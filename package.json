@@ -1,28 +1,46 @@
 {
-  "name": "agentdocs",
-  "version": "0.0.0",
+  "name": "agentdocs-workspace",
+  "version": "0.1.0-beta.1",
   "private": true,
   "description": "Deterministic, local-first tooling for agent-readable documentation.",
   "license": "MIT",
+  "author": "Somneel Saha",
+  "homepage": "https://somneelsaha2042.github.io/AgentDocs/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SomneelSaha2042/AgentDocs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SomneelSaha2042/AgentDocs/issues"
+  },
   "packageManager": "pnpm@10.13.1",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "audit:high": "corepack pnpm audit --audit-level high",
     "build": "corepack pnpm -r --if-present build",
+    "docs:build": "vitepress build docs",
+    "docs:dev": "vitepress docs --host 127.0.0.1",
+    "docs:preview": "vitepress preview docs --host 127.0.0.1",
+    "check": "corepack pnpm build && corepack pnpm typecheck && corepack pnpm test && corepack pnpm docs:build && corepack pnpm pack:verify && corepack pnpm smoke:bundle",
+    "pack:verify": "node scripts/verify-pack.mjs",
+    "smoke:bundle": "node scripts/release-smoke.mjs node packages/cli/dist/agentdocs.js",
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck"
   },
   "devDependencies": {
-    "@agentdocs/cli": "workspace:*",
     "@agentdocs/crawler": "workspace:*",
     "@agentdocs/doctor": "workspace:*",
     "@agentdocs/graph": "workspace:*",
     "@agentdocs/indexer": "workspace:*",
+    "@agentdocs/mcp-server": "workspace:*",
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
     "@types/node": "^22.15.30",
+    "esbuild": "^0.27.0",
     "typescript": "^5.8.3",
+    "vitepress": "^1.6.4",
     "vitest": "^3.2.4"
   }
 }

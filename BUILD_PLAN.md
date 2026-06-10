@@ -63,7 +63,7 @@ pnpm install
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm --filter @agentdocs/cli exec agentdocs --help
+pnpm --filter agentdocs exec agentdocs --help
 ```
 
 Expected result:

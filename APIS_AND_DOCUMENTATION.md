@@ -95,17 +95,16 @@ Ingests a local docs folder or file.
 ```bash
 agentdocs ingest ./docs
 agentdocs ingest ./README.md
-agentdocs ingest ./openapi.yaml
 ```
 
-Supported MVP inputs:
+Supported inputs:
 
 ```txt
 .md
 .mdx
-.yaml/.yml OpenAPI
-.json OpenAPI
 ```
+
+OpenAPI ingestion is planned for Phase 10.
 
 ### 2.4 `agentdocs build`
 
@@ -113,7 +112,6 @@ Builds normalized docs, graph, index, and generated artifacts.
 
 ```bash
 agentdocs build
-agentdocs build --clean
 agentdocs build --skip-crawl
 ```
 
@@ -201,14 +199,11 @@ chunkId
 Inspects generated state.
 
 ```bash
-agentdocs inspect pages
 agentdocs inspect links
 agentdocs inspect entities
-agentdocs inspect chunks
-agentdocs inspect task-packs
-agentdocs inspect broken-links
-agentdocs inspect config
 ```
+
+Additional inspect targets are planned.
 
 ### 2.8 `agentdocs export`
 
@@ -235,6 +230,10 @@ Behavior:
 - does not crawl;
 - does not write unless a future explicit tool supports it;
 - does not execute commands from docs.
+
+The MVP implements the required MCP JSON-RPC surface directly over stdio. Tool
+errors return structured `code` and `message` fields. Resource and tool
+arguments are validated and cannot be used as arbitrary filesystem paths.
 
 ## 3. Configuration file
 

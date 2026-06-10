@@ -114,6 +114,46 @@ pnpm add @example/sdk
     }).toMatchSnapshot();
   });
 
+  it("does not generate task packs from weak keyword-list mentions", () => {
+    const markdown = "# Product plan\nTask families include authentication, webhooks, and pagination.";
+    const weak = AgentMapSchema.parse({
+      schemaVersion: "0.1.0",
+      pages: [{
+        id: "page_plan",
+        sourceType: "local_markdown",
+        repoPath: "plan.md",
+        title: "Product plan",
+        markdown,
+        headings: [{ id: "heading_plan", depth: 1, text: "Product plan", slug: "product-plan", position: {} }],
+        links: [],
+        codeBlocks: [],
+        contentHash: hash(markdown),
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+      }],
+      chunks: [{
+        id: "chunk_plan",
+        pageId: "page_plan",
+        headingPath: ["Product plan"],
+        text: markdown,
+        tokenEstimate: 10,
+        links: [],
+        entityIds: [],
+        contentHash: hash(markdown),
+      }],
+      entities: [],
+      edges: [],
+      taskPacks: [],
+    });
+
+    const generated = generateStaticArtifacts({
+      agentMap: weak,
+      project: { name: "Weak Fixture", slug: "weak-fixture" },
+    });
+
+    expect(generated.taskPacks).toEqual([]);
+  });
+
   it("does not select task families from keyword substrings", () => {
     const markdown = "# Prevention\n\nPrevent failures before production.\n";
     const pageId = "page_prevention";

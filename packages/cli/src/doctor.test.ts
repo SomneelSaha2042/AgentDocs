@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -85,5 +85,32 @@ describe("runDoctor", () => {
         "unknown",
       ]),
     ).rejects.toMatchObject({ name: "DoctorInputError" });
+  });
+
+  it("enforces configured readiness policies", async () => {
+    const cwd = await import("node:fs/promises").then(({ mkdtemp }) =>
+      mkdtemp(path.join(os.tmpdir(), "agentdocs-doctor-policy-")),
+    );
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Policy Fixture
+slug: policy-fixture
+sources:
+  - type: local_markdown
+    path: ./docs
+doctor:
+  minScore: 0
+  failOnMissingTaskPacks: true
+`, "utf8");
+
+    await expect(
+      createProgram().exitOverride().parseAsync([
+        "node",
+        "agentdocs",
+        "--cwd",
+        cwd,
+        "--quiet",
+        "doctor",
+      ]),
+    ).rejects.toThrowError(/missing task packs/);
   });
 });
