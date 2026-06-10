@@ -6,6 +6,7 @@ import {
   type ProjectIdentity,
 } from "@agentdocs/generator";
 import { buildAgentMap } from "@agentdocs/graph";
+import { buildSearchIndex } from "@agentdocs/indexer";
 import {
   chunkMarkdownByHeading,
   extractDeterministicEntities,
@@ -39,6 +40,8 @@ export type BuildResult = {
   entityCount: number;
   llmsTxtPath?: string;
   manifestPath?: string;
+  indexBackend: "sqlite-fts5" | "lexical";
+  indexPath: string;
   pageCount: number;
   taskPackCount: number;
   taskPackPaths: string[];
@@ -131,6 +134,11 @@ export async function buildFromSources(
   await removeDisabledArtifact(options.writeLlmsTxt === false, path.join(outputRoot, "llms.txt"));
   await removeDisabledArtifact(options.writeAgentsMd === false, path.join(outputRoot, "AGENTS.md"));
   await removeDisabledArtifact(options.writeManifest === false, path.join(outputRoot, "manifest.json"));
+  const index = await buildSearchIndex({
+    agentMap,
+    cwd: options.cwd,
+    out: options.out,
+  });
 
   return {
     agentMapPath,
@@ -141,6 +149,8 @@ export async function buildFromSources(
     entityCount: agentMap.entities.length,
     llmsTxtPath,
     manifestPath,
+    indexBackend: index.backend,
+    indexPath: index.indexPath,
     pageCount: enrichedPages.length,
     taskPackCount: generated.taskPacks.length,
     taskPackPaths,

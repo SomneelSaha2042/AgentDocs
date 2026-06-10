@@ -1,5 +1,5 @@
 {
-  "name": "@agentdocs/graph",
+  "name": "@agentdocs/indexer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,13 +14,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "corepack pnpm --filter @agentdocs/normalizer build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build",
     "test": "vitest run",
-    "pretypecheck": "corepack pnpm --filter @agentdocs/normalizer build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*"
   }
 }

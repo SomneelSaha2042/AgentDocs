@@ -175,6 +175,13 @@ Searches the local index.
 ```bash
 agentdocs search "webhook signature"
 agentdocs search "pagination" --json
+agentdocs search "authentication" --limit 5
+```
+
+Options:
+
+```txt
+--limit <n>           Maximum ranked results to return
 ```
 
 Output fields:
@@ -652,6 +659,11 @@ MVP database file:
 ```txt
 .agentdocs/index.sqlite
 ```
+
+AgentDocs uses SQLite FTS5 when the active Node.js runtime provides
+`node:sqlite` and FTS5. Otherwise, the same path contains a schema-valid,
+deterministic lexical fallback index. Both backends support offline search over
+titles, headings, and chunks.
 
 Suggested tables:
 

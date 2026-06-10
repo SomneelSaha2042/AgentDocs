@@ -9,15 +9,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm -r --if-present build",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "build": "corepack pnpm -r --if-present build",
+    "test": "corepack pnpm -r --if-present test",
+    "typecheck": "corepack pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "@agentdocs/cli": "workspace:*",
     "@agentdocs/crawler": "workspace:*",
     "@agentdocs/doctor": "workspace:*",
     "@agentdocs/graph": "workspace:*",
+    "@agentdocs/indexer": "workspace:*",
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
     "@types/node": "^22.15.30",

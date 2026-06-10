@@ -14,9 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "pnpm --filter @agentdocs/shared build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build",
     "test": "vitest run",
-    "pretypecheck": "pnpm --filter @agentdocs/shared build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

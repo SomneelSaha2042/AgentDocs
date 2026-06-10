@@ -250,6 +250,47 @@ export const ReadinessReportSchema = z
   })
   .strict();
 
+export const SearchDocumentSchema = z
+  .object({
+    pageId: z.string().min(1),
+    chunkId: z.string().min(1),
+    title: z.string().min(1),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    headingPath: z.array(z.string()),
+    text: z.string().min(1),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
+export const SearchIndexFallbackSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    backend: z.literal("lexical"),
+    documents: z.array(SearchDocumentSchema),
+  })
+  .strict();
+
+export const SearchResultSchema = z
+  .object({
+    title: z.string().min(1),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    headingPath: z.array(z.string()),
+    snippet: z.string(),
+    score: z.number().nonnegative(),
+    pageId: z.string().min(1),
+    chunkId: z.string().min(1),
+  })
+  .strict();
+
+export const SearchResponseSchema = z
+  .object({
+    query: z.string(),
+    results: z.array(SearchResultSchema),
+  })
+  .strict();
+
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -310,5 +351,9 @@ export type Manifest = z.infer<typeof ManifestSchema>;
 export type ReadinessCategory = z.infer<typeof ReadinessCategorySchema>;
 export type ReadinessCheckResult = z.infer<typeof ReadinessCheckResultSchema>;
 export type ReadinessReport = z.infer<typeof ReadinessReportSchema>;
+export type SearchDocument = z.infer<typeof SearchDocumentSchema>;
+export type SearchIndexFallback = z.infer<typeof SearchIndexFallbackSchema>;
+export type SearchResult = z.infer<typeof SearchResultSchema>;
+export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;

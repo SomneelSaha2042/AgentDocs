@@ -4,7 +4,7 @@
 
 AgentDocs turns Markdown, MDX, and public documentation websites into compact, task-oriented artifacts that agents can navigate and audit. It runs locally, does not require an LLM, never executes commands found in documentation, and keeps every generated recommendation traceable to source evidence.
 
-> **Project status:** Active development. Phases 0-7 are implemented, covering ingestion, crawling, normalization, chunking, graph extraction, artifact generation, and readiness auditing. Search, export, and MCP serving are planned.
+> **Project status:** Active development. Phases 0-8 are implemented, covering ingestion, crawling, normalization, chunking, graph extraction, artifact generation, readiness auditing, and offline search. Export and MCP serving are planned.
 
 ## What AgentDocs Produces
 
@@ -21,6 +21,7 @@ ingest / crawl -> normalize -> chunk -> extract graph -> generate -> audit
   manifest.json
   agent-map.json
   chunks.jsonl
+  index.sqlite
   task-packs/*.md
   reports/agent-readiness.md
   reports/agent-readiness.json
@@ -32,6 +33,7 @@ The output is designed for task execution rather than document browsing:
 - Generated `AGENTS.md` captures setup, concepts, common tasks, and common mistakes.
 - Task packs bundle evidence-backed instructions for detected task families.
 - `agent-map.json` exposes pages, chunks, entities, edges, and task packs as structured data.
+- `index.sqlite` provides ranked offline search over titles, headings, and chunks.
 - The readiness report identifies concrete documentation gaps and their supporting evidence.
 
 ## Why AgentDocs
@@ -59,6 +61,7 @@ Build agent artifacts from the included Markdown fixture:
 pnpm exec agentdocs ingest fixtures/basic-docs --out .agentdocs-test
 pnpm exec agentdocs build --skip-crawl --out .agentdocs-test
 pnpm exec agentdocs doctor --out .agentdocs-test
+pnpm exec agentdocs search "API key" --out .agentdocs-test
 ```
 
 Inspect the generated output:
@@ -105,6 +108,7 @@ The doctor command exits with code `5` when the overall readiness score is below
 | `manifest.json` | Build metadata and artifact inventory |
 | `agent-map.json` | Machine-readable pages, chunks, entities, edges, and task packs |
 | `chunks.jsonl` | Stable, source-linked normalized chunks |
+| `index.sqlite` | Offline FTS5 or deterministic fallback lexical search index |
 | `task-packs/*.md` | Compact instructions grouped by detected task family |
 | `reports/agent-readiness.md` | Human-readable readiness findings |
 | `reports/agent-readiness.json` | Machine-readable readiness findings |
@@ -163,7 +167,7 @@ Configuration and command contracts are documented in [APIS_AND_DOCUMENTATION.md
 | `agentdocs doctor` | Ready | Generate readiness reports and enforce score thresholds |
 | `agentdocs inspect entities` | Ready | Inspect extracted entities |
 | `agentdocs inspect links` | Ready | Inspect extracted links |
-| `agentdocs search` | Planned | Search the local documentation index |
+| `agentdocs search` | Ready | Search titles, headings, and chunks offline |
 | `agentdocs export` | Planned | Export selected generated content |
 | `agentdocs serve-mcp` | Planned | Serve built artifacts through MCP |
 
@@ -196,7 +200,8 @@ Tests are deterministic and do not make network calls by default.
 
 ## Current Limitations
 
-- Search/indexing, export, and MCP serving are not implemented yet.
+- Export and MCP serving are not implemented yet.
+- Node.js runtimes without `node:sqlite` or FTS5 build a deterministic lexical fallback at `index.sqlite`.
 - OpenAPI and repository source declarations are recognized by configuration but are not yet ingested.
 - Broken-link checks do not validate heading fragments.
 - Oversized fenced code blocks may exceed normal chunk-size guidance.

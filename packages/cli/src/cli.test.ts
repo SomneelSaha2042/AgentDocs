@@ -24,10 +24,14 @@ describe("agentdocs CLI", () => {
     const doctor = createProgram().commands.find(
       (command) => command.name() === "doctor",
     );
+    const search = createProgram().commands.find(
+      (command) => command.name() === "search",
+    );
 
     expect(crawl?.helpInformation()).toContain("--max-pages <n>");
     expect(crawl?.helpInformation()).toContain("--include <glob>");
     expect(doctor?.helpInformation()).toContain("--min-score <n>");
+    expect(search?.helpInformation()).toContain("--limit <n>");
   });
 
   it("creates a schema-valid starter config in --out", async () => {

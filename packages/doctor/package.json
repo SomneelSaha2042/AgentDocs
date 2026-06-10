@@ -14,9 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "pnpm --filter @agentdocs/shared build && pnpm --filter @agentdocs/normalizer build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/normalizer build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build",
     "test": "vitest run",
-    "pretypecheck": "pnpm --filter @agentdocs/shared build && pnpm --filter @agentdocs/normalizer build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/normalizer build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

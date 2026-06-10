@@ -25,6 +25,10 @@ export {
   ReadinessCategorySchema,
   ReadinessCheckResultSchema,
   ReadinessReportSchema,
+  SearchDocumentSchema,
+  SearchIndexFallbackSchema,
+  SearchResponseSchema,
+  SearchResultSchema,
   TaskPackSchema,
   TaskStepSchema,
 } from "./models.js";
@@ -47,6 +51,10 @@ export type {
   ReadinessCategory,
   ReadinessCheckResult,
   ReadinessReport,
+  SearchDocument,
+  SearchIndexFallback,
+  SearchResponse,
+  SearchResult,
   TaskPack,
   TaskStep,
 } from "./models.js";

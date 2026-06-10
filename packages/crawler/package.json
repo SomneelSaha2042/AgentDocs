@@ -14,9 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "pnpm --filter @agentdocs/normalizer build",
+    "pretest": "corepack pnpm --filter @agentdocs/normalizer build",
     "test": "vitest run",
-    "pretypecheck": "pnpm --filter @agentdocs/normalizer build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/normalizer build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

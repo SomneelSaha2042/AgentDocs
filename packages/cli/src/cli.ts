@@ -11,6 +11,7 @@ import { crawlToDisk } from "./crawl.js";
 import { buildFromSources } from "./build.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 import { ReadinessThresholdError, runDoctor } from "./doctor.js";
+import { formatSearchResponse, searchIndex } from "@agentdocs/indexer";
 
 type GlobalOptions = {
   config: string;
@@ -254,11 +255,31 @@ export function createProgram(): Command {
       },
     );
 
-  addPlaceholderAction(
-    program
-      .command("search <query>")
-      .description("Search the local documentation index"),
-  );
+  program
+    .command("search <query>")
+    .description("Search the local documentation index")
+    .option("--limit <n>", "Maximum results to return", parseInteger)
+    .action(
+      async (
+        query: string,
+        options: { limit?: number },
+        command: Command,
+      ) => {
+        const globals = command.optsWithGlobals<GlobalOptions>();
+        const context = await resolveCommandContext(command, globals);
+        const response = await searchIndex({
+          cwd: context.cwd,
+          limit: options.limit,
+          out: context.out,
+          query,
+        });
+        if (globals.json) {
+          process.stdout.write(`${JSON.stringify(response)}\n`);
+        } else if (!globals.quiet) {
+          process.stdout.write(formatSearchResponse(response));
+        }
+      },
+    );
 
   program
     .command("inspect <target>")

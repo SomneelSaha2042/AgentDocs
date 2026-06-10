@@ -23,6 +23,9 @@ importers:
       '@agentdocs/graph':
         specifier: workspace:*
         version: link:packages/graph
+      '@agentdocs/indexer':
+        specifier: workspace:*
+        version: link:packages/indexer
       '@agentdocs/normalizer':
         specifier: workspace:*
         version: link:packages/normalizer
@@ -50,6 +53,9 @@ importers:
       '@agentdocs/graph':
         specifier: workspace:*
         version: link:../graph
+      '@agentdocs/indexer':
+        specifier: workspace:*
+        version: link:../indexer
       '@agentdocs/normalizer':
         specifier: workspace:*
         version: link:../normalizer
@@ -105,6 +111,12 @@ importers:
       '@agentdocs/normalizer':
         specifier: workspace:*
         version: link:../normalizer
+      '@agentdocs/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/indexer:
+    dependencies:
       '@agentdocs/shared':
         specifier: workspace:*
         version: link:../shared

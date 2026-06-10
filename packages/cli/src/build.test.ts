@@ -32,6 +32,7 @@ describe("buildFromSources", () => {
     const firstLlmsTxt = await readFile(first.llmsTxtPath!, "utf8");
     const firstAgentsMd = await readFile(first.agentsMdPath!, "utf8");
     const firstManifest = await readFile(first.manifestPath!, "utf8");
+    const firstIndex = await readFile(first.indexPath);
     const firstTaskPacks = await Promise.all(
       first.taskPackPaths.map((file) => readFile(file, "utf8")),
     );
@@ -41,6 +42,8 @@ describe("buildFromSources", () => {
     expect(await readFile(second.llmsTxtPath!, "utf8")).toBe(firstLlmsTxt);
     expect(await readFile(second.agentsMdPath!, "utf8")).toBe(firstAgentsMd);
     expect(await readFile(second.manifestPath!, "utf8")).toBe(firstManifest);
+    expect(await readFile(second.indexPath)).toEqual(firstIndex);
+    expect(second.indexBackend).toBe(first.indexBackend);
     expect(await Promise.all(second.taskPackPaths.map((file) => readFile(file, "utf8"))))
       .toEqual(firstTaskPacks);
 
