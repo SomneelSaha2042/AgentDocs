@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -89,5 +89,39 @@ describe("buildFromSources", () => {
         block.extracted?.packages?.includes("@example/sdk"),
       ),
     ).toBe(true);
+  });
+
+  it("removes stale and disabled static artifacts", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-build-clean-"));
+    await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/basic-docs",
+    });
+    await buildFromSources({ cwd: REPOSITORY_ROOT, out: output });
+    await writeFile(path.join(output, "task-packs", "stale.md"), "# Stale\n", "utf8");
+
+    await buildFromSources({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      writeTaskPacks: false,
+    });
+    expect(await readFile(path.join(output, "llms.txt"), "utf8")).not.toContain("task-packs/");
+    expect(await readFile(path.join(output, "AGENTS.md"), "utf8")).not.toContain("task-packs/");
+    await expect(access(path.join(output, "task-packs", "stale.md"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    await buildFromSources({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      writeAgentsMd: false,
+      writeLlmsTxt: false,
+      writeManifest: false,
+      writeTaskPacks: false,
+    });
+
+    await expect(access(path.join(output, "AGENTS.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(output, "llms.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(output, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

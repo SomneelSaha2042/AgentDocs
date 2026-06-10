@@ -113,6 +113,99 @@ pnpm add @example/sdk
       taskPackMarkdown: first.taskPackMarkdown,
     }).toMatchSnapshot();
   });
+
+  it("does not select task families from keyword substrings", () => {
+    const markdown = "# Prevention\n\nPrevent failures before production.\n";
+    const pageId = "page_prevention";
+    const generated = generateStaticArtifacts({
+      project: { name: "Example", slug: "example" },
+      agentMap: AgentMapSchema.parse({
+        schemaVersion: "0.1.0",
+        pages: [{
+          id: pageId,
+          sourceType: "local_markdown",
+          repoPath: "prevention.md",
+          title: "Prevention",
+          markdown,
+          headings: [{
+            id: "heading_prevention",
+            depth: 1,
+            text: "Prevention",
+            slug: "prevention",
+            position: { startLine: 1, endLine: 1 },
+          }],
+          links: [],
+          codeBlocks: [],
+          contentHash: hash(markdown),
+          discoveredAt: "1970-01-01T00:00:00.000Z",
+          versionHints: [],
+        }],
+        chunks: [{
+          id: "chunk_prevention",
+          pageId,
+          headingPath: ["Prevention"],
+          text: markdown.trim(),
+          tokenEstimate: 10,
+          links: [],
+          entityIds: [],
+          contentHash: hash(markdown.trim()),
+        }],
+        entities: [],
+        edges: [],
+        taskPacks: [],
+      }),
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "webhooks")).toBe(false);
+  });
+
+  it("does not advertise task-pack files when links are disabled", () => {
+    const markdown = "# Setup\n\nInstall the SDK.\n";
+    const pageId = "page_setup";
+    const generated = generateStaticArtifacts({
+      linkTaskPacks: false,
+      project: { name: "Example", slug: "example" },
+      agentMap: AgentMapSchema.parse({
+        schemaVersion: "0.1.0",
+        pages: [{
+          id: pageId,
+          sourceType: "local_markdown",
+          repoPath: "setup.md",
+          title: "Setup",
+          markdown,
+          headings: [{
+            id: "heading_setup",
+            depth: 1,
+            text: "Setup",
+            slug: "setup",
+            position: { startLine: 1, endLine: 1 },
+          }],
+          links: [],
+          codeBlocks: [],
+          contentHash: hash(markdown),
+          discoveredAt: "1970-01-01T00:00:00.000Z",
+          versionHints: [],
+        }],
+        chunks: [{
+          id: "chunk_setup",
+          pageId,
+          headingPath: ["Setup"],
+          text: markdown.trim(),
+          tokenEstimate: 8,
+          links: [],
+          entityIds: [],
+          contentHash: hash(markdown.trim()),
+        }],
+        entities: [],
+        edges: [],
+        taskPacks: [],
+      }),
+    });
+
+    expect(generated.taskPacks.length).toBeGreaterThan(0);
+    expect(generated.llmsTxt).not.toContain("task-packs/");
+    expect(generated.agentsMd).not.toContain("task-packs/");
+  });
 });
 
 function hash(value: string): string {

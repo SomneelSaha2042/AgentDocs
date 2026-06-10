@@ -23,7 +23,6 @@ No deterministic concepts extracted.
 
 ## Common tasks
 
-- Configuration: task-packs/configuration.md (medium confidence)
 - Installation: task-packs/installation.md (medium confidence)
 - Quickstart: task-packs/quickstart.md (medium confidence)
 
@@ -45,7 +44,6 @@ Example SDK documentation.
 
 ## Task packs
 
-- Configuration: task-packs/configuration.md (medium confidence)
 - Installation: task-packs/installation.md (medium confidence)
 - Quickstart: task-packs/quickstart.md (medium confidence)
 
@@ -62,36 +60,6 @@ Example SDK documentation.
 - Chunks: chunks.jsonl
 ",
   "taskPackMarkdown": {
-    "configuration": "# Task: Configuration
-
-Confidence: medium
-
-## When to use this
-
-Configure the project using documented options and environment variables.
-
-## Required context
-
-- Setup: setup.md
-
-## Steps
-
-1. **Setup**: Install and configure the client. Code example available below.
-
-## Code examples
-
-\`\`\`text
-pnpm add @example/sdk
-\`\`\`
-
-## Gotchas
-
-No warning or deprecation evidence found.
-
-## Source evidence
-
-- setup.md (heading_setup)
-",
     "installation": "# Task: Installation
 
 Confidence: medium

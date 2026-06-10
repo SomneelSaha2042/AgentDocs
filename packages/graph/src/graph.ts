@@ -104,7 +104,7 @@ function extractionCandidates(value: string): EntityCandidate[] {
   const extraction = extractDeterministicEntities(value);
   return [
     ...toCandidates("package", "requires", extraction.packages),
-    ...toCandidates("package", "uses", extraction.imports),
+    ...toCandidates("package", "uses", extraction.imports.filter(isExternalImport)),
     ...toCandidates("env_var", "uses", extraction.envVars),
     ...toCandidates("cli_command", "uses", extraction.cliCommands),
     ...toCandidates("api", "uses", extraction.httpRoutes),
@@ -118,11 +118,18 @@ function codeBlockCandidates(value: string): EntityCandidate[] {
   const extracted = extractDeterministicEntities(value);
   return [
     ...toCandidates("package", "requires", extracted.packages),
-    ...toCandidates("package", "uses", extracted.imports),
+    ...toCandidates("package", "uses", extracted.imports.filter(isExternalImport)),
     ...toCandidates("env_var", "uses", extracted.envVars),
     ...toCandidates("cli_command", "uses", extracted.cliCommands),
     ...toCandidates("api", "uses", extracted.httpRoutes),
   ];
+}
+
+function isExternalImport(value: string): boolean {
+  return !value.startsWith(".")
+    && !value.startsWith("/")
+    && !value.startsWith("#")
+    && !/^[a-z][a-z0-9+.-]*:/i.test(value);
 }
 
 function toCandidates(

@@ -25,12 +25,19 @@ export function extractPackages(value: string): string[] {
     const manager = command.match(new RegExp(`^${PACKAGE_MANAGERS}`, "i"))?.[0] ?? "";
     const args = match[1] ?? "";
     for (const argument of shellWords(args)) {
+      if (isShellControl(argument)) {
+        break;
+      }
       if (isPackageArgument(argument, manager)) {
         packages.push(normalizePackageArgument(argument, manager));
       }
     }
   }
   return stableUnique(packages);
+}
+
+function isShellControl(value: string): boolean {
+  return /^(?:&&|\|\||\||;|&|\\)$/.test(value);
 }
 
 export function extractImports(value: string): string[] {
@@ -133,16 +140,13 @@ export function deterministicEntityId(type: string, name: string): string {
 }
 
 function shellWords(value: string): string[] {
-  return [...value.matchAll(/"([^"]+)"|'([^']+)'|([^\s]+)/g)].map(
-    (match) => match[1] ?? match[2] ?? match[3] ?? "",
+  return [...value.matchAll(/"([^"]+)"|'([^']+)'|(&&|\|\||[|;&\\])|([^\s|;&\\]+)/g)].map(
+    (match) => match[1] ?? match[2] ?? match[3] ?? match[4] ?? "",
   );
 }
 
 function isPackageArgument(value: string, manager: string): boolean {
   if (value.length === 0 || value.startsWith("-")) {
-    return false;
-  }
-  if (/^(?:&&|\||;|\\)$/.test(value)) {
     return false;
   }
   if (/^go\s+get$/i.test(manager)) {

@@ -180,7 +180,7 @@ function extractionEntityIds(
   extraction: ReturnType<typeof extractDeterministicEntities>,
 ): string[] {
   const entries: Array<[string, string[]]> = [
-    ["package", [...extraction.packages, ...extraction.imports]],
+    ["package", [...extraction.packages, ...extraction.imports.filter(isExternalImport)]],
     ["env_var", extraction.envVars],
     ["cli_command", extraction.cliCommands],
     ["api", extraction.httpRoutes],
@@ -193,6 +193,13 @@ function extractionEntityIds(
     )
     .filter((id, index, ids) => ids.indexOf(id) === index)
     .sort(compareStrings);
+}
+
+function isExternalImport(value: string): boolean {
+  return !value.startsWith(".")
+    && !value.startsWith("/")
+    && !value.startsWith("#")
+    && !/^[a-z][a-z0-9+.-]*:/i.test(value);
 }
 
 function hash(value: string): string {

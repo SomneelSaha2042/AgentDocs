@@ -43,4 +43,21 @@ pnpm add @acme/sdk
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((chunk) => chunk.tokenEstimate <= 20)).toBe(true);
   });
+
+  it("does not assign package entity IDs to local imports or runtime built-ins", () => {
+    const page = normalizeMarkdown({
+      repoPath: "imports.md",
+      markdown: `# Imports
+
+\`\`\`ts
+import helper from "./helper.js";
+import fs from "node:fs";
+import { Client } from "@acme/sdk";
+\`\`\`
+`,
+    });
+    const [chunk] = chunkMarkdownByHeading(page);
+
+    expect(chunk?.entityIds).toHaveLength(1);
+  });
 });

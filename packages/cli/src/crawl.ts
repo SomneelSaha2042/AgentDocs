@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -42,13 +43,25 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
   const manifest = CrawlManifestSchema.parse({
     schemaVersion: 1,
     sourceType: "website",
-    sourceUrl: options.startUrl,
+    sourceUrl: normalizeSourceUrl(options.startUrl),
     discovery: result.discovery,
     pageCount: pages.length,
     pages: manifestPages,
   });
+  const stateManifestPath = path.join(
+    outputRoot,
+    "sources",
+    "state",
+    `crawl-${hash(manifest.sourceUrl)}.json`,
+  );
 
   await mkdir(pagesDirectory, { recursive: true });
+  await mkdir(path.dirname(stateManifestPath), { recursive: true });
+  await removeStaleCrawlPages(stateManifestPath, outputRoot, new Set(manifestPages.flatMap((page) => [
+    page.rawHtmlPath,
+    page.markdownPath,
+    page.pagePath,
+  ])));
   for (const [index, entry] of pages.entries()) {
     const paths = manifestPages[index]!;
     await Promise.all([
@@ -58,8 +71,43 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
     ]);
   }
   await writeJson(outputRoot, path.relative(outputRoot, manifestPath), manifest);
+  await writeJson(outputRoot, path.relative(outputRoot, stateManifestPath), manifest);
 
   return { manifestPath, pageCount: pages.length };
+}
+
+async function removeStaleCrawlPages(
+  manifestPath: string,
+  outputRoot: string,
+  currentPaths: Set<string>,
+): Promise<void> {
+  let previous: CrawlManifest;
+  try {
+    previous = CrawlManifestSchema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid previous crawl manifest at ${manifestPath}: ${message}`);
+  }
+  const stalePaths = previous.pages.flatMap((page) => [
+    page.rawHtmlPath,
+    page.markdownPath,
+    page.pagePath,
+  ]).filter((file) => !currentPaths.has(file));
+  for (const stalePath of stalePaths) {
+    const destination = resolveOutputPath(outputRoot, stalePath);
+    try {
+      await unlink(destination);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+  }
 }
 
 async function writeJson(
@@ -75,6 +123,11 @@ async function writeText(
   relativePath: string,
   value: string,
 ): Promise<void> {
+  const destination = resolveOutputPath(outputRoot, relativePath);
+  await writeFile(destination, value, "utf8");
+}
+
+function resolveOutputPath(outputRoot: string, relativePath: string): string {
   const destination = path.resolve(outputRoot, ...relativePath.split("/"));
   if (
     destination !== outputRoot &&
@@ -82,5 +135,18 @@ async function writeText(
   ) {
     throw new Error(`Refusing to write outside output directory: ${destination}`);
   }
-  await writeFile(destination, value, "utf8");
+  return destination;
+}
+
+function hash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function normalizeSourceUrl(value: string): string {
+  const url = new URL(value);
+  url.hash = "";
+  if (url.pathname.length > 1) {
+    url.pathname = url.pathname.replace(/\/+$/, "");
+  }
+  return url.href;
 }

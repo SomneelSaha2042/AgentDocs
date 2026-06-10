@@ -105,6 +105,100 @@ describe("crawlWebsite", () => {
       `${origin}/docs/guide`,
     ]);
   });
+
+  it("does not fetch robots-disallowed fallback pages", async () => {
+    let fetchedPrivate = false;
+    const origin = await startFixtureServer((path) => {
+      if (path === "/sitemap.xml") {
+        return { body: "missing", contentType: "text/plain", status: 404 };
+      }
+      if (path === "/robots.txt") {
+        return { body: "User-agent: *\nDisallow: /private", contentType: "text/plain" };
+      }
+      if (path === "/private") {
+        fetchedPrivate = true;
+      }
+      return html("<main><h1>Private</h1></main>");
+    });
+
+    await expect(crawlWebsite({
+      respectRobots: true,
+      startUrl: `${origin}/private`,
+    })).rejects.toThrowError(/No crawlable HTML pages/);
+    expect(fetchedPrivate).toBe(false);
+  });
+
+  it("reports invalid start URLs as crawl failures", async () => {
+    await expect(crawlWebsite({ startUrl: "not a url" }))
+      .rejects.toThrowError(/Invalid start URL/);
+  });
+
+  it("discovers pages from same-origin sitemap indexes", async () => {
+    const origin = await startFixtureServer((path, origin) => {
+      if (path === "/sitemap.xml") {
+        return xml(`<sitemapindex><sitemap><loc>${origin}/docs-sitemap.xml</loc></sitemap></sitemapindex>`);
+      }
+      if (path === "/docs-sitemap.xml") {
+        return xml(`<urlset><url><loc>${origin}/docs/guide</loc></url></urlset>`);
+      }
+      return html("<main><h1>Guide</h1></main>");
+    });
+
+    const result = await crawlWebsite({ startUrl: origin });
+
+    expect(result.discovery).toBe("sitemap");
+    expect(result.pages.map(({ page }) => page.canonicalUrl)).toEqual([
+      `${origin}/docs/guide`,
+    ]);
+  });
+
+  it("uses canonical page content when an alias is discovered first", async () => {
+    const origin = await startFixtureServer((path, origin) => {
+      if (path === "/sitemap.xml") {
+        return xml(`<urlset>
+          <url><loc>${origin}/docs/0-alias</loc></url>
+          <url><loc>${origin}/docs/z-real</loc></url>
+        </urlset>`);
+      }
+      if (path === "/docs/0-alias") {
+        return html(`<head><link rel="canonical" href="${origin}/docs/z-real"></head><main><h1>Alias</h1></main>`);
+      }
+      return html("<main><h1>Real</h1></main>");
+    });
+
+    const result = await crawlWebsite({ startUrl: origin });
+
+    expect(result.pages).toHaveLength(1);
+    expect(result.pages[0]?.page).toMatchObject({
+      canonicalUrl: `${origin}/docs/z-real`,
+      title: "Real",
+    });
+  });
+
+  it("respects wildcard robots groups with consecutive user agents", async () => {
+    let fetchedPrivate = false;
+    const origin = await startFixtureServer((path) => {
+      if (path === "/sitemap.xml") {
+        return { body: "missing", contentType: "text/plain", status: 404 };
+      }
+      if (path === "/robots.txt") {
+        return {
+          body: "User-agent: *\nUser-agent: OtherBot\nDisallow: /private",
+          contentType: "text/plain",
+        };
+      }
+      if (path === "/private") {
+        fetchedPrivate = true;
+      }
+      return html("<main><h1>Private</h1></main>");
+    });
+
+    await expect(crawlWebsite({
+      respectRobots: true,
+      startUrl: `${origin}/private`,
+    })).rejects.toThrowError(/No crawlable HTML pages/);
+    expect(fetchedPrivate).toBe(false);
+  });
 });
 
 type FixtureResponse = {

@@ -68,4 +68,10 @@ This endpoint is deprecated and no longer supported.
       "[!WARNING]\nNever expose the API key.",
     ]);
   });
+
+  it("stops package extraction at shell control operators", () => {
+    expect(extractPackages("pnpm add @acme/sdk&&npm install accidental")).toEqual([
+      "@acme/sdk",
+    ]);
+  });
 });

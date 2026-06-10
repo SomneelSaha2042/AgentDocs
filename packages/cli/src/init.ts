@@ -30,6 +30,14 @@ sources:
   # - type: openapi
   #   path: ./openapi.yaml
 
+  # Repository source example:
+  # - type: repo
+  #   path: .
+  #   include:
+  #     - "docs/**"
+  #   exclude:
+  #     - ".agentdocs/**"
+
 output:
   dir: .agentdocs
   writeLlmsTxt: true
@@ -66,7 +74,7 @@ export async function initConfig(options: InitOptions): Promise<string> {
   const destinationDirectory = path.resolve(options.cwd, options.out ?? ".");
   const configPath = path.resolve(destinationDirectory, options.config);
 
-  await mkdir(destinationDirectory, { recursive: true });
+  await mkdir(path.dirname(configPath), { recursive: true });
   try {
     await writeFile(configPath, STARTER_CONFIG, {
       encoding: "utf8",

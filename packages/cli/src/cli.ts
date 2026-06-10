@@ -136,10 +136,11 @@ export function createProgram(): Command {
         command: Command,
       ) => {
         const globals = command.optsWithGlobals<GlobalOptions>();
+        const context = await resolveCommandContext(command, globals);
         const result = await crawlToDisk({
           ...options,
-          cwd: globals.cwd ?? process.cwd(),
-          out: globals.out,
+          cwd: context.cwd,
+          out: context.out,
           startUrl,
         });
         if (globals.json) {
@@ -157,9 +158,10 @@ export function createProgram(): Command {
     .description("Ingest a local documentation source")
     .action(async (source: string, _options: unknown, command: Command) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
+      const context = await resolveCommandContext(command, globals);
       const result = await ingestLocalMarkdown({
-        cwd: globals.cwd ?? process.cwd(),
-        out: globals.out,
+        cwd: context.cwd,
+        out: context.out,
         source,
       });
 
@@ -195,12 +197,10 @@ export function createProgram(): Command {
           );
         }
         const globals = command.optsWithGlobals<GlobalOptions>();
-        const config = await readOptionalConfig(
-          path.resolve(globals.cwd ?? process.cwd(), globals.config),
-        );
+        const { config, cwd, out } = await resolveCommandContext(command, globals);
         const result = await buildFromSources({
-          cwd: globals.cwd ?? process.cwd(),
-          out: globals.out,
+          cwd,
+          out,
           project: config === undefined
             ? undefined
             : { name: config.name, slug: config.slug, version: config.version },
@@ -231,13 +231,12 @@ export function createProgram(): Command {
         command: Command,
       ) => {
         const globals = command.optsWithGlobals<GlobalOptions>();
-        const cwd = globals.cwd ?? process.cwd();
-        const config = await readOptionalConfig(path.resolve(cwd, globals.config));
+        const { config, cwd, out } = await resolveCommandContext(command, globals);
         const result = await runDoctor({
           category: options.category,
           config: globals.config,
           cwd,
-          out: globals.out,
+          out,
         });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result.report)}\n`);
@@ -266,9 +265,10 @@ export function createProgram(): Command {
     .description("Inspect generated AgentDocs state")
     .action(async (target: string, _options: unknown, command: Command) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
+      const context = await resolveCommandContext(command, globals);
       const result = await inspectAgentMap({
-        cwd: globals.cwd ?? process.cwd(),
-        out: globals.out,
+        cwd: context.cwd,
+        out: context.out,
         target,
       });
       if (globals.json) {
@@ -302,4 +302,24 @@ async function readOptionalConfig(configPath: string) {
     }
     throw error;
   }
+}
+
+function resolveConfiguredOut(
+  command: Command,
+  cliOut: string,
+  configuredOut?: string,
+): string {
+  return command.parent?.getOptionValueSource("out") === "cli"
+    ? cliOut
+    : configuredOut ?? cliOut;
+}
+
+async function resolveCommandContext(command: Command, globals: GlobalOptions) {
+  const cwd = globals.cwd ?? process.cwd();
+  const config = await readOptionalConfig(path.resolve(cwd, globals.config));
+  return {
+    config,
+    cwd,
+    out: resolveConfiguredOut(command, globals.out, config?.output.dir),
+  };
 }

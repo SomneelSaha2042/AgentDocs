@@ -41,4 +41,18 @@ sources: []
 `),
     ).toThrowError(/slug: must contain lowercase letters/);
   });
+
+  it("accepts repository sources from the public config contract", () => {
+    const config = parseConfig(`
+name: Example Docs
+slug: example-docs
+sources:
+  - type: repo
+    path: .
+    include:
+      - docs/**
+`);
+
+    expect(config.sources[0]).toMatchObject({ type: "repo", path: "." });
+  });
 });

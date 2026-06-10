@@ -59,4 +59,26 @@ const client = new Client({ apiKey: process.env.ACME_API_KEY });
       }),
     ).toThrowError(/references missing page/);
   });
+
+  it("does not represent relative imports as packages", () => {
+    const page = normalizeMarkdown({
+      markdown: `# Example
+
+\`\`\`ts
+import helper from "./helper.js";
+import fs from "node:fs";
+import internal from "#internal";
+import { Client } from "@acme/sdk";
+\`\`\`
+`,
+      repoPath: "example.md",
+    });
+    const graph = buildAgentMap({
+      pages: [page],
+      chunks: chunkMarkdownByHeading(page),
+    });
+
+    expect(graph.entities.filter((entity) => entity.type === "package").map((entity) => entity.name))
+      .toEqual(["@acme/sdk"]);
+  });
 });

@@ -51,7 +51,12 @@ const BLOCKED_EXTENSIONS = new Set([
 ]);
 
 export async function crawlWebsite(options: CrawlOptions): Promise<CrawlResult> {
-  const startUrl = normalizeUrl(options.startUrl);
+  let startUrl: string;
+  try {
+    startUrl = normalizeUrl(options.startUrl);
+  } catch {
+    throw new CrawlError(`Invalid start URL: ${options.startUrl}`);
+  }
   const origin = new URL(startUrl).origin;
   const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
   if (!Number.isInteger(maxPages) || maxPages < 1) {
@@ -88,13 +93,28 @@ export async function crawlWebsite(options: CrawlOptions): Promise<CrawlResult> 
     if (fetched.has(candidate)) {
       continue;
     }
+    if (isBlockedByRobots(candidate, blockedByRobots)) {
+      continue;
+    }
     fetched.add(candidate);
 
-    const response = await fetchHtml(candidate, origin, requestOptions);
+    let response = await fetchHtml(candidate, origin, requestOptions);
     if (response === undefined) {
       continue;
     }
-    const canonicalUrl = readCanonicalUrl(response.html, response.url, origin);
+    let canonicalUrl = readCanonicalUrl(response.html, response.url, origin);
+    if (
+      canonicalUrl !== response.url
+      && !fetched.has(canonicalUrl)
+      && !isBlockedByRobots(canonicalUrl, blockedByRobots)
+    ) {
+      const canonicalResponse = await fetchHtml(canonicalUrl, origin, requestOptions);
+      fetched.add(canonicalUrl);
+      if (canonicalResponse !== undefined) {
+        response = canonicalResponse;
+        canonicalUrl = readCanonicalUrl(response.html, response.url, origin);
+      }
+    }
     if (canonicalUrls.has(canonicalUrl)) {
       continue;
     }
@@ -153,10 +173,21 @@ async function discoverSitemapUrls(
   sitemapUrl: string,
   origin: string,
   requestOptions: RequestOptions,
+  visited = new Set<string>(),
 ): Promise<string[]> {
+  let normalizedSitemap: string;
+  try {
+    normalizedSitemap = normalizeUrl(sitemapUrl);
+  } catch {
+    return [];
+  }
+  if (visited.has(normalizedSitemap) || visited.size >= 50) {
+    return [];
+  }
+  visited.add(normalizedSitemap);
   let response: Response;
   try {
-    response = await request(sitemapUrl, origin, requestOptions);
+    response = await request(normalizedSitemap, origin, requestOptions);
   } catch {
     return [];
   }
@@ -166,18 +197,47 @@ async function discoverSitemapUrls(
   const xml = await response.text();
   try {
     const parsed = new XMLParser().parse(xml) as {
+      sitemapindex?: { sitemap?: Array<{ loc?: string }> | { loc?: string } };
       urlset?: { url?: Array<{ loc?: string }> | { loc?: string } };
     };
+    const sitemapEntries = parsed.sitemapindex?.sitemap;
+    const childSitemaps = Array.isArray(sitemapEntries)
+      ? sitemapEntries
+      : sitemapEntries === undefined ? [] : [sitemapEntries];
+    if (childSitemaps.length > 0) {
+      const childUrls = childSitemaps
+        .map((entry) => safeNormalizeUrl(entry.loc))
+        .filter((value): value is string => value !== undefined)
+        .filter((url) => new URL(url).origin === origin)
+        .sort(compareStrings);
+      const pages = new Set<string>();
+      for (const childUrl of childUrls) {
+        for (const pageUrl of await discoverSitemapUrls(childUrl, origin, requestOptions, visited)) {
+          pages.add(pageUrl);
+        }
+      }
+      return [...pages].sort(compareStrings);
+    }
     const entries = parsed.urlset?.url;
     const values = Array.isArray(entries) ? entries : entries === undefined ? [] : [entries];
     return values
-      .map((entry) => entry.loc)
-      .filter((value): value is string => typeof value === "string")
-      .map(normalizeUrl)
+      .map((entry) => safeNormalizeUrl(entry.loc))
+      .filter((value): value is string => value !== undefined)
       .filter((url) => new URL(url).origin === origin)
       .sort(compareStrings);
   } catch {
     return [];
+  }
+}
+
+function safeNormalizeUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    return normalizeUrl(value);
+  } catch {
+    return undefined;
   }
 }
 
@@ -281,20 +341,41 @@ async function readRobots(
   if (!response.ok) {
     return [];
   }
-  let applies = false;
-  const disallowed: string[] = [];
+  const groups: Array<{ agents: string[]; disallowed: string[] }> = [];
+  let current = { agents: [] as string[], disallowed: [] as string[] };
+  let hasDirectives = false;
   for (const rawLine of (await response.text()).split(/\r?\n/)) {
     const line = rawLine.split("#", 1)[0]?.trim() ?? "";
     const [rawKey, ...rest] = line.split(":");
     const key = rawKey?.trim().toLowerCase();
     const value = rest.join(":").trim();
     if (key === "user-agent") {
-      applies = value === "*";
-    } else if (key === "disallow" && applies && value.length > 0) {
-      disallowed.push(value);
+      if (hasDirectives && current.agents.length > 0) {
+        groups.push(current);
+        current = { agents: [], disallowed: [] };
+        hasDirectives = false;
+      }
+      if (value.length > 0) {
+        current.agents.push(value.toLowerCase());
+      }
+    } else if (key === "disallow" && current.agents.length > 0) {
+      hasDirectives = true;
+      if (value.length > 0) {
+        current.disallowed.push(value);
+      }
     }
   }
-  return disallowed.sort(compareStrings);
+  if (current.agents.length > 0) {
+    groups.push(current);
+  }
+  const userAgent = options.userAgent.toLowerCase();
+  const specific = groups.filter((group) =>
+    group.agents.some((agent) => agent !== "*" && userAgent.includes(agent)),
+  );
+  const applicable = specific.length > 0
+    ? specific
+    : groups.filter((group) => group.agents.includes("*"));
+  return [...new Set(applicable.flatMap((group) => group.disallowed))].sort(compareStrings);
 }
 
 function shouldCrawl(
@@ -311,13 +392,18 @@ function shouldCrawl(
   if (BLOCKED_EXTENSIONS.has(extension(parsed.pathname))) {
     return false;
   }
-  if (disallowed.some((prefix) => parsed.pathname.startsWith(prefix))) {
+  if (isBlockedByRobots(url, disallowed)) {
     return false;
   }
   if (include !== undefined && include.length > 0 && !include.some((pattern) => minimatch(parsed.pathname, pattern))) {
     return false;
   }
   return !(exclude ?? []).some((pattern) => minimatch(parsed.pathname, pattern));
+}
+
+function isBlockedByRobots(url: string, disallowed: string[]): boolean {
+  const pathname = new URL(url).pathname;
+  return disallowed.some((prefix) => pathname.startsWith(prefix));
 }
 
 function normalizeUrl(value: string): string {

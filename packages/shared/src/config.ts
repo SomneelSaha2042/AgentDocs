@@ -27,6 +27,15 @@ const OpenApiSourceSchema = z
   })
   .strict();
 
+const RepoSourceSchema = z
+  .object({
+    type: z.literal("repo"),
+    path: z.string().min(1),
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+  })
+  .strict();
+
 export const AgentDocsConfigSchema = z
   .object({
     name: z.string().min(1),
@@ -44,6 +53,7 @@ export const AgentDocsConfigSchema = z
           WebsiteSourceSchema,
           LocalMarkdownSourceSchema,
           OpenApiSourceSchema,
+          RepoSourceSchema,
         ]),
       )
       .min(1),

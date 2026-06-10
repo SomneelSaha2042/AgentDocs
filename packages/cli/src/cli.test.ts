@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -53,6 +53,7 @@ describe("agentdocs CLI", () => {
     expect(parseConfig(contents).slug).toBe("my-project");
     expect(contents).toContain("# Website source example:");
     expect(contents).toContain("# OpenAPI source example:");
+    expect(contents).toContain("# Repository source example:");
   });
 
   it("requires --force before overwriting a config", async () => {
@@ -81,6 +82,67 @@ describe("agentdocs CLI", () => {
           "--force",
         ]),
     ).resolves.toBeInstanceOf(Command);
+  });
+
+  it("uses configured output unless --out is explicit", async () => {
+    const cwd = await createTemporaryDirectory();
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Example
+slug: example
+sources:
+  - type: local_markdown
+    path: ./docs
+output:
+  dir: configured-output
+doctor:
+  minScore: 0
+`, "utf8");
+
+    await createProgram().exitOverride().parseAsync([
+      "node",
+      "agentdocs",
+      "--cwd",
+      cwd,
+      "--quiet",
+      "doctor",
+    ]);
+    await expect(readFile(
+      path.join(cwd, "configured-output", "reports", "agent-readiness.json"),
+      "utf8",
+    )).resolves.toContain('"score"');
+
+    await createProgram().exitOverride().parseAsync([
+      "node",
+      "agentdocs",
+      "--cwd",
+      cwd,
+      "--out",
+      "explicit-output",
+      "--quiet",
+      "doctor",
+    ]);
+    await expect(readFile(
+      path.join(cwd, "explicit-output", "reports", "agent-readiness.json"),
+      "utf8",
+    )).resolves.toContain('"score"');
+  });
+
+  it("creates parent directories for nested config paths", async () => {
+    const cwd = await createTemporaryDirectory();
+
+    await createProgram().exitOverride().parseAsync([
+      "node",
+      "agentdocs",
+      "--cwd",
+      cwd,
+      "--config",
+      ".config/agentdocs.yaml",
+      "--quiet",
+      "init",
+    ]);
+
+    await expect(readFile(path.join(cwd, ".config", "agentdocs.yaml"), "utf8"))
+      .resolves.toContain("slug: my-project");
   });
 });
 

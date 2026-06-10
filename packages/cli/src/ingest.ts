@@ -1,4 +1,5 @@
-import { readFile, readdir, stat, writeFile, mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, readdir, stat, unlink, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeMarkdown } from "@agentdocs/normalizer";
@@ -29,9 +30,18 @@ export async function ingestLocalMarkdown(
 ): Promise<IngestResult> {
   const sourcePath = path.resolve(options.cwd, options.source);
   const outputRoot = path.resolve(options.cwd, options.out);
+  const sourceIdentity = isWithin(options.cwd, sourcePath)
+    ? toPosixPath(path.relative(options.cwd, sourcePath) || ".")
+    : toPosixPath(sourcePath);
   const pagesDirectory = path.join(outputRoot, "sources", "pages");
   const manifestPath = path.join(outputRoot, "sources", "ingest-manifest.json");
-  const files = await discoverMarkdownFiles(sourcePath);
+  const stateManifestPath = path.join(
+    outputRoot,
+    "sources",
+    "state",
+    `ingest-${hash(sourceIdentity)}.json`,
+  );
+  const files = await discoverMarkdownFiles(sourcePath, outputRoot);
 
   if (files.length === 0) {
     throw new IngestError(
@@ -69,12 +79,14 @@ export async function ingestLocalMarkdown(
   const manifest = IngestManifestSchema.parse({
     schemaVersion: 1,
     sourceType: "local_markdown",
-    sourcePath: toPosixPath(options.source),
+    sourcePath: sourceIdentity,
     pageCount: pages.length,
     pages: manifestPages,
   });
 
   await mkdir(pagesDirectory, { recursive: true });
+  await mkdir(path.dirname(stateManifestPath), { recursive: true });
+  await removeStaleIngestPages(stateManifestPath, outputRoot, new Set(manifestPages.map((page) => page.outputPath)));
   for (const [index, page] of validatedPages.entries()) {
     await writeJson(
       path.join(outputRoot, ...manifestPages[index]!.outputPath.split("/")),
@@ -82,11 +94,18 @@ export async function ingestLocalMarkdown(
     );
   }
   await writeJson(manifestPath, manifest);
+  await writeJson(stateManifestPath, manifest);
 
   return { manifestPath, pages: validatedPages };
 }
 
-async function discoverMarkdownFiles(sourcePath: string): Promise<string[]> {
+async function discoverMarkdownFiles(
+  sourcePath: string,
+  excludedDirectory?: string,
+): Promise<string[]> {
+  if (excludedDirectory !== undefined && isWithin(excludedDirectory, sourcePath)) {
+    return [];
+  }
   let sourceStats;
   try {
     sourceStats = await stat(sourcePath);
@@ -116,12 +135,53 @@ async function discoverMarkdownFiles(sourcePath: string): Promise<string[]> {
   for (const entry of await readdir(sourcePath, { withFileTypes: true })) {
     const entryPath = path.join(sourcePath, entry.name);
     if (entry.isDirectory()) {
-      files.push(...(await discoverMarkdownFiles(entryPath)));
+      files.push(...(await discoverMarkdownFiles(entryPath, excludedDirectory)));
     } else if (entry.isFile() && isMarkdownFile(entryPath)) {
       files.push(entryPath);
     }
   }
   return files.sort(compareStrings);
+}
+
+async function removeStaleIngestPages(
+  manifestPath: string,
+  outputRoot: string,
+  currentPaths: Set<string>,
+): Promise<void> {
+  let previous: IngestManifest;
+  try {
+    previous = IngestManifestSchema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new IngestError(`Invalid previous ingest manifest at ${manifestPath}: ${message}`);
+  }
+  for (const page of previous.pages.filter((item) => !currentPaths.has(item.outputPath))) {
+    await removeOutputFile(outputRoot, page.outputPath);
+  }
+}
+
+async function removeOutputFile(outputRoot: string, relativePath: string): Promise<void> {
+  const destination = path.resolve(outputRoot, ...relativePath.split("/"));
+  if (!isWithin(outputRoot, destination) || destination === outputRoot) {
+    throw new IngestError(`Refusing to remove file outside output directory: ${destination}`);
+  }
+  try {
+    await unlink(destination);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+}
+
+function isWithin(parent: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function isMarkdownFile(filePath: string): boolean {
@@ -138,4 +198,8 @@ function toPosixPath(value: string): string {
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function hash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }

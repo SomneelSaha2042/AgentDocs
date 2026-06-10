@@ -16,6 +16,7 @@ export type ProjectIdentity = {
 
 export type GenerateStaticArtifactsOptions = {
   agentMap: AgentMap;
+  linkTaskPacks?: boolean;
   project: ProjectIdentity;
   rules?: string[];
 };
@@ -120,10 +121,11 @@ export function generateStaticArtifacts(
   const taskPackMarkdown = Object.fromEntries(
     taskPacks.map((pack) => [pack.id, renderTaskPack(pack, agentMap)]),
   );
+  const linkedTaskPacks = options.linkTaskPacks === false ? [] : taskPacks;
   return {
-    agentsMd: renderAgentsMd(options.project, agentMap, taskPacks, options.rules ?? []),
+    agentsMd: renderAgentsMd(options.project, agentMap, linkedTaskPacks, options.rules ?? []),
     agentMap,
-    llmsTxt: renderLlmsTxt(options.project, agentMap, taskPacks, options.rules ?? []),
+    llmsTxt: renderLlmsTxt(options.project, agentMap, linkedTaskPacks, options.rules ?? []),
     manifest,
     taskPackMarkdown,
     taskPacks,
@@ -208,8 +210,15 @@ function taskScore(family: TaskFamily, text: string, headingPath: string[]): num
   const body = text.toLowerCase();
   return family.keywords.reduce((score, keyword) => {
     const normalized = keyword.toLowerCase();
-    return score + (heading.includes(normalized) ? 3 : body.includes(normalized) ? 1 : 0);
+    return score + (containsKeyword(heading, normalized) ? 3 : containsKeyword(body, normalized) ? 1 : 0);
   }, 0);
+}
+
+function containsKeyword(value: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefix = /^[a-z0-9]/i.test(keyword) ? "(?<![a-z0-9])" : "";
+  const suffix = /[a-z0-9]$/i.test(keyword) ? "(?![a-z0-9])" : "";
+  return new RegExp(`${prefix}${escaped}${suffix}`, "i").test(value);
 }
 
 function evidenceForChunk(

@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -83,6 +83,7 @@ export async function buildFromSources(
   );
   const generated = generateStaticArtifacts({
     agentMap: graph,
+    linkTaskPacks: options.writeTaskPacks !== false,
     project: options.project ?? fallbackProject(graph.pages),
     rules: options.rules,
   });
@@ -118,12 +119,18 @@ export async function buildFromSources(
   }
   if (options.writeTaskPacks !== false) {
     await mkdir(taskPacksDirectory, { recursive: true });
+    await removeStaleTaskPacks(taskPacksDirectory, new Set(Object.keys(generated.taskPackMarkdown)));
     for (const [id, markdown] of Object.entries(generated.taskPackMarkdown)) {
       const taskPackPath = path.join(taskPacksDirectory, `${id}.md`);
       await writeFile(taskPackPath, markdown, "utf8");
       taskPackPaths.push(taskPackPath);
     }
+  } else {
+    await removeStaleTaskPacks(taskPacksDirectory, new Set());
   }
+  await removeDisabledArtifact(options.writeLlmsTxt === false, path.join(outputRoot, "llms.txt"));
+  await removeDisabledArtifact(options.writeAgentsMd === false, path.join(outputRoot, "AGENTS.md"));
+  await removeDisabledArtifact(options.writeManifest === false, path.join(outputRoot, "manifest.json"));
 
   return {
     agentMapPath,
@@ -138,6 +145,39 @@ export async function buildFromSources(
     taskPackCount: generated.taskPacks.length,
     taskPackPaths,
   };
+}
+
+async function removeStaleTaskPacks(
+  directory: string,
+  currentIds: Set<string>,
+): Promise<void> {
+  let files: string[];
+  try {
+    files = await readdir(directory);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  for (const file of files.filter((entry) => entry.endsWith(".md"))) {
+    if (!currentIds.has(path.basename(file, ".md"))) {
+      await unlink(path.join(directory, file));
+    }
+  }
+}
+
+async function removeDisabledArtifact(disabled: boolean, filePath: string): Promise<void> {
+  if (!disabled) {
+    return;
+  }
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
 }
 
 async function readPages(pagesDirectory: string): Promise<PageFile[]> {
