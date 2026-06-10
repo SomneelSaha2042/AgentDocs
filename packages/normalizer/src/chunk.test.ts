@@ -60,4 +60,21 @@ import { Client } from "@acme/sdk";
 
     expect(chunk?.entityIds).toHaveLength(1);
   });
+
+  it("uses frontmatter titles as heading paths without indexing frontmatter", () => {
+    const page = normalizeMarkdown({
+      repoPath: "pagination.md",
+      markdown: `---
+title: Pagination
+---
+
+Use the paginate method to retrieve all pages.
+`,
+    });
+
+    const [chunk] = chunkMarkdownByHeading(page);
+
+    expect(chunk?.headingPath).toEqual(["Pagination"]);
+    expect(chunk?.text).not.toContain("title:");
+  });
 });

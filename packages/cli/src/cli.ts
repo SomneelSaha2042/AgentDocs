@@ -361,6 +361,7 @@ async function collectConfiguredSources(
       await ingestLocalMarkdown({
         cwd,
         out,
+        preserveSourcePath: true,
         source: source.path,
         include: source.include,
         exclude: source.exclude,

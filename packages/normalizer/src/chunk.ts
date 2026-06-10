@@ -60,7 +60,10 @@ export function estimateTokens(value: string): number {
 }
 
 function splitIntoSections(page: DocPage): Section[] {
-  const lines = page.markdown.split(/\r?\n/);
+  const lines = withoutLeadingFrontmatter(
+    page.markdown.split(/\r?\n/),
+    page.frontmatter !== undefined,
+  );
   const headingByLine = new Map(
     page.headings
       .filter((heading) => heading.position.startLine !== undefined)
@@ -68,7 +71,10 @@ function splitIntoSections(page: DocPage): Section[] {
   );
   const pathByDepth: string[] = [];
   const sections: Section[] = [];
-  let current: Section = { headingPath: [], lines: [] };
+  let current: Section = {
+    headingPath: page.headings.length === 0 ? [page.title] : [],
+    lines: [],
+  };
 
   for (let index = 0; index < lines.length; index += 1) {
     const heading = headingByLine.get(index + 1);
@@ -87,6 +93,14 @@ function splitIntoSections(page: DocPage): Section[] {
   }
   pushSection(sections, current);
   return sections;
+}
+
+function withoutLeadingFrontmatter(lines: string[], hasFrontmatter: boolean): string[] {
+  if (!hasFrontmatter || lines[0]?.trim() !== "---") {
+    return lines;
+  }
+  const closing = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  return closing === -1 ? lines : lines.slice(closing + 1);
 }
 
 function pushSection(sections: Section[], section: Section): void {

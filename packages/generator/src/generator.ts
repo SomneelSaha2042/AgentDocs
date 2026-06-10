@@ -67,7 +67,7 @@ const TASK_FAMILIES: TaskFamily[] = [
     id: "webhooks",
     title: "Webhooks",
     description: "Implement webhooks using available source evidence.",
-    keywords: ["webhook", "signature", "event"],
+    keywords: ["webhook", "webhook signature"],
   },
   {
     id: "pagination",
@@ -79,7 +79,7 @@ const TASK_FAMILIES: TaskFamily[] = [
     id: "errors",
     title: "Errors and debugging",
     description: "Handle documented errors and debugging guidance.",
-    keywords: ["error", "debug", "troubleshoot", "failure"],
+    keywords: ["error", "debug", "troubleshoot", "failure", "retry", "retries"],
   },
   {
     id: "migration",
@@ -137,7 +137,15 @@ function generateTaskPack(
   agentMap: AgentMap,
 ): TaskPack | undefined {
   const ranked = agentMap.chunks
-    .map((chunk) => ({ chunk, score: taskScore(family, chunk.text, chunk.headingPath) }))
+    .map((chunk) => ({
+      chunk,
+      score: taskScore(
+        family,
+        chunk.text,
+        chunk.headingPath,
+        pageTitle(agentMap, chunk.pageId),
+      ),
+    }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id))
     .slice(0, 5);
@@ -182,14 +190,24 @@ function generateTaskPack(
       return headings.length === 1 ? [headings[0]!.id] : [];
     }),
   );
-  const codeExamples = agentMap.pages
-    .filter((page) => requiredPages.includes(page.id))
-    .flatMap((page) =>
-      page.codeBlocks
-        .filter((block) => block.sourceHeadingId !== undefined && matchedHeadingIds.has(block.sourceHeadingId))
-        .map((block) => block.value),
-    )
-    .slice(0, 4);
+  const codeExamples = stableUniqueInOrder(
+    ranked.flatMap(({ chunk }) => {
+      const page = agentMap.pages.find((candidate) => candidate.id === chunk.pageId);
+      if (page === undefined) {
+        return [];
+      }
+      const hasMatchedHeading = page.headings.some((heading) =>
+        matchedHeadingIds.has(heading.id),
+      );
+      return page.codeBlocks
+        .filter((block) =>
+          hasMatchedHeading
+            ? block.sourceHeadingId !== undefined && matchedHeadingIds.has(block.sourceHeadingId)
+            : block.sourceHeadingId === undefined,
+        )
+        .map((block) => block.value);
+    }),
+  ).slice(0, 4);
   return TaskPackSchema.parse({
     id: family.id,
     title: family.title,
@@ -214,8 +232,13 @@ function hasStrongTaskEvidence(family: TaskFamily, texts: string[]): boolean {
   );
 }
 
-function taskScore(family: TaskFamily, text: string, headingPath: string[]): number {
-  const heading = headingPath.join(" ").toLowerCase();
+function taskScore(
+  family: TaskFamily,
+  text: string,
+  headingPath: string[],
+  title: string,
+): number {
+  const heading = `${title} ${headingPath.join(" ")}`.toLowerCase();
   const body = text.toLowerCase();
   return family.keywords.reduce((score, keyword) => {
     const normalized = keyword.toLowerCase();
@@ -419,6 +442,10 @@ function stableEvidence(evidence: Evidence[]): Evidence[] {
 
 function stableUnique(values: string[]): string[] {
   return [...new Set(values)].sort(compareStrings);
+}
+
+function stableUniqueInOrder(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function validateTaskPackReferences(taskPacks: TaskPack[], agentMap: AgentMap): void {

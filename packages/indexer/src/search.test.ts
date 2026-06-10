@@ -48,6 +48,35 @@ describe("search index", () => {
       .resolves.toEqual({ query: "webhook", results: [] });
   });
 
+  it("does not let repeated body terms outrank a stronger title match", async () => {
+    const out = await temporaryDirectory();
+    const map = fixtureMap();
+    map.pages.push({
+      ...map.pages[0]!,
+      id: "page_retries",
+      repoPath: "docs/retries.md",
+      title: "Automatic retries",
+    });
+    map.chunks.push({
+      ...map.chunks[0]!,
+      id: "chunk_retries",
+      pageId: "page_retries",
+      headingPath: ["Automatic retries"],
+      text: "Retry failed requests automatically.",
+    }, {
+      ...map.chunks[0]!,
+      id: "chunk_requests",
+      pageId: "page_setup",
+      headingPath: ["Requests"],
+      text: "request request request request request request retry",
+    });
+    await buildSearchIndex({ agentMap: AgentMapSchema.parse(map), cwd: out, out: "." });
+
+    const response = await searchIndex({ cwd: out, out: ".", query: "request retries" });
+
+    expect(response.results[0]?.pageId).toBe("page_retries");
+  });
+
   it("searches a schema-valid lexical fallback index", async () => {
     const out = await temporaryDirectory();
     await writeFile(path.join(out, "index.sqlite"), `${JSON.stringify({

@@ -31,6 +31,7 @@ type MarkdownNode = {
 
 export type NormalizeMarkdownOptions = {
   markdown: string;
+  format?: "markdown" | "mdx";
   repoPath?: string;
   sourceType?: "local_markdown" | "website";
   sourceUrl?: string;
@@ -59,11 +60,15 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     throw new Error("A repoPath, sourceUrl, or canonicalUrl is required.");
   }
   const pageId = `page_${hash(`${stableSource}:${contentHash}`).slice(0, 16)}`;
-  const tree = unified()
-    .use(remarkParse)
-    .use(remarkMdx)
-    .use(remarkFrontmatter, ["yaml"])
-    .parse(options.markdown) as MarkdownNode;
+  const processor = unified().use(remarkParse);
+  const format =
+    options.format ??
+    (repoPath?.toLowerCase().endsWith(".mdx") ? "mdx" : "markdown");
+  if (format === "mdx") {
+    processor.use(remarkMdx);
+  }
+  processor.use(remarkFrontmatter, ["yaml"]);
+  const tree = processor.parse(options.markdown) as MarkdownNode;
 
   const frontmatter = parseFrontmatter(tree);
   const headings: Heading[] = [];
@@ -178,9 +183,11 @@ function resolveHref(
     return undefined;
   }
   const [target, fragment] = href.split("#", 2);
-  const resolved = path.posix.normalize(
-    path.posix.join(path.posix.dirname(repoPath), target ?? ""),
-  );
+  const resolved = target?.startsWith("/")
+    ? path.posix.normalize(target.replace(/^\/+/, ""))
+    : path.posix.normalize(
+      path.posix.join(path.posix.dirname(repoPath), target ?? ""),
+    );
   return fragment === undefined ? resolved : `${resolved}#${fragment}`;
 }
 

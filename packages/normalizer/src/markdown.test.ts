@@ -34,4 +34,45 @@ throw new Error("must not execute");
     const input = { markdown: "# Stable\n", repoPath: "nested/stable.mdx" };
     expect(normalizeMarkdown(input)).toEqual(normalizeMarkdown(input));
   });
+
+  it("accepts HTML comments and permissive raw HTML in Markdown", () => {
+    const markdown = `<!-- markdownlint-disable -->
+# Raw HTML
+
+<tbody valign=top align=left>
+</tbody>
+`;
+
+    const page = normalizeMarkdown({
+      markdown,
+      format: "markdown",
+      repoPath: "README.md",
+    });
+
+    expect(page.title).toBe("Raw HTML");
+  });
+
+  it("accepts JSX components in MDX", () => {
+    const markdown = `# MDX
+
+<Callout kind="note">Use the documented path.</Callout>
+`;
+
+    const page = normalizeMarkdown({
+      markdown,
+      format: "mdx",
+      repoPath: "docs/guide.mdx",
+    });
+
+    expect(page.title).toBe("MDX");
+  });
+
+  it("resolves site-root links against repo-rooted local paths", () => {
+    const page = normalizeMarkdown({
+      markdown: "[Validation](/docs/guides/validation)\n",
+      repoPath: "docs/api/request.md",
+    });
+
+    expect(page.links[0]?.resolvedHref).toBe("docs/guides/validation");
+  });
 });

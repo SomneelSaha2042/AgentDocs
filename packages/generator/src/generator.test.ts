@@ -199,6 +199,26 @@ pnpm add @example/sdk
     expect(generated.taskPacks.some((pack) => pack.id === "webhooks")).toBe(false);
   });
 
+  it("does not generate a webhook pack from generic event headings", () => {
+    const markdown = "# Event handlers\n\nRegister a scheduled event handler.\n";
+    const generated = generateStaticArtifacts({
+      project: { name: "Events", slug: "events" },
+      agentMap: singlePageMap("Event handlers", markdown),
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "webhooks")).toBe(false);
+  });
+
+  it("uses page titles to generate packs for frontmatter-titled pages", () => {
+    const markdown = "Use the paginate method to retrieve all pages.";
+    const generated = generateStaticArtifacts({
+      project: { name: "SDK", slug: "sdk" },
+      agentMap: singlePageMap("Pagination", markdown),
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "pagination")).toBe(true);
+  });
+
   it("does not advertise task-pack files when links are disabled", () => {
     const markdown = "# Setup\n\nInstall the SDK.\n";
     const pageId = "page_setup";
@@ -250,4 +270,37 @@ pnpm add @example/sdk
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function singlePageMap(title: string, markdown: string) {
+  const pageId = `page_${title.toLowerCase().replace(/\W+/g, "_")}`;
+  return AgentMapSchema.parse({
+    schemaVersion: "0.1.0",
+    pages: [{
+      id: pageId,
+      sourceType: "local_markdown",
+      repoPath: `${title.toLowerCase().replace(/\W+/g, "-")}.md`,
+      title,
+      markdown,
+      headings: [],
+      links: [],
+      codeBlocks: [],
+      contentHash: hash(markdown),
+      discoveredAt: "1970-01-01T00:00:00.000Z",
+      versionHints: [],
+    }],
+    chunks: [{
+      id: `chunk_${pageId}`,
+      pageId,
+      headingPath: [title],
+      text: markdown,
+      tokenEstimate: 10,
+      links: [],
+      entityIds: [],
+      contentHash: hash(markdown),
+    }],
+    entities: [],
+    edges: [],
+    taskPacks: [],
+  });
 }

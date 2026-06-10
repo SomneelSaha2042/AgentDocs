@@ -4,6 +4,7 @@ dist/
 coverage/
 .agentdocs/
 .agentdocs-test/
+.dogfood/
 .release/
 docs/.vitepress/cache/
 docs/.vitepress/dist/

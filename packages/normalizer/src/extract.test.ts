@@ -74,4 +74,8 @@ This endpoint is deprecated and no longer supported.
       "@acme/sdk",
     ]);
   });
+
+  it("does not consume the next line after an argument-less install command", () => {
+    expect(extractPackages("npm install\ncd /docs\nnpm install\nnpm start")).toEqual([]);
+  });
 });

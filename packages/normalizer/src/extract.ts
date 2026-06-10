@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 const PACKAGE_MANAGERS =
-  "(?:npm\\s+(?:install|i)|yarn\\s+add|pnpm\\s+add|bun\\s+add|pip(?:3)?\\s+install|python\\s+-m\\s+pip\\s+install|cargo\\s+add|go\\s+get)";
+  "(?:npm[\\t ]+(?:install|i)|yarn[\\t ]+add|pnpm[\\t ]+add|bun[\\t ]+add|pip(?:3)?[\\t ]+install|python[\\t ]+-m[\\t ]+pip[\\t ]+install|cargo[\\t ]+add|go[\\t ]+get)";
 const HTTP_METHODS = "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT";
 const VERSION_PATTERN =
   /(?<!\/)\b(?:v\d+(?:\.\d+){0,2}|version\s+\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/gi;
@@ -19,7 +19,7 @@ export type DeterministicExtraction = {
 
 export function extractPackages(value: string): string[] {
   const packages: string[] = [];
-  const pattern = new RegExp(`\\b${PACKAGE_MANAGERS}\\s+([^\\r\\n]+)`, "gi");
+  const pattern = new RegExp(`\\b${PACKAGE_MANAGERS}[\\t ]+([^\\r\\n]+)`, "gi");
   for (const match of value.matchAll(pattern)) {
     const command = match[0] ?? "";
     const manager = command.match(new RegExp(`^${PACKAGE_MANAGERS}`, "i"))?.[0] ?? "";

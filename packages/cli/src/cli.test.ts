@@ -184,7 +184,7 @@ doctor:
       await readFile(path.join(cwd, ".agentdocs", "agent-map.json"), "utf8"),
     );
     expect(map.pages.map((page: { repoPath: string }) => page.repoPath))
-      .toEqual(["README.md"]);
+      .toEqual(["docs/README.md"]);
   });
 });
 

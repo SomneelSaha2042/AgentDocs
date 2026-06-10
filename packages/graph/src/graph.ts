@@ -238,17 +238,29 @@ function evidenceForCodeBlock(
 }
 
 function resolveTargetPage(value: string, pages: DocPage[]): DocPage | undefined {
-  const normalized = normalizeReference(value);
+  const aliases = new Set(referenceAliases(value));
   return pages.find((page) =>
     [page.canonicalUrl, page.sourceUrl, page.repoPath]
       .filter((candidate): candidate is string => candidate !== undefined)
-      .some((candidate) => normalizeReference(candidate) === normalized),
+      .some((candidate) =>
+        referenceAliases(candidate).some((alias) => aliases.has(alias)),
+      ),
   );
 }
 
 function normalizeReference(value: string): string {
   const withoutHash = value.split("#", 1)[0] ?? value;
   return withoutHash.length > 1 ? withoutHash.replace(/\/+$/, "") : withoutHash;
+}
+
+function referenceAliases(value: string): string[] {
+  const normalized = normalizeReference(value);
+  if (normalized.includes("://")) {
+    return [normalized];
+  }
+  const withoutMarkdownExtension = normalized.replace(/\.(?:md|mdx)$/i, "");
+  const withoutIndex = withoutMarkdownExtension.replace(/\/index$/i, "");
+  return [...new Set([normalized, withoutMarkdownExtension, withoutIndex])];
 }
 
 function sortEntity(entity: Entity): Entity {

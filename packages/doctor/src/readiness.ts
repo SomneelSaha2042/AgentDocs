@@ -114,6 +114,8 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
   const hasPages = pages.length > 0;
   const hasNavigation = options.artifacts.hasSitemap
     || pages.some((page) => page.links.some((link) => link.kind === "internal"));
+  const hasPageStructure = (page: DocPage) =>
+    page.headings.length > 0 || typeof page.frontmatter?.title === "string";
   const brokenLinks = findBrokenInternalLinks(pages);
   const giantPages = pages.filter((page) => page.markdown.length > 12_000);
   const evidence = (page?: DocPage): Evidence[] => page === undefined ? [] : [pageEvidence(page)];
@@ -172,12 +174,12 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
       evidence(pages.find((page) => page.title.trim().length === 0)),
       "Add a clear title to every documentation page."),
     check("has_headings", "structure", 4,
-      pages.length > 0 && pages.every((page) => page.headings.length > 0) ? "pass" : "warn",
-      pages.length > 0 && pages.every((page) => page.headings.length > 0)
-        ? "All normalized pages contain headings."
-        : "One or more pages contain no headings.",
-      pages.filter((page) => page.headings.length === 0).slice(0, 5).map(pageEvidence),
-      "Split unstructured pages with descriptive headings."),
+      pages.length > 0 && pages.every(hasPageStructure) ? "pass" : "warn",
+      pages.length > 0 && pages.every(hasPageStructure)
+        ? "All normalized pages contain headings or frontmatter titles."
+        : "One or more pages contain no headings or frontmatter title.",
+      pages.filter((page) => !hasPageStructure(page)).slice(0, 5).map(pageEvidence),
+      "Add a frontmatter title or split unstructured pages with descriptive headings."),
     check("has_code_blocks", "structure", 4,
       pages.some((page) => page.codeBlocks.length > 0) ? "pass" : "warn",
       pages.some((page) => page.codeBlocks.length > 0) ? "Code examples found." : "No fenced code examples found.",
@@ -274,7 +276,7 @@ function findBrokenInternalLinks(pages: DocPage[]) {
   const references = new Set(
     pages.flatMap((page) => [page.canonicalUrl, page.sourceUrl, page.repoPath])
       .filter((value): value is string => value !== undefined)
-      .map(normalizeReference),
+      .flatMap(referenceAliases),
   );
   return pages.flatMap((page) =>
     page.links
@@ -288,6 +290,16 @@ function normalizeReference(value: string): string {
   const withoutHash = value.split("#", 1)[0] ?? value;
   const normalized = withoutHash.includes("://") ? withoutHash : path.posix.normalize(withoutHash);
   return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
+function referenceAliases(value: string): string[] {
+  const normalized = normalizeReference(value);
+  if (normalized.includes("://")) {
+    return [normalized];
+  }
+  const withoutMarkdownExtension = normalized.replace(/\.(?:md|mdx)$/i, "");
+  const withoutIndex = withoutMarkdownExtension.replace(/\/index$/i, "");
+  return [...new Set([normalized, withoutMarkdownExtension, withoutIndex])];
 }
 
 function pageEvidence(page: DocPage): Evidence {

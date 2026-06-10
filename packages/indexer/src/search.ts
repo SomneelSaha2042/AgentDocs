@@ -318,9 +318,9 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
       const textTerms = tokenize(text);
       let score = 0;
       for (const term of uniqueTerms) {
-        score += countPrefixMatches(titleTerms, term) * 8;
-        score += countPrefixMatches(headingTerms, term) * 4;
-        score += countPrefixMatches(textTerms, term);
+        score += Math.min(countPrefixMatches(titleTerms, term), 2) * 8;
+        score += Math.min(countPrefixMatches(headingTerms, term), 2) * 4;
+        score += Math.min(countPrefixMatches(textTerms, term), 3);
       }
       score += containsTokenSequence(titleTerms, queryTerms) ? 20 : 0;
       score += containsTokenSequence(headingTerms, queryTerms) ? 10 : 0;

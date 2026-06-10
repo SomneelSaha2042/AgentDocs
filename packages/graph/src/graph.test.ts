@@ -81,4 +81,23 @@ import { Client } from "@acme/sdk";
     expect(graph.entities.filter((entity) => entity.type === "package").map((entity) => entity.name))
       .toEqual(["@acme/sdk"]);
   });
+
+  it("resolves extensionless site routes to Markdown pages", () => {
+    const index = normalizeMarkdown({
+      markdown: "# Index\n\n[Setup](/docs/setup)\n",
+      repoPath: "docs/index.md",
+    });
+    const setup = normalizeMarkdown({
+      markdown: "# Setup\n",
+      repoPath: "docs/setup.md",
+    });
+    const graph = buildAgentMap({
+      pages: [index, setup],
+      chunks: [index, setup].flatMap((page) => chunkMarkdownByHeading(page)),
+    });
+
+    expect(graph.edges.some((edge) =>
+      edge.type === "links_to" && edge.from === index.id && edge.to === setup.id
+    )).toBe(true);
+  });
 });

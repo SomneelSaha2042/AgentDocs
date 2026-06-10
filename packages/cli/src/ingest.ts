@@ -14,6 +14,7 @@ import { minimatch } from "minimatch";
 export type IngestOptions = {
   cwd: string;
   out: string;
+  preserveSourcePath?: boolean;
   source: string;
   include?: string[];
   exclude?: string[];
@@ -62,11 +63,26 @@ export async function ingestLocalMarkdown(
   const pages: DocPage[] = [];
   for (const filePath of files) {
     const markdown = await readFile(filePath, "utf8");
-    const repoPath = sourceStats.isDirectory()
+    const sourceRelativePath = sourceStats.isDirectory()
       ? path.relative(sourcePath, filePath)
       : path.basename(filePath);
+    const configuredSourcePath = toPosixPath(path.normalize(options.source))
+      .replace(/^\.\//, "");
+    const canPreserveSourcePath = options.preserveSourcePath === true
+      && configuredSourcePath !== ".."
+      && !configuredSourcePath.startsWith("../")
+      && !path.isAbsolute(configuredSourcePath);
+    const repoPath = canPreserveSourcePath
+      ? sourceStats.isDirectory()
+        ? path.join(configuredSourcePath, sourceRelativePath)
+        : configuredSourcePath
+      : sourceRelativePath;
     try {
-      pages.push(normalizeMarkdown({ markdown, repoPath }));
+      pages.push(normalizeMarkdown({
+        markdown,
+        format: path.extname(filePath).toLowerCase() === ".mdx" ? "mdx" : "markdown",
+        repoPath,
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new IngestError(`Failed to ingest ${toPosixPath(repoPath)}: ${message}`);
