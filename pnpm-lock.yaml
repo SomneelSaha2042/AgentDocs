@@ -14,6 +14,9 @@ importers:
       '@agentdocs/crawler':
         specifier: workspace:*
         version: link:packages/crawler
+      '@agentdocs/doctor':
+        specifier: workspace:*
+        version: link:packages/doctor
       '@agentdocs/generator':
         specifier: workspace:*
         version: link:packages/generator
@@ -38,6 +41,9 @@ importers:
       '@agentdocs/crawler':
         specifier: workspace:*
         version: link:../crawler
+      '@agentdocs/doctor':
+        specifier: workspace:*
+        version: link:../doctor
       '@agentdocs/generator':
         specifier: workspace:*
         version: link:../generator
@@ -71,6 +77,22 @@ importers:
       minimatch:
         specifier: ^10.0.3
         version: 10.2.5
+
+  packages/doctor:
+    dependencies:
+      '@agentdocs/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@agentdocs/generator':
+        specifier: workspace:*
+        version: link:../generator
+      '@agentdocs/graph':
+        specifier: workspace:*
+        version: link:../graph
+      '@agentdocs/normalizer':
+        specifier: workspace:*
+        version: link:../normalizer
 
   packages/generator:
     dependencies:

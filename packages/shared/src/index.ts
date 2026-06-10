@@ -22,6 +22,9 @@ export {
   IngestManifestSchema,
   LinkSchema,
   ManifestSchema,
+  ReadinessCategorySchema,
+  ReadinessCheckResultSchema,
+  ReadinessReportSchema,
   TaskPackSchema,
   TaskStepSchema,
 } from "./models.js";
@@ -41,6 +44,9 @@ export type {
   IngestManifest,
   Link,
   Manifest,
+  ReadinessCategory,
+  ReadinessCheckResult,
+  ReadinessReport,
   TaskPack,
   TaskStep,
 } from "./models.js";

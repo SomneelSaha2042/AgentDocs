@@ -2,7 +2,7 @@
 
 AgentDocs is a deterministic, local-first compiler and auditor for agent-readable technical documentation.
 
-This repository is currently at Phase 6: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Builds produce deterministic chunks, an evidence-linked graph, compact task packs, `llms.txt`, generated `AGENTS.md`, and a build manifest. Search, doctor reports, and MCP behavior are intentionally not implemented yet.
+This repository is currently at Phase 7: local Markdown/MDX ingestion and same-origin website crawling produce schema-valid normalized pages and source manifests. Builds produce deterministic chunks, an evidence-linked graph, compact task packs, `llms.txt`, generated `AGENTS.md`, and a build manifest. The doctor command produces deterministic agent-readiness reports. Search and MCP behavior are intentionally not implemented yet.
 
 ## Initialize
 
@@ -48,6 +48,16 @@ pnpm exec agentdocs inspect links --out .agentdocs-test
 ```
 
 Entities and relationships include deterministic source evidence.
+
+## Audit Agent Readiness
+
+```bash
+pnpm exec agentdocs doctor --out .agentdocs-test
+pnpm exec agentdocs doctor --out .agentdocs-test --min-score 75
+pnpm exec agentdocs --json doctor --out .agentdocs-test
+```
+
+The doctor writes Markdown and schema-valid JSON reports beneath `.agentdocs-test/reports`. It exits with code `5` only when the readiness score is below the configured or requested minimum.
 
 ## Development
 

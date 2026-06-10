@@ -213,6 +213,43 @@ export const ManifestSchema = z
   })
   .strict();
 
+export const ReadinessCategorySchema = z.enum([
+  "discoverability",
+  "structure",
+  "task_coverage",
+  "version_safety",
+  "agent_safety",
+  "runtime_readiness",
+]);
+
+export const ReadinessCheckResultSchema = z
+  .object({
+    id: z.string().min(1),
+    category: ReadinessCategorySchema,
+    status: z.enum(["pass", "warn", "fail"]),
+    scoreImpact: z.number().max(0),
+    message: z.string().min(1),
+    evidence: z.array(EvidenceSchema),
+    recommendation: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const ReadinessReportSchema = z
+  .object({
+    schemaVersion: z.literal("0.1.0"),
+    score: z.number().int().min(0).max(100),
+    category: ReadinessCategorySchema.optional(),
+    summary: z
+      .object({
+        pass: z.number().int().nonnegative(),
+        warn: z.number().int().nonnegative(),
+        fail: z.number().int().nonnegative(),
+      })
+      .strict(),
+    checks: z.array(ReadinessCheckResultSchema),
+  })
+  .strict();
+
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -270,5 +307,8 @@ export type Gotcha = z.infer<typeof GotchaSchema>;
 export type TaskPack = z.infer<typeof TaskPackSchema>;
 export type AgentMap = z.infer<typeof AgentMapSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
+export type ReadinessCategory = z.infer<typeof ReadinessCategorySchema>;
+export type ReadinessCheckResult = z.infer<typeof ReadinessCheckResultSchema>;
+export type ReadinessReport = z.infer<typeof ReadinessReportSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;

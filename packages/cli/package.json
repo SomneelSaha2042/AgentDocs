@@ -12,13 +12,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "pnpm --filter @agentdocs/crawler build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build",
+    "pretest": "pnpm --filter @agentdocs/crawler build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build && pnpm --filter @agentdocs/doctor build",
     "test": "vitest run",
-    "pretypecheck": "pnpm --filter @agentdocs/crawler build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build",
+    "pretypecheck": "pnpm --filter @agentdocs/crawler build && pnpm --filter @agentdocs/graph build && pnpm --filter @agentdocs/generator build && pnpm --filter @agentdocs/doctor build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@agentdocs/crawler": "workspace:*",
+    "@agentdocs/doctor": "workspace:*",
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/graph": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",

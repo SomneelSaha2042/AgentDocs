@@ -16,6 +16,7 @@
   "devDependencies": {
     "@agentdocs/cli": "workspace:*",
     "@agentdocs/crawler": "workspace:*",
+    "@agentdocs/doctor": "workspace:*",
     "@agentdocs/graph": "workspace:*",
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",

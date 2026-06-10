@@ -10,6 +10,7 @@ import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
 import { buildFromSources } from "./build.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
+import { ReadinessThresholdError, runDoctor } from "./doctor.js";
 
 type GlobalOptions = {
   config: string;
@@ -28,6 +29,14 @@ function parseInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new InvalidArgumentError("must be an integer");
+  }
+  return parsed;
+}
+
+function parseScore(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+    throw new InvalidArgumentError("must be an integer from 0 to 100");
   }
   return parsed;
 }
@@ -211,13 +220,40 @@ export function createProgram(): Command {
       },
     );
 
-  addPlaceholderAction(
-    program
-      .command("doctor")
-      .description("Run agent-readiness checks")
-      .option("--min-score <n>", "Fail below this score", parseInteger)
-      .option("--category <name>", "Run one category only"),
-  );
+  program
+    .command("doctor")
+    .description("Run agent-readiness checks")
+    .option("--min-score <n>", "Fail below this score", parseScore)
+    .option("--category <name>", "Run one category only")
+    .action(
+      async (
+        options: { category?: string; minScore?: number },
+        command: Command,
+      ) => {
+        const globals = command.optsWithGlobals<GlobalOptions>();
+        const cwd = globals.cwd ?? process.cwd();
+        const config = await readOptionalConfig(path.resolve(cwd, globals.config));
+        const result = await runDoctor({
+          category: options.category,
+          config: globals.config,
+          cwd,
+          out: globals.out,
+        });
+        if (globals.json) {
+          process.stdout.write(`${JSON.stringify(result.report)}\n`);
+        } else if (!globals.quiet) {
+          process.stdout.write(
+            `Agent-readiness: ${result.report.score}/100 (${result.report.summary.pass} pass, ${result.report.summary.warn} warn, ${result.report.summary.fail} fail)\nReport: ${result.markdownPath}\n`,
+          );
+        }
+        const minScore = options.minScore ?? config?.doctor.minScore;
+        if (minScore !== undefined && result.report.score < minScore) {
+          throw new ReadinessThresholdError(
+            `Agent-readiness score ${result.report.score} is below the required minimum of ${minScore}.`,
+          );
+        }
+      },
+    );
 
   addPlaceholderAction(
     program
