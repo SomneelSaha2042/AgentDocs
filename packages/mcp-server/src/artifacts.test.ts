@@ -19,8 +19,12 @@ describe("ArtifactService", () => {
     expect((await service.getPage("page_auth")).title).toBe("Authentication");
     expect((await service.getTaskPack("authentication")).markdown)
       .toContain("# Task: Authentication");
-    expect((await service.getAgentStartContext("configure authentication")).readFirst)
-      .toEqual(["agentdocs://task-packs/authentication.md"]);
+    const context = await service.getAgentStartContext("configure authentication");
+    expect(context.readFirst[0]).toBe("agentdocs://task-packs/authentication.md");
+    expect(context.goalBundle.steps[0]).toMatchObject({
+      pageId: "page_auth",
+      role: "prerequisite",
+    });
     expect((await service.getCodeExamples("client", "typescript")).examples[0])
       .toMatchObject({ codeBlockId: "code_auth", pageId: "page_auth" });
     expect((await service.getRelatedPages("page_auth")).pages[0])

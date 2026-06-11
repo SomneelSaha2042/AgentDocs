@@ -80,6 +80,7 @@ describe("scanReadiness", () => {
       markdown: "# Guide\n\nRead the [missing page](missing.md).\n",
       repoPath: "guide.md",
     });
+    page.links[0]!.isBroken = true;
     const report = scanReadiness({
       agentMap: buildAgentMap({
         pages: [page],
@@ -164,5 +165,33 @@ describe("scanReadiness", () => {
 
     expect(report.checks.find((check) => check.id === "has_sitemap_or_nav"))
       .toMatchObject({ status: "pass", message: "Sitemap discovery evidence found." });
+  });
+
+  it("does not call uncollected links broken and caps poor extraction readiness", () => {
+    const page = normalizeMarkdown({
+      markdown: "# Guide\n\nRead the [other page](other.md).\n",
+      repoPath: "guide.md",
+    });
+    const report = scanReadiness({
+      agentMap: buildAgentMap({ pages: [page], chunks: chunkMarkdownByHeading(page) }),
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: true,
+        hasConfig: true,
+        hasLlmsTxt: true,
+        hasSitemap: true,
+        taskPackFileIds: [],
+        usablePages: 1,
+        unusablePages: 4,
+      },
+    });
+
+    expect(report.checks.find((check) => check.id === "has_broken_internal_links")?.status)
+      .toBe("pass");
+    expect(report.checks.find((check) => check.id === "has_link_coverage")?.status)
+      .toBe("warn");
+    expect(report.checks.find((check) => check.id === "has_extraction_quality")?.status)
+      .toBe("warn");
+    expect(report.score).toBeLessThanOrEqual(60);
   });
 });

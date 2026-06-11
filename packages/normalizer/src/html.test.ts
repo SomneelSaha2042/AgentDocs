@@ -20,4 +20,18 @@ describe("normalizeHtml", () => {
     });
     expect(page.codeBlocks[0]?.value).toContain("const ok = true;");
   });
+
+  it("prefers modern documentation content roots and removes page chrome", () => {
+    const page = normalizeHtml({
+      canonicalUrl: "https://docs.example.com/guide",
+      sourceUrl: "https://docs.example.com/guide",
+      html: `<body><nav>Global navigation</nav><main><article role="main">
+        <h1>Guide</h1><p>Useful content.</p><div class="feedback-panel">Was this helpful?</div>
+      </article></main><footer>Footer noise</footer></body>`,
+    });
+
+    expect(page.markdown).toContain("Useful content.");
+    expect(page.markdown).not.toContain("Global navigation");
+    expect(page.markdown).not.toContain("Was this helpful?");
+  });
 });

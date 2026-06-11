@@ -291,6 +291,94 @@ export const SearchResponseSchema = z
   })
   .strict();
 
+export const GoalBundleSchema = z
+  .object({
+    summary: z.string().min(1),
+    confidence: z.enum(["high", "medium", "low"]),
+    steps: z.array(
+      z
+        .object({
+          role: z.enum(["prerequisite", "setup", "implementation", "validation", "gotcha", "evidence"]),
+          title: z.string().min(1),
+          snippet: z.string().min(1),
+          resource: z.string().min(1),
+          pageId: z.string().min(1),
+          chunkId: z.string().min(1),
+        })
+        .strict(),
+    ).min(1).max(5),
+    gotchas: z.array(z.string().min(1)),
+    supportingResources: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export const ContextBundleSchema = z
+  .object({
+    goal: z.string().min(1),
+    summary: z.string().min(1),
+    readFirst: z.array(z.string().min(1)),
+    rules: z.array(z.string().min(1)),
+    goalBundle: GoalBundleSchema,
+    selectedTaskPack: z
+      .object({
+        id: z.string().min(1),
+        title: z.string().min(1),
+        confidence: z.enum(["high", "medium", "low"]),
+        markdown: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+    supportingResources: z.array(z.string().min(1)),
+    search: SearchResponseSchema,
+  })
+  .strict();
+
+export const TryResultSchema = z
+  .object({
+    source: z
+      .object({
+        kind: z.enum(["local_markdown", "website"]),
+        value: z.string().min(1),
+      })
+      .strict(),
+    crawl: z
+      .object({
+        discovery: z.enum(["sitemap", "links", "hybrid"]),
+        scope: z.string().min(1),
+        attempted: z.number().int().nonnegative(),
+        collected: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        usable: z.number().int().nonnegative().optional(),
+        unusable: z.number().int().nonnegative().optional(),
+        duplicateContent: z.number().int().nonnegative().optional(),
+        discoveryRequests: z.number().int().nonnegative().optional(),
+        warnings: z.array(z.string().min(1)),
+      })
+      .strict()
+      .optional(),
+    pageCount: z.number().int().nonnegative(),
+    chunkCount: z.number().int().nonnegative(),
+    taskPackCount: z.number().int().nonnegative(),
+    readiness: z
+      .object({
+        score: z.number().int().min(0).max(100),
+        pass: z.number().int().nonnegative(),
+        warn: z.number().int().nonnegative(),
+        fail: z.number().int().nonnegative(),
+        reportPath: z.string().min(1),
+      })
+      .strict(),
+    context: ContextBundleSchema,
+    next: z
+      .object({
+        command: z.string().min(1),
+        prompt: z.string().min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -315,8 +403,50 @@ export const CrawlManifestSchema = z
     schemaVersion: z.literal(1),
     sourceType: z.literal("website"),
     sourceUrl: z.string().url(),
-    discovery: z.enum(["sitemap", "links"]),
+    discovery: z.enum(["sitemap", "links", "hybrid"]),
     pageCount: z.number().int().nonnegative(),
+    scope: z
+      .object({
+        kind: z.enum(["inferred", "explicit"]),
+        pathPrefix: z.string().min(1).optional(),
+        include: z.array(z.string()),
+        exclude: z.array(z.string()),
+      })
+      .strict()
+      .optional(),
+    sitemapUrls: z.array(z.string().url()).optional(),
+    counts: z
+      .object({
+        attempted: z.number().int().nonnegative(),
+        collected: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        usable: z.number().int().nonnegative().optional(),
+        unusable: z.number().int().nonnegative().optional(),
+        duplicateContent: z.number().int().nonnegative().optional(),
+        discoveryRequests: z.number().int().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
+    warnings: z.array(z.string().min(1)).optional(),
+    failures: z
+      .array(
+        z
+          .object({
+            url: z.string().url(),
+            reason: z.enum([
+              "request_failed",
+              "http_error",
+              "cross_origin_redirect",
+              "too_many_redirects",
+              "unsupported_content_type",
+              "invalid_content",
+            ]),
+            message: z.string().min(1),
+          })
+          .strict(),
+      )
+      .optional(),
     pages: z.array(
       z
         .object({
@@ -327,9 +457,24 @@ export const CrawlManifestSchema = z
           markdownPath: z.string().min(1),
           pagePath: z.string().min(1),
           contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+          normalizedFrom: z.enum(["html", "markdown"]).optional(),
+          markdownAlternateUrl: z.string().url().optional(),
         })
         .strict(),
     ),
+    unusablePages: z
+      .array(
+        z
+          .object({
+            sourceUrl: z.string().url(),
+            canonicalUrl: z.string().url().optional(),
+            rawHtmlPath: z.string().min(1),
+            reason: z.enum(["empty_content", "heading_only", "extraction_failed"]),
+            message: z.string().min(1),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -355,5 +500,8 @@ export type SearchDocument = z.infer<typeof SearchDocumentSchema>;
 export type SearchIndexFallback = z.infer<typeof SearchIndexFallbackSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+export type GoalBundle = z.infer<typeof GoalBundleSchema>;
+export type ContextBundle = z.infer<typeof ContextBundleSchema>;
+export type TryResult = z.infer<typeof TryResultSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;

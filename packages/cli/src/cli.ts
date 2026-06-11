@@ -11,6 +11,8 @@ import { crawlToDisk } from "./crawl.js";
 import { BuildError, buildFromSources } from "./build.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 import { ReadinessThresholdError, runDoctor } from "./doctor.js";
+import { formatTryResult, runTry } from "./try.js";
+import { buildContextBundle, formatContextBundle } from "./context.js";
 import { formatSearchResponse, searchIndex } from "@agentdocs/indexer";
 import type { AgentDocsConfig } from "@agentdocs/shared";
 
@@ -120,6 +122,69 @@ export function createProgram(): Command {
     });
 
   program
+    .command("try <url-or-path>")
+    .description("Build and audit agent context for a docs URL or local path")
+    .requiredOption("--goal <goal>", "Implementation goal to find context for")
+    .option("--max-pages <n>", "Maximum pages to crawl", parseInteger)
+    .option("--include <glob>", "Include URL/path glob", collect, [])
+    .option("--exclude <glob>", "Exclude URL/path glob", collect, [])
+    .option("--sitemap <url>", "Explicit sitemap URL")
+    .action(
+      async (
+        source: string,
+        options: {
+          exclude: string[];
+          goal: string;
+          include: string[];
+          maxPages?: number;
+          sitemap?: string;
+        },
+        command: Command,
+      ) => {
+        const globals = command.optsWithGlobals<GlobalOptions>();
+        const { config, cwd, out } = await resolveCommandContext(command, globals);
+        const result = await runTry({
+          config: globals.config,
+          cwd,
+          exclude: options.exclude,
+          goal: options.goal,
+          include: options.include,
+          maxPages: options.maxPages,
+          out,
+          project: config === undefined
+            ? undefined
+            : { name: config.name, slug: config.slug, version: config.version },
+          rules: config?.agent.rules,
+          sitemap: options.sitemap,
+          source,
+          writeAgentsMd: config?.output.writeAgentsMd,
+          writeLlmsTxt: config?.output.writeLlmsTxt,
+          writeManifest: config?.output.writeMcpManifest,
+          writeTaskPacks: config?.output.writeTaskPacks,
+        });
+        if (globals.json) {
+          process.stdout.write(`${JSON.stringify(result)}\n`);
+        } else if (!globals.quiet) {
+          process.stdout.write(formatTryResult(result));
+        }
+      },
+    );
+
+  program
+    .command("context <goal>")
+    .description("Build a compact agent context bundle from existing artifacts")
+    .action(async (goal: string, _options: unknown, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { cwd, out } = await resolveCommandContext(command, globals);
+      const result = await buildContextBundle({ cwd, goal, out });
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatContextBundle(result));
+      }
+    });
+
+  program
     .command("crawl <url>")
     .description("Crawl a documentation website")
     .option("--max-pages <n>", "Maximum pages to crawl", parseInteger)
@@ -155,7 +220,7 @@ export function createProgram(): Command {
           process.stdout.write(`${JSON.stringify(result)}\n`);
         } else if (!globals.quiet) {
           process.stdout.write(
-            `Crawled ${result.pageCount} page(s) to ${result.manifestPath}\n`,
+            `Crawled ${result.pageCount} useful page(s) using ${result.discovery} discovery within ${result.scope.pathPrefix ?? (result.scope.include.join(", ") || "/")} (${result.counts.unusable} unusable, ${result.counts.duplicateContent} duplicate, ${result.counts.failed} failed) to ${result.manifestPath}\n${result.warnings.length === 0 ? "" : `Warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}\n`}`,
           );
         }
       },

@@ -38,6 +38,43 @@ Stable exit codes:
 
 ## 2. CLI commands
 
+### 2.0 `agentdocs try <url-or-path>`
+
+Runs the beginner/dependency-user workflow in one command.
+
+```bash
+agentdocs try https://docs.example.com --goal "implement authentication"
+agentdocs try ./docs --goal "debug webhook verification" --json
+agentdocs try https://docs.example.com/guide --goal "configure auth" --include "/guide/**" --max-pages 100
+```
+
+Behavior:
+
+- crawls an HTTP(S) source or ingests a local Markdown path;
+- builds artifacts and the search index;
+- runs the readiness audit;
+- searches for evidence relevant to `--goal`;
+- prints the best context paths, MCP command, and coding-agent prompt.
+- infers a product/version guide scope for website sources unless `--include`
+  is supplied;
+- records crawl scope, discovery, request counts, failures, and Markdown
+  alternatives.
+
+### 2.0.1 `agentdocs context <goal>`
+
+Produces a compact context bundle from existing built artifacts without
+collecting sources again.
+
+```bash
+agentdocs context "implement authentication"
+agentdocs context "debug webhook verification" --json
+```
+
+The bundle includes the strongest matching task pack when available, rules,
+supporting resources, and a dynamic goal bundle composed from up to five
+complementary evidence sections. Fixed task packs are included only when they
+materially match the goal.
+
 ### 2.1 `agentdocs init`
 
 Creates a starter config.
@@ -80,6 +117,26 @@ Options:
 --timeout-ms <n>      Request timeout
 ```
 
+Behavior:
+
+- fetches and resolves the starting page first;
+- allows the user-supplied start URL to resolve across origins, then adopts the
+  final origin as the strict crawl boundary;
+- infers a guide/product/version path scope unless `--include` is supplied;
+- discovers sitemaps from `--sitemap`, `robots.txt`, then `/sitemap.xml`;
+- bounds sitemap discovery to a deterministic fraction of the page-request
+  budget, up to 50 requests;
+- supplements sitemap discovery with scoped page links;
+- continues through individual page failures while useful pages are found;
+- when `--max-pages` is supplied without an explicit request budget, attempts
+  at most three page fetches per requested useful page, up to 300;
+- prefers official same-origin Markdown alternatives when available;
+- normalizes common locale selectors such as `hl` and `locale` so one crawl
+  does not collect the same guide in multiple languages;
+- rejects empty and heading-only extraction as unusable while preserving raw
+  snapshots and diagnostics;
+- deduplicates normalized pages by canonical URL and content hash.
+
 Outputs:
 
 ```txt
@@ -87,6 +144,12 @@ Outputs:
 .agentdocs/sources/pages/*.md
 .agentdocs/sources/crawl-manifest.json
 ```
+
+The crawl manifest records scope, discovery method, sitemap URLs, request and
+page counts, useful and unusable extraction counts, discovery-budget warnings,
+duplicate-content skips, deterministic failure reasons, and per-page
+normalization source. A crawl that yields no useful normalized pages exits with
+code `3` after writing diagnostics.
 
 ### 2.3 `agentdocs ingest <path>`
 
@@ -165,6 +228,10 @@ Outputs:
 .agentdocs/reports/agent-readiness.md
 .agentdocs/reports/agent-readiness.json
 ```
+
+Readiness fails extraction quality when no useful pages or chunks exist. Scores
+are capped when most fetched pages were unusable, and uncollected scoped links
+are not reported as broken links.
 
 ### 2.6 `agentdocs search <query>`
 

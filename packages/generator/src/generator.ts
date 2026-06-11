@@ -136,7 +136,7 @@ function generateTaskPack(
   family: TaskFamily,
   agentMap: AgentMap,
 ): TaskPack | undefined {
-  const ranked = agentMap.chunks
+  const candidates = agentMap.chunks
     .map((chunk) => ({
       chunk,
       score: taskScore(
@@ -147,13 +147,14 @@ function generateTaskPack(
       ),
     }))
     .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id))
-    .slice(0, 5);
+    .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id));
+  const ranked = diversifyTaskChunks(candidates, 5);
   if (ranked.length === 0) {
     return undefined;
   }
   const strongest = ranked[0]!.score;
-  if (strongest < 3 && !hasStrongTaskEvidence(family, ranked.map(({ chunk }) => chunk.text))) {
+  const strongTaskEvidence = hasStrongTaskEvidence(family, ranked.map(({ chunk }) => chunk.text));
+  if (strongest < 3 && !strongTaskEvidence) {
     return undefined;
   }
   const requiredPages = stableUnique(ranked.map(({ chunk }) => chunk.pageId));
@@ -212,9 +213,9 @@ function generateTaskPack(
     id: family.id,
     title: family.title,
     description: family.description,
-    confidence: strongest >= 4 && requiredPages.length >= 2
+    confidence: strongest >= 6 && requiredPages.length >= 2
       ? "high"
-      : strongest >= 3 || codeExamples.length > 0
+      : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
         ? "medium"
         : "low",
     requiredPages,
@@ -224,6 +225,26 @@ function generateTaskPack(
     codeExamples,
     evidence,
   });
+}
+
+function diversifyTaskChunks<T extends { chunk: { id: string; pageId: string } }>(
+  candidates: T[],
+  limit: number,
+): T[] {
+  const selected: T[] = [];
+  const pages = new Set<string>();
+  for (const candidate of candidates) {
+    if (selected.length >= limit) break;
+    if (!pages.has(candidate.chunk.pageId)) {
+      selected.push(candidate);
+      pages.add(candidate.chunk.pageId);
+    }
+  }
+  for (const candidate of candidates) {
+    if (selected.length >= limit) break;
+    if (!selected.some(({ chunk }) => chunk.id === candidate.chunk.id)) selected.push(candidate);
+  }
+  return selected;
 }
 
 function hasStrongTaskEvidence(family: TaskFamily, texts: string[]): boolean {

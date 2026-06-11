@@ -2,6 +2,8 @@
 
 | Command | Purpose |
 | --- | --- |
+| `agentdocs try <url-or-path> --goal <goal>` | Build, audit, and find context in one command |
+| `agentdocs context <goal>` | Produce a compact agent context bundle from built artifacts |
 | `agentdocs init` | Create starter configuration |
 | `agentdocs ingest <path>` | Collect local Markdown and MDX |
 | `agentdocs crawl <url>` | Collect same-origin website documentation |
@@ -17,7 +19,12 @@ Global options include `--config`, `--out`, `--cwd`, `--json`, `--quiet`, and
 
 ```bash
 agentdocs --help
+agentdocs try ./docs --goal "implement authentication"
 agentdocs build --help
 ```
 
 `agentdocs export`, `build --clean`, and additional inspect targets are planned.
+
+`try` accepts `--include`, `--exclude`, `--max-pages`, and `--sitemap` for
+scoped website trials. Direct `crawl` and `try` infer a guide scope unless
+explicit include patterns are supplied.

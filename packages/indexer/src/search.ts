@@ -110,7 +110,7 @@ export async function searchIndex(
     : readFallbackDocuments(contents, indexPath);
   return SearchResponseSchema.parse({
     query: options.query,
-    results: rankDocuments(documents, options.query).slice(0, limit),
+    results: diversifyResults(rankDocuments(documents, options.query), limit),
   });
 }
 
@@ -308,6 +308,7 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
   if (uniqueTerms.length === 0) {
     return [];
   }
+  const distinctiveness = termDistinctiveness(documents, uniqueTerms);
   return documents
     .map((document) => {
       const title = document.title.toLowerCase();
@@ -318,9 +319,10 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
       const textTerms = tokenize(text);
       let score = 0;
       for (const term of uniqueTerms) {
-        score += Math.min(countPrefixMatches(titleTerms, term), 2) * 8;
-        score += Math.min(countPrefixMatches(headingTerms, term), 2) * 4;
-        score += Math.min(countPrefixMatches(textTerms, term), 3);
+        const weight = termWeight(term) * (distinctiveness.get(term) ?? 1);
+        score += Math.min(countPrefixMatches(titleTerms, term), 2) * 8 * weight;
+        score += Math.min(countPrefixMatches(headingTerms, term), 2) * 4 * weight;
+        score += Math.min(countPrefixMatches(textTerms, term), 3) * weight;
       }
       score += containsTokenSequence(titleTerms, queryTerms) ? 20 : 0;
       score += containsTokenSequence(headingTerms, queryTerms) ? 10 : 0;
@@ -341,6 +343,54 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
       right.score - left.score
       || compareStrings(left.pageId, right.pageId)
       || compareStrings(left.chunkId, right.chunkId));
+}
+
+function termDistinctiveness(documents: SearchDocument[], terms: string[]): Map<string, number> {
+  const pageIds = new Set(documents.map((document) => document.pageId));
+  const pagesByTerm = new Map(terms.map((term) => [term, new Set<string>()]));
+  for (const document of documents) {
+    const tokens = tokenize(
+      `${document.title} ${document.headingPath.join(" ")} ${document.text}`.toLowerCase(),
+    );
+    for (const term of terms) {
+      if (tokens.some((token) => token.startsWith(term))) {
+        pagesByTerm.get(term)!.add(document.pageId);
+      }
+    }
+  }
+  return new Map(terms.map((term) => {
+    const documentFrequency = pagesByTerm.get(term)?.size ?? 0;
+    return [term, Math.log((pageIds.size + 1) / (documentFrequency + 1)) + 0.25];
+  }));
+}
+
+function diversifyResults(results: SearchResult[], limit: number): SearchResult[] {
+  const selected: SearchResult[] = [];
+  const selectedChunks = new Set<string>();
+  const pages = new Set<string>();
+  for (const result of results) {
+    if (selected.length >= limit) break;
+    if (!pages.has(result.pageId)) {
+      selected.push(result);
+      selectedChunks.add(result.chunkId);
+      pages.add(result.pageId);
+    }
+  }
+  for (const result of results) {
+    if (selected.length >= limit) break;
+    if (!selectedChunks.has(result.chunkId)) {
+      selected.push(result);
+      selectedChunks.add(result.chunkId);
+    }
+  }
+  return selected;
+}
+
+function termWeight(term: string): number {
+  return new Set([
+    "a", "an", "and", "application", "client", "create", "for", "how", "in",
+    "of", "the", "to", "use", "using", "with",
+  ]).has(term) ? 0.25 : 1;
 }
 
 function snippet(value: string, terms: string[]): string {

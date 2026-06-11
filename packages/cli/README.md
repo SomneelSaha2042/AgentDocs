@@ -5,6 +5,17 @@ an evidence-linked context layer for coding agents.**
 
 AgentDocs turns Markdown, MDX, and public documentation websites into compact
 task packs, searchable artifacts, readiness findings, and read-only MCP tools.
+
+Start with a task-focused trial:
+
+```bash
+agentdocs try https://docs.example.com/guide --goal "implement authentication"
+agentdocs context "implement authentication"
+```
+
+Website trials infer the nearest guide/product/version scope, combine sitemap
+and link discovery, continue through individual page failures, and prefer
+official same-origin Markdown alternatives when available.
 It does not require an LLM, execute commands found in documentation, or mutate
 source docs.
 

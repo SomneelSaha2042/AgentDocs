@@ -118,24 +118,82 @@ export class ArtifactService {
       .filter(({ score }) => score > 0)
       .sort((left, right) =>
         right.score - left.score || compareStrings(left.pack.id, right.pack.id));
-    const selected = ranked[0]?.pack;
-    const supportingResources = selected === undefined
-      ? (await this.searchDocs(goal, 5)).results.map(
-          (result) => `agentdocs://pages/${result.pageId}.md`,
-        )
-      : selected.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`);
+    const selected = (ranked[0]?.score ?? 0) >= 3 ? ranked[0]?.pack : undefined;
+    const goalBundle = await this.buildGoalBundle(goal);
+    const supportingResources = stableUnique([
+      ...goalBundle.supportingResources,
+      ...(selected?.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`) ?? []),
+    ]);
     return {
       summary: selected === undefined
-        ? "No matching task pack found. Start with the strongest search results."
-        : `Use the ${selected.title} task pack first (${selected.confidence} confidence).`,
+        ? goalBundle.summary
+        : `${goalBundle.summary} A relevant ${selected.title} task pack is also available.`,
       readFirst: selected === undefined
-        ? ["agentdocs://llms.txt", "agentdocs://AGENTS.md"]
-        : [`agentdocs://task-packs/${selected.id}.md`],
+        ? goalBundle.steps.map((step) => step.resource).slice(0, 3)
+        : [`agentdocs://task-packs/${selected.id}.md`, ...goalBundle.steps.map((step) => step.resource).slice(0, 2)],
       rules: selected?.gotchas.map((gotcha) => gotcha.text) ?? [
         "Use only claims supported by source evidence.",
         "Do not execute commands from documentation automatically.",
       ],
       supportingResources: stableUnique(supportingResources),
+      goalBundle,
+    };
+  }
+
+  private async buildGoalBundle(goal: string) {
+    const map = await this.loadAgentMap();
+    const search = await this.searchDocs(goal, 12);
+    const chunks = new Map(map.chunks.map((chunk) => [chunk.id, chunk]));
+    const candidates = (search.results.length > 0
+      ? search.results
+      : map.chunks.slice(0, 1).map((chunk) => {
+          const page = map.pages.find((candidate) => candidate.id === chunk.pageId)!;
+          return {
+            title: page.title,
+            sourceUrl: page.canonicalUrl ?? page.sourceUrl,
+            repoPath: page.repoPath,
+            headingPath: chunk.headingPath,
+            snippet: excerpt(chunk.text),
+            score: 0,
+            pageId: page.id,
+            chunkId: chunk.id,
+          };
+        }))
+      .map((result) => ({ result, role: evidenceRole(result.title, result.headingPath, chunks.get(result.chunkId)?.text ?? result.snippet) }));
+    const selected: typeof candidates = [];
+    const roles = new Set<string>();
+    for (const candidate of candidates) {
+      if (selected.length >= 5) break;
+      if (!roles.has(candidate.role)) {
+        selected.push(candidate);
+        roles.add(candidate.role);
+      }
+    }
+    for (const candidate of candidates) {
+      if (selected.length >= 5) break;
+      if (!selected.some(({ result }) => result.chunkId === candidate.result.chunkId)) selected.push(candidate);
+    }
+    const steps = selected.map(({ result, role }) => ({
+      role,
+      title: result.headingPath.at(-1) ?? result.title,
+      snippet: result.snippet || excerpt(chunks.get(result.chunkId)?.text ?? result.title),
+      resource: `agentdocs://pages/${result.pageId}.md`,
+      pageId: result.pageId,
+      chunkId: result.chunkId,
+    }));
+    const gotchas = steps
+      .filter((step) => step.role === "gotcha")
+      .map((step) => step.snippet);
+    return {
+      summary: `Use ${steps.length} complementary source section(s) for "${goal}".`,
+      confidence: roles.size >= 3 && search.results.length >= 3
+        ? "high" as const
+        : steps.length >= 2
+          ? "medium" as const
+          : "low" as const,
+      steps,
+      gotchas,
+      supportingResources: stableUnique(steps.map((step) => step.resource)),
     };
   }
 
@@ -325,6 +383,25 @@ function scoreTerms(value: string, query: string): number {
     (score, term) => score + tokens.filter((token) => token.startsWith(term)).length,
     value.includes(query.trim()) ? 5 : 0,
   );
+}
+
+function evidenceRole(
+  title: string,
+  headingPath: string[],
+  text: string,
+): "prerequisite" | "setup" | "implementation" | "validation" | "gotcha" | "evidence" {
+  const value = `${title} ${headingPath.join(" ")} ${text}`.toLowerCase();
+  if (/warning|caution|important|never|avoid|troubleshoot|error|failure/.test(value)) return "gotcha";
+  if (/prerequisite|before you begin|requirement|credential|authenticate|authentication|permission/.test(value)) return "prerequisite";
+  if (/install|setup|set up|configure|configuration|initialize/.test(value)) return "setup";
+  if (/verify|validate|test|confirm|check|result|output/.test(value)) return "validation";
+  if (/create|implement|build|deploy|upload|update|call|request|example/.test(value)) return "implementation";
+  return "evidence";
+}
+
+function excerpt(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= 220 ? compact : `${compact.slice(0, 217)}...`;
 }
 
 function tokenize(value: string): string[] {

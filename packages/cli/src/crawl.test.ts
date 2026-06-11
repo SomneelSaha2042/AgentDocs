@@ -35,6 +35,9 @@ describe("crawlToDisk", () => {
       const manifest = CrawlManifestSchema.parse(
         JSON.parse(await readFile(result.manifestPath, "utf8")),
       );
+      expect(manifest.scope?.pathPrefix).toBe("/");
+      expect(manifest.counts).toMatchObject({ collected: 1, failed: 0 });
+      expect(manifest.pages[0]?.normalizedFrom).toBe("html");
       const files = await readdir(path.join(output, ".agentdocs", "sources", "pages"));
       expect(files.some((file) => file.endsWith(".raw.html"))).toBe(true);
       expect(files.some((file) => file.endsWith(".md"))).toBe(true);
@@ -59,7 +62,7 @@ describe("crawlToDisk", () => {
         return;
       }
       response.writeHead(200, { "content-type": "text/html" });
-      response.end(`<main><h1>${title}</h1></main>`);
+      response.end(`<main><h1>${title}</h1><p>Useful changed documentation content.</p></main>`);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -91,6 +94,38 @@ describe("crawlToDisk", () => {
       expect(secondManifest.pages[0]?.id).not.toBe(firstManifest.pages[0]?.id);
       expect(files).not.toContain(`${firstManifest.pages[0]!.id}.json`);
       expect(files).toContain(`${secondManifest.pages[0]!.id}.json`);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it("preserves diagnostics and fails when extraction yields no useful pages", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end("<main><h1>Only a title</h1></main>");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-crawl-empty-"));
+    const manifestPath = path.join(output, ".agentdocs", "sources", "crawl-manifest.json");
+
+    try {
+      await expect(crawlToDisk({
+        cwd: output,
+        out: ".agentdocs",
+        startUrl: `http://127.0.0.1:${port}/docs`,
+      })).rejects.toThrowError(/no useful content/i);
+      const manifest = CrawlManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")));
+      expect(manifest.pages).toEqual([]);
+      expect(manifest.unusablePages?.[0]).toMatchObject({ reason: "empty_content" });
+      await expect(readFile(
+        path.join(output, ".agentdocs", ...manifest.unusablePages![0]!.rawHtmlPath.split("/")),
+        "utf8",
+      )).resolves.toContain("Only a title");
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

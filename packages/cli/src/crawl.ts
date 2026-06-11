@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  CrawlError,
   crawlWebsite,
   type CrawlOptions as WebsiteCrawlOptions,
 } from "@agentdocs/crawler";
@@ -18,8 +19,23 @@ export type CrawlOptions = WebsiteCrawlOptions & {
 };
 
 export type CrawlOutput = {
+  counts: {
+    attempted: number;
+    collected: number;
+    discoveryRequests: number;
+    duplicateContent: number;
+    failed: number;
+    skipped: number;
+    unusable: number;
+    usable: number;
+  };
+  discovery: "sitemap" | "links" | "hybrid";
+  failures: NonNullable<CrawlManifest["failures"]>;
   manifestPath: string;
   pageCount: number;
+  scope: NonNullable<CrawlManifest["scope"]>;
+  sitemapUrls: string[];
+  warnings: string[];
 };
 
 export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
@@ -27,18 +43,29 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
   const pagesDirectory = path.join(outputRoot, "sources", "pages");
   const manifestPath = path.join(outputRoot, "sources", "crawl-manifest.json");
   const result = await crawlWebsite(options);
-  const pages = result.pages.map(({ page, rawHtml }) => ({
+  const pages = result.pages.map(({ page, rawHtml, normalizedFrom, markdownAlternateUrl }) => ({
+    markdownAlternateUrl,
+    normalizedFrom,
     page: DocPageSchema.parse(page),
     rawHtml,
   }));
-  const manifestPages: CrawlManifest["pages"] = pages.map(({ page }) => ({
-    id: page.id,
-    sourceUrl: page.sourceUrl!,
-    canonicalUrl: page.canonicalUrl!,
-    rawHtmlPath: path.posix.join("sources", "pages", `${page.id}.raw.html`),
-    markdownPath: path.posix.join("sources", "pages", `${page.id}.md`),
-    pagePath: path.posix.join("sources", "pages", `${page.id}.json`),
-    contentHash: page.contentHash,
+  const manifestPages: CrawlManifest["pages"] = pages.map((entry) => ({
+    id: entry.page.id,
+    sourceUrl: entry.page.sourceUrl!,
+    canonicalUrl: entry.page.canonicalUrl!,
+    rawHtmlPath: path.posix.join("sources", "pages", `${entry.page.id}.raw.html`),
+    markdownPath: path.posix.join("sources", "pages", `${entry.page.id}.md`),
+    pagePath: path.posix.join("sources", "pages", `${entry.page.id}.json`),
+    contentHash: entry.page.contentHash,
+    normalizedFrom: entry.normalizedFrom,
+    markdownAlternateUrl: entry.markdownAlternateUrl,
+  }));
+  const unusablePages: NonNullable<CrawlManifest["unusablePages"]> = result.unusablePages.map((entry) => ({
+    sourceUrl: entry.sourceUrl,
+    canonicalUrl: entry.canonicalUrl,
+    rawHtmlPath: path.posix.join("sources", "pages", `unusable_${hash(entry.sourceUrl)}.raw.html`),
+    reason: entry.reason,
+    message: entry.message,
   }));
   const manifest = CrawlManifestSchema.parse({
     schemaVersion: 1,
@@ -46,7 +73,13 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
     sourceUrl: normalizeSourceUrl(options.startUrl),
     discovery: result.discovery,
     pageCount: pages.length,
+    scope: result.scope,
+    sitemapUrls: result.sitemapUrls,
+    counts: result.counts,
+    failures: result.failures,
     pages: manifestPages,
+    unusablePages,
+    warnings: result.warnings,
   });
   const stateManifestPath = path.join(
     outputRoot,
@@ -61,7 +94,7 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
     page.rawHtmlPath,
     page.markdownPath,
     page.pagePath,
-  ])));
+  ]).concat(unusablePages.map((page) => page.rawHtmlPath))));
   for (const [index, entry] of pages.entries()) {
     const paths = manifestPages[index]!;
     await Promise.all([
@@ -70,10 +103,28 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
       writeJson(outputRoot, paths.pagePath, entry.page),
     ]);
   }
+  for (const [index, entry] of result.unusablePages.entries()) {
+    await writeText(outputRoot, unusablePages[index]!.rawHtmlPath, entry.rawHtml);
+  }
   await writeJson(outputRoot, path.relative(outputRoot, manifestPath), manifest);
   await writeJson(outputRoot, path.relative(outputRoot, stateManifestPath), manifest);
 
-  return { manifestPath, pageCount: pages.length };
+  if (pages.length === 0) {
+    throw new CrawlError(
+      `Crawl fetched documentation pages but extracted no useful content. Diagnostics were written to ${manifestPath}.`,
+    );
+  }
+
+  return {
+    counts: result.counts,
+    discovery: result.discovery,
+    failures: result.failures,
+    manifestPath,
+    pageCount: pages.length,
+    scope: result.scope,
+    sitemapUrls: result.sitemapUrls,
+    warnings: result.warnings,
+  };
 }
 
 async function removeStaleCrawlPages(
@@ -97,7 +148,8 @@ async function removeStaleCrawlPages(
     page.rawHtmlPath,
     page.markdownPath,
     page.pagePath,
-  ]).filter((file) => !currentPaths.has(file));
+  ]).concat((previous.unusablePages ?? []).map((page) => page.rawHtmlPath))
+    .filter((file) => !currentPaths.has(file));
   for (const stalePath of stalePaths) {
     const destination = resolveOutputPath(outputRoot, stalePath);
     try {

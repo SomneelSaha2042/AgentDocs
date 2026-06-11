@@ -77,6 +77,65 @@ describe("search index", () => {
     expect(response.results[0]?.pageId).toBe("page_retries");
   });
 
+  it("diversifies leading results across pages", async () => {
+    const out = await temporaryDirectory();
+    const map = fixtureMap();
+    map.chunks.push({
+      ...map.chunks[0]!,
+      id: "chunk_auth_second",
+      text: "Authentication token authentication credentials.",
+    });
+    await buildSearchIndex({ agentMap: AgentMapSchema.parse(map), cwd: out, out: "." });
+
+    const response = await searchIndex({ cwd: out, out: ".", query: "authentication", limit: 2 });
+
+    expect(new Set(response.results.map((result) => result.pageId)).size).toBe(2);
+  });
+
+  it("gives distinctive task terms more weight than corpus-wide product terms", async () => {
+    const out = await temporaryDirectory();
+    const map = fixtureMap();
+    map.pages = [
+      {
+        ...map.pages[0]!,
+        id: "page_compliance",
+        repoPath: "docs/compliance.md",
+        title: "Acme SDK compliance",
+      },
+      {
+        ...map.pages[0]!,
+        id: "page_configure",
+        repoPath: "docs/configure.md",
+        title: "Configure credentials",
+      },
+    ];
+    map.chunks = [
+      {
+        ...map.chunks[0]!,
+        id: "chunk_compliance",
+        pageId: "page_compliance",
+        headingPath: ["Acme SDK compliance"],
+        text: "Acme SDK JavaScript compliance validation.",
+      },
+      {
+        ...map.chunks[0]!,
+        id: "chunk_configure",
+        pageId: "page_configure",
+        headingPath: ["Configure credentials"],
+        text: "Configure the Acme SDK JavaScript client with credentials.",
+      },
+    ];
+    await buildSearchIndex({ agentMap: AgentMapSchema.parse(map), cwd: out, out: "." });
+
+    const response = await searchIndex({
+      cwd: out,
+      out: ".",
+      query: "configure Acme SDK JavaScript",
+    });
+
+    expect(response.results[0]?.pageId).toBe("page_configure");
+  });
+
   it("searches a schema-valid lexical fallback index", async () => {
     const out = await temporaryDirectory();
     await writeFile(path.join(out, "index.sqlite"), `${JSON.stringify({

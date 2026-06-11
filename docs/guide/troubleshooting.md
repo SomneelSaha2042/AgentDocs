@@ -29,3 +29,7 @@ working directory before starting the server.
 - Removed configured sources are not pruned from an existing output directory.
 - Broken-link checks do not validate heading fragments.
 - The crawler targets public, statically accessible documentation.
+- Crawling is guide-scoped by default. Pass repeatable `--include` patterns
+  when the inferred product/version scope is too narrow.
+- Individual page failures are recorded in `sources/crawl-manifest.json`; a
+  crawl succeeds when useful pages were still collected.

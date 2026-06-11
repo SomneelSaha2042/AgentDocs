@@ -17,6 +17,8 @@ export type ReadinessArtifacts = {
   hasLlmsTxt: boolean;
   hasSitemap: boolean;
   taskPackFileIds: string[];
+  usablePages?: number;
+  unusablePages?: number;
 };
 
 export type ScanReadinessOptions = {
@@ -50,7 +52,11 @@ export function scanReadiness(options: ScanReadinessOptions): ReadinessReport {
     (total, check) => total + awardedPoints(check.status, check.weight),
     0,
   );
-  const score = Math.round((awarded / available) * 100);
+  const rawScore = Math.round((awarded / available) * 100);
+  const qualityCap = options.category === undefined
+    ? readinessQualityCap(options)
+    : 100;
+  const score = Math.min(rawScore, qualityCap);
   const impactScale = 100 / available;
   return ReadinessReportSchema.parse({
     schemaVersion: "0.1.0",
@@ -117,6 +123,7 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
   const hasPageStructure = (page: DocPage) =>
     page.headings.length > 0 || typeof page.frontmatter?.title === "string";
   const brokenLinks = findBrokenInternalLinks(pages);
+  const uncollectedLinks = findUncollectedInternalLinks(pages);
   const giantPages = pages.filter((page) => page.markdown.length > 12_000);
   const evidence = (page?: DocPage): Evidence[] => page === undefined ? [] : [pageEvidence(page)];
   const entityEvidence = (pattern: RegExp): Evidence[] =>
@@ -148,6 +155,14 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
   const taskPackFileIds = new Set(options.artifacts.taskPackFileIds);
   const missingTaskPackFiles = packs.filter((pack) => !taskPackFileIds.has(pack.id));
   const hasTaskPacks = packs.length > 0 && missingTaskPackFiles.length === 0;
+  const usablePages = options.artifacts.usablePages ?? pages.length;
+  const unusablePages = options.artifacts.unusablePages ?? 0;
+  const totalCrawled = usablePages + unusablePages;
+  const extractionStatus = usablePages === 0
+    ? "fail"
+    : totalCrawled > 0 && unusablePages > usablePages
+      ? "warn"
+      : "pass";
 
   return [
     check("has_config", "discoverability", 5, options.artifacts.hasConfig ? "pass" : "warn",
@@ -166,26 +181,34 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
       pages.filter((page) => page.links.some((link) => link.kind === "internal")).slice(0, 3).map(pageEvidence),
       "Add a sitemap or clear internal links between canonical documentation pages."),
 
-    check("has_titles", "structure", 4,
+    check("has_extraction_quality", "structure", 6, extractionStatus,
+      usablePages === 0
+        ? "No useful normalized pages or chunks are available."
+        : unusablePages > usablePages
+          ? `${unusablePages} of ${totalCrawled} fetched page(s) were unusable after extraction.`
+          : `${usablePages} useful normalized page(s) are available.`,
+      evidence(pages[0]),
+      "Inspect raw crawl snapshots and improve extraction before trusting generated context."),
+    check("has_titles", "structure", 3,
       pages.length > 0 && pages.every((page) => page.title.trim().length > 0) ? "pass" : "fail",
       pages.length > 0 && pages.every((page) => page.title.trim().length > 0)
         ? "All normalized pages have titles."
         : "One or more normalized pages are missing titles.",
       evidence(pages.find((page) => page.title.trim().length === 0)),
       "Add a clear title to every documentation page."),
-    check("has_headings", "structure", 4,
+    check("has_headings", "structure", 3,
       pages.length > 0 && pages.every(hasPageStructure) ? "pass" : "warn",
       pages.length > 0 && pages.every(hasPageStructure)
         ? "All normalized pages contain headings or frontmatter titles."
         : "One or more pages contain no headings or frontmatter title.",
       pages.filter((page) => !hasPageStructure(page)).slice(0, 5).map(pageEvidence),
       "Add a frontmatter title or split unstructured pages with descriptive headings."),
-    check("has_code_blocks", "structure", 4,
+    check("has_code_blocks", "structure", 3,
       pages.some((page) => page.codeBlocks.length > 0) ? "pass" : "warn",
       pages.some((page) => page.codeBlocks.length > 0) ? "Code examples found." : "No fenced code examples found.",
       evidence(pages.find((page) => page.codeBlocks.length > 0)),
       "Add a canonical, fenced code example for the primary workflow."),
-    check("has_broken_internal_links", "structure", 4, !hasPages || brokenLinks.length > 0 ? "fail" : "pass",
+    check("has_broken_internal_links", "structure", 2, !hasPages || brokenLinks.length > 0 ? "fail" : "pass",
       !hasPages
         ? "Broken internal links cannot be checked because no pages are available."
         : brokenLinks.length === 0
@@ -198,7 +221,21 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
         quote: link.href,
       })),
       "Fix or remove each unresolved internal documentation link."),
-    check("has_giant_pages", "structure", 4, !hasPages ? "fail" : giantPages.length === 0 ? "pass" : "warn",
+    check("has_link_coverage", "structure", 0,
+      !hasPages ? "warn" : uncollectedLinks.length === 0 ? "pass" : "warn",
+      !hasPages
+        ? "Link coverage cannot be checked because no pages are available."
+        : uncollectedLinks.length === 0
+          ? "All discovered internal links were collected or explicitly checked."
+          : `${uncollectedLinks.length} internal link(s) were not collected within the selected scope or budget.`,
+      uncollectedLinks.slice(0, 10).map(({ page, link }) => ({
+        ...pageEvidence(page),
+        source: "link" as const,
+        headingId: link.sourceHeadingId,
+        quote: link.href,
+      })),
+      "Expand crawl scope or page budget when broader documentation coverage is required."),
+    check("has_giant_pages", "structure", 3, !hasPages ? "fail" : giantPages.length === 0 ? "pass" : "warn",
       !hasPages
         ? "Page size cannot be checked because no pages are available."
         : giantPages.length === 0
@@ -273,6 +310,15 @@ function awardedPoints(status: ReadinessCheckResult["status"], weight: number): 
 }
 
 function findBrokenInternalLinks(pages: DocPage[]) {
+  return pages.flatMap((page) =>
+    page.links
+      .filter((link) => link.kind === "internal")
+      .filter((link) => link.isBroken === true)
+      .map((link) => ({ page, link })),
+  );
+}
+
+function findUncollectedInternalLinks(pages: DocPage[]) {
   const references = new Set(
     pages.flatMap((page) => [page.canonicalUrl, page.sourceUrl, page.repoPath])
       .filter((value): value is string => value !== undefined)
@@ -280,8 +326,8 @@ function findBrokenInternalLinks(pages: DocPage[]) {
   );
   return pages.flatMap((page) =>
     page.links
-      .filter((link) => link.kind === "internal")
-      .filter((link) => link.isBroken === true || !references.has(normalizeReference(link.resolvedHref ?? link.href)))
+      .filter((link) => link.kind === "internal" && link.isBroken !== true)
+      .filter((link) => !references.has(normalizeReference(link.resolvedHref ?? link.href)))
       .map((link) => ({ page, link })),
   );
 }
@@ -294,12 +340,19 @@ function normalizeReference(value: string): string {
 
 function referenceAliases(value: string): string[] {
   const normalized = normalizeReference(value);
-  if (normalized.includes("://")) {
-    return [normalized];
-  }
+  if (normalized.includes("://")) return [normalized];
   const withoutMarkdownExtension = normalized.replace(/\.(?:md|mdx)$/i, "");
   const withoutIndex = withoutMarkdownExtension.replace(/\/index$/i, "");
   return [...new Set([normalized, withoutMarkdownExtension, withoutIndex])];
+}
+
+function readinessQualityCap(options: ScanReadinessOptions): number {
+  const usable = options.artifacts.usablePages ?? options.agentMap?.pages.length ?? 0;
+  const unusable = options.artifacts.unusablePages ?? 0;
+  if (usable === 0 || (options.agentMap?.chunks.length ?? 0) === 0) {
+    return 40;
+  }
+  return unusable > usable ? 60 : 100;
 }
 
 function pageEvidence(page: DocPage): Evidence {

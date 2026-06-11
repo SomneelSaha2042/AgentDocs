@@ -14,6 +14,8 @@ describe("agentdocs CLI", () => {
     const help = createProgram().helpInformation();
 
     expect(help).toContain("Usage: agentdocs");
+    expect(help).toContain("try [options] <url-or-path>");
+    expect(help).toContain("context <goal>");
     expect(help).toContain("crawl [options] <url>");
     expect(help).toContain("ingest <path>");
     expect(help).toContain("serve-mcp");
@@ -21,6 +23,9 @@ describe("agentdocs CLI", () => {
 
   it("documents command-specific options", () => {
     const crawl = createProgram().commands.find((command) => command.name() === "crawl");
+    const tryCommand = createProgram().commands.find(
+      (command) => command.name() === "try",
+    );
     const doctor = createProgram().commands.find(
       (command) => command.name() === "doctor",
     );
@@ -32,6 +37,8 @@ describe("agentdocs CLI", () => {
     );
 
     expect(crawl?.helpInformation()).toContain("--max-pages <n>");
+    expect(tryCommand?.helpInformation()).toContain("--goal <goal>");
+    expect(tryCommand?.helpInformation()).toContain("--max-pages <n>");
     expect(crawl?.helpInformation()).toContain("--include <glob>");
     expect(doctor?.helpInformation()).toContain("--min-score <n>");
     expect(search?.helpInformation()).toContain("--limit <n>");
@@ -157,7 +164,7 @@ doctor:
     const cwd = await createTemporaryDirectory();
     const { mkdir } = await import("node:fs/promises");
     await mkdir(path.join(cwd, "docs", "drafts"), { recursive: true });
-    await writeFile(path.join(cwd, "docs", "README.md"), "# Configured Docs\n\n## Install\n", "utf8");
+    await writeFile(path.join(cwd, "docs", "README.md"), "# Configured Docs\n\n## Install\n\nInstall the configured package before using the SDK.\n", "utf8");
     await writeFile(path.join(cwd, "docs", "drafts", "hidden.md"), "# Hidden\n", "utf8");
     await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
 name: Configured Docs

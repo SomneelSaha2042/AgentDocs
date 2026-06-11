@@ -25,6 +25,7 @@ export default defineConfig({
           { text: "Search and MCP", link: "/guide/search-mcp" },
           { text: "Architecture and Security", link: "/guide/architecture" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
+          { text: "Live Dogfood Runs", link: "/guide/live-dogfood" },
         ],
       },
       {

@@ -78,6 +78,11 @@ export async function buildFromSources(
   const chunks = enrichedPages
     .flatMap(({ page }) => chunkMarkdownByHeading(page))
     .map((chunk) => ChunkSchema.parse(chunk));
+  if (chunks.length === 0 || !hasUsefulBuildContent(enrichedPages.map(({ page }) => page), chunks)) {
+    throw new BuildError(
+      "Normalized pages contain no useful documentation content. Inspect crawl diagnostics or source extraction before building.",
+    );
+  }
   const graph = AgentMapSchema.parse(
     buildAgentMap({
       chunks,
@@ -155,6 +160,14 @@ export async function buildFromSources(
     taskPackCount: generated.taskPacks.length,
     taskPackPaths,
   };
+}
+
+function hasUsefulBuildContent(pages: DocPage[], chunks: Chunk[]): boolean {
+  if (pages.some((page) => page.codeBlocks.some((block) => block.value.trim().length >= 20))) {
+    return true;
+  }
+  return chunks.some((chunk) =>
+    chunk.text.replace(/^#{1,6}\s+.+$/gm, "").replace(/\s+/g, " ").trim().length >= 24);
 }
 
 async function removeStaleTaskPacks(

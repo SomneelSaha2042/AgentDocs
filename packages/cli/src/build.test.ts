@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -127,4 +127,22 @@ describe("buildFromSources", () => {
     await expect(access(path.join(output, "llms.txt"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(path.join(output, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("rejects heading-only normalized sources", async () => {
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-build-empty-"));
+    await ingestLocalMarkdown({
+      cwd: output,
+      out: ".agentdocs",
+      source: await writeHeadingOnlyFixture(output),
+    });
+
+    await expect(buildFromSources({ cwd: output, out: ".agentdocs" }))
+      .rejects.toThrowError(/no useful documentation content/i);
+  });
 });
+
+async function writeHeadingOnlyFixture(root: string): Promise<string> {
+  const file = path.join(root, "heading-only.md");
+  await writeFile(file, "# Heading only\n", "utf8");
+  return file;
+}

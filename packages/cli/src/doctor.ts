@@ -43,6 +43,9 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
   const agentMapPath = path.join(outputRoot, "agent-map.json");
   const category = parseCategory(options.category);
   const agentMap = await readAgentMap(agentMapPath);
+  const crawlQuality = await readCrawlQuality(
+    path.join(outputRoot, "sources", "crawl-manifest.json"),
+  );
   const report = ReadinessReportSchema.parse(scanReadiness({
     agentMap,
     category,
@@ -55,6 +58,8 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
         path.join(outputRoot, "sources", "crawl-manifest.json"),
       ),
       taskPackFileIds: await readMarkdownFileIds(path.join(outputRoot, "task-packs")),
+      usablePages: crawlQuality?.usable,
+      unusablePages: crawlQuality?.unusable,
     },
   }));
   const markdownPath = path.join(reportsDirectory, "agent-readiness.md");
@@ -65,12 +70,32 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
   return { jsonPath, markdownPath, report };
 }
 
+async function readCrawlQuality(
+  filePath: string,
+): Promise<{ usable: number; unusable: number } | undefined> {
+  try {
+    const manifest = CrawlManifestSchema.parse(
+      JSON.parse(await readFile(filePath, "utf8")),
+    );
+    return {
+      usable: manifest.counts?.usable ?? manifest.pageCount,
+      unusable: manifest.counts?.unusable ?? manifest.unusablePages?.length ?? 0,
+    };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new DoctorError(`Invalid crawl manifest at ${filePath}: ${message}`);
+  }
+}
+
 async function hasSitemapDiscovery(filePath: string): Promise<boolean> {
   try {
     const manifest = CrawlManifestSchema.parse(
       JSON.parse(await readFile(filePath, "utf8")),
     );
-    return manifest.discovery === "sitemap";
+    return manifest.discovery === "sitemap" || manifest.discovery === "hybrid";
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return false;

@@ -27,6 +27,13 @@ Run without installing:
 npx agentdocs@beta --help
 ```
 
+Turn a docs URL or local Markdown path into a coding-agent handoff in one
+command:
+
+```bash
+npx agentdocs@beta try https://docs.example.com --goal "implement authentication"
+```
+
 Or add it to a project:
 
 ```bash
@@ -38,7 +45,25 @@ See the [installation guide](https://somneelsaha2042.github.io/AgentDocs/guide/i
 
 ## Five-Minute Walkthrough
 
-From the repository whose docs you want to compile:
+For a one-command trial, run:
+
+```bash
+agentdocs try ./docs --goal "implement authentication"
+```
+
+This collects the docs, builds and audits the context layer, finds evidence for
+the goal, and prints the exact MCP command and coding-agent prompt to use next.
+For large multi-product sites, AgentDocs infers the nearest product/version
+guide scope instead of attempting to mirror the entire documentation domain.
+
+Reuse the built context without crawling again:
+
+```bash
+agentdocs context "implement authentication"
+```
+
+For a maintained project configuration, start from the repository whose docs
+you want to compile:
 
 ```bash
 agentdocs init
@@ -87,6 +112,11 @@ agentdocs doctor
 ```
 
 Configured website sources are crawled automatically by `agentdocs build` unless `--skip-crawl` is passed. Crawled content is treated as untrusted input and commands in docs are never executed.
+
+The crawler starts from the supplied page, follows redirects, infers a nearby
+guide scope, discovers sitemaps from `robots.txt` or `/sitemap.xml`, supplements
+them with scoped links, and prefers official same-origin Markdown alternatives
+when available. Use explicit `--include` patterns to override inferred scope.
 
 ## Audit And Search
 
@@ -172,6 +202,8 @@ doctor:
 - `build --clean` and additional inspect targets are not implemented.
 - Broken-link checks do not validate heading fragments.
 - The crawler is intended for public, statically accessible documentation.
+- Full-origin archival crawls and JavaScript-rendered-only documentation are not
+  targets of the current scoped crawler.
 - MCP implements the Phase 9 read-only surface, not every optional protocol feature.
 
 ## Contributing

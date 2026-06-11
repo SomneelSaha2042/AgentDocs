@@ -20,6 +20,18 @@ if (version !== packageJson.version) {
   throw new Error(`Expected version ${packageJson.version}, received ${version}.`);
 }
 await run(["--cwd", cwd, "init"]);
+const trial = JSON.parse(await run([
+  "--cwd", cwd, "--json", "try", "./docs", "--goal", "install the SDK",
+]));
+if (trial.context.goal !== "install the SDK" || trial.pageCount < 1) {
+  throw new Error("Try workflow did not produce the expected context.");
+}
+const context = JSON.parse(await run([
+  "--cwd", cwd, "--json", "context", "install the SDK",
+]));
+if (context.goal !== "install the SDK" || context.readFirst.length < 1) {
+  throw new Error("Context workflow did not produce a usable handoff.");
+}
 await run(["--cwd", cwd, "build"]);
 await run(["--cwd", cwd, "doctor", "--min-score", "0"]);
 await run(["--cwd", cwd, "search", "EXAMPLE_API_KEY", "--json"]);

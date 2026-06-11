@@ -10,6 +10,8 @@ export {
   AgentMapSchema,
   CodeBlockSchema,
   ChunkSchema,
+  ContextBundleSchema,
+  GoalBundleSchema,
   CrawlManifestSchema,
   DocPageSchema,
   EdgeSchema,
@@ -31,11 +33,14 @@ export {
   SearchResultSchema,
   TaskPackSchema,
   TaskStepSchema,
+  TryResultSchema,
 } from "./models.js";
 export type {
   AgentMap,
   CodeBlock,
   Chunk,
+  ContextBundle,
+  GoalBundle,
   CrawlManifest,
   DocPage,
   Edge,
@@ -57,4 +62,5 @@ export type {
   SearchResult,
   TaskPack,
   TaskStep,
+  TryResult,
 } from "./models.js";
