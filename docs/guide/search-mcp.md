@@ -1,5 +1,10 @@
 # Search And MCP
 
+<div class="doc-illustration-pair">
+  <img src="/brand/feature-search.png" alt="Search indexed documentation" />
+  <img src="/brand/feature-mcp-tools.png" alt="Expose read-only MCP tools to coding agents" />
+</div>
+
 ## Offline Search
 
 After a build, search does not require network access:

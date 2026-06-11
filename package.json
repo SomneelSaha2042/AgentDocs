@@ -3,6 +3,18 @@
   "version": "0.1.0-beta.1",
   "private": true,
   "description": "Deterministic, local-first tooling for agent-readable documentation.",
+  "keywords": [
+    "documentation",
+    "coding-agents",
+    "llms-txt",
+    "agents-md",
+    "mcp",
+    "local-first",
+    "typescript",
+    "cli",
+    "documentation-tools",
+    "developer-tools"
+  ],
   "license": "MIT",
   "author": "Somneel Saha",
   "homepage": "https://somneelsaha2042.github.io/AgentDocs/",

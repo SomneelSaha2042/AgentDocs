@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/public/brand/hero-agentdocs.png" width="360" alt="AgentDocs compiling documentation into structured context for coding agents" />
+</p>
+
 # AgentDocs
 
 [![CI](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml/badge.svg)](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml)
