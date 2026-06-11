@@ -20,11 +20,12 @@
   "scripts": {
     "audit:high": "corepack pnpm audit --audit-level high",
     "build": "corepack pnpm -r --if-present build",
-    "docs:build": "vitepress build docs",
+    "docs:build": "vitepress build docs && node scripts/verify-pages-links.mjs",
     "docs:dev": "vitepress docs --host 127.0.0.1",
     "docs:preview": "vitepress preview docs --host 127.0.0.1",
     "check": "corepack pnpm build && corepack pnpm typecheck && corepack pnpm test && corepack pnpm docs:build && corepack pnpm pack:verify && corepack pnpm smoke:bundle",
     "pack:verify": "node scripts/verify-pack.mjs",
+    "regression:dogfood": "corepack pnpm build && node scripts/dogfood-regression.mjs",
     "smoke:bundle": "node scripts/release-smoke.mjs node packages/cli/dist/agentdocs.js",
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck"

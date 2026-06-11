@@ -58,3 +58,44 @@ returns complementary goal-bundle evidence rather than an unrelated task pack.
 
 Live documentation changes over time, so these commands are intentionally not
 part of the default test suite.
+
+## Standard Regression Capture
+
+Run the same regression capture for every prepared target:
+
+```bash
+pnpm regression:dogfood -- .dogfood/hono-website \
+  --agent-task-passed unknown \
+  --search-auth-good unknown \
+  --search-quickstart-good true \
+  --query middleware=middleware \
+  --query cloudflare-workers="Cloudflare Workers"
+```
+
+The runner builds twice, verifies stable generated-artifact hashes, runs the
+doctor and the standard `authentication`, `quickstart`, and `error handling`
+searches, and writes:
+
+```txt
+results/
+  build.json
+  build-repeat.json
+  doctor.json
+  search-auth.json
+  search-quickstart.json
+  search-errors.json
+  summary.json
+  summary.csv
+```
+
+`summary.json` records pages, chunks, entities, task packs, readiness, broken
+links, warnings, deprecations, top-five search results, and repeated-build
+hashes. The cross-target table is updated at
+`.dogfood/regression-summary.csv`.
+
+See the [dogfood workflow matrix](./workflow-matrix.md) for the requested repo
+preparation, workflow-specific queries, pass criteria, and agent tasks.
+
+Keep `agent_task_passed` as an explicit human judgment. Retrieval and readiness
+metrics are supporting signals; the primary product test is whether an agent
+can complete the target task using the generated context.

@@ -6,19 +6,37 @@ import {
   type AgentMap,
   type Edge,
   type Entity,
+  type Evidence,
+  type TaskPack,
 } from "@agentdocs/shared";
 
-export type InspectTarget = "entities" | "links";
+export type InspectTarget = "entities" | "links" | "task-pack";
 
 export type InspectOptions = {
   cwd: string;
+  id?: string;
   out: string;
   target: string;
 };
 
+export type TaskPackInspection = {
+  taskPack: TaskPack;
+  requiredPages: Array<{
+    id: string;
+    title: string;
+    source: string;
+  }>;
+  relatedEntities: Array<{
+    id: string;
+    type: Entity["type"];
+    name: string;
+  }>;
+};
+
 export type InspectResult =
   | { target: "entities"; entities: Entity[] }
-  | { target: "links"; links: Edge[] };
+  | { target: "links"; links: Edge[] }
+  | ({ target: "task-pack" } & TaskPackInspection);
 
 export class InspectError extends Error {
   override readonly name = "InspectError";
@@ -27,9 +45,13 @@ export class InspectError extends Error {
 export async function inspectAgentMap(
   options: InspectOptions,
 ): Promise<InspectResult> {
-  if (options.target !== "entities" && options.target !== "links") {
+  if (
+    options.target !== "entities"
+    && options.target !== "links"
+    && options.target !== "task-pack"
+  ) {
     throw new InspectError(
-      `Inspect target "${options.target}" is not implemented yet. Available Phase 5 targets: entities, links.`,
+      `Inspect target "${options.target}" is not implemented yet. Available targets: entities, links, task-pack.`,
     );
   }
   const agentMapPath = path.resolve(options.cwd, options.out, "agent-map.json");
@@ -51,10 +73,13 @@ export async function inspectAgentMap(
   if (options.target === "entities") {
     return { target: "entities", entities: agentMap.entities };
   }
-  return {
-    target: "links",
-    links: agentMap.edges.filter((edge) => edge.type === "links_to"),
-  };
+  if (options.target === "links") {
+    return {
+      target: "links",
+      links: agentMap.edges.filter((edge) => edge.type === "links_to"),
+    };
+  }
+  return inspectTaskPack(agentMap, options.id);
 }
 
 export function formatInspectResult(result: InspectResult): string {
@@ -69,14 +94,89 @@ export function formatInspectResult(result: InspectResult): string {
       )
       .join("\n")}\n`;
   }
-  if (result.links.length === 0) {
-    return "No internal page links found.\n";
+  if (result.target === "links") {
+    if (result.links.length === 0) {
+      return "No internal page links found.\n";
+    }
+    return `${result.links
+      .map((edge) => `${edge.from}\t${edge.type}\t${edge.to}`)
+      .join("\n")}\n`;
   }
-  return `${result.links
-    .map((edge) => `${edge.from}\t${edge.type}\t${edge.to}`)
-    .join("\n")}\n`;
+  const pack = result.taskPack;
+  return `Task pack: ${pack.title} (${pack.id})
+Confidence: ${pack.confidence}
+Why generated: ${pack.description}
+Selection evidence: ${pack.evidence.length} item(s) from ${pack.requiredPages.length} required page(s)
+
+Required pages
+${result.requiredPages.map((page) => `- ${page.title} (${page.id}): ${page.source}`).join("\n")}
+
+Generation evidence
+${pack.evidence.map((evidence) => `- ${formatEvidence(evidence)}`).join("\n")}
+
+Steps
+${pack.steps.map((step, index) => `${index + 1}. ${step.title}: ${oneLine(step.description)}`).join("\n")}
+
+Related entities
+${result.relatedEntities.length === 0
+    ? "- None"
+    : result.relatedEntities.map((entity) => `- ${entity.type}: ${oneLine(entity.name)} (${entity.id})`).join("\n")}
+`;
 }
 
 function oneLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function inspectTaskPack(agentMap: AgentMap, id?: string): InspectResult {
+  if (id === undefined) {
+    throw new InspectError(
+      'Task pack ID is required. Usage: agentdocs inspect task-pack <id>.',
+    );
+  }
+  const taskPack = agentMap.taskPacks.find((candidate) => candidate.id === id);
+  if (taskPack === undefined) {
+    const available = agentMap.taskPacks.map((candidate) => candidate.id).join(", ");
+    throw new InspectError(
+      `Task pack "${id}" was not found in agent-map.json.${available.length === 0 ? " No task packs are available." : ` Available task packs: ${available}.`}`,
+    );
+  }
+  return {
+    target: "task-pack",
+    taskPack,
+    requiredPages: taskPack.requiredPages.map((pageId) => {
+      const page = agentMap.pages.find((candidate) => candidate.id === pageId);
+      if (page === undefined) {
+        throw new InspectError(
+          `Task pack "${id}" references missing required page "${pageId}". Rebuild the AgentDocs artifacts.`,
+        );
+      }
+      return {
+        id: page.id,
+        title: page.title,
+        source: page.canonicalUrl ?? page.sourceUrl ?? page.repoPath ?? page.id,
+      };
+    }),
+    relatedEntities: taskPack.relatedEntities.map((entityId) => {
+      const entity = agentMap.entities.find((candidate) => candidate.id === entityId);
+      if (entity === undefined) {
+        throw new InspectError(
+          `Task pack "${id}" references missing related entity "${entityId}". Rebuild the AgentDocs artifacts.`,
+        );
+      }
+      return { id: entity.id, type: entity.type, name: entity.name };
+    }),
+  };
+}
+
+function formatEvidence(evidence: Evidence): string {
+  const source = evidence.url ?? evidence.repoPath ?? evidence.pageId ?? "Unknown source";
+  const location = evidence.headingId ?? evidence.codeBlockId;
+  const quote = evidence.quote === undefined ? "" : `: ${excerpt(evidence.quote)}`;
+  return `${evidence.source} ${source}${location === undefined ? "" : ` (${location})`}${quote}`;
+}
+
+function excerpt(value: string): string {
+  const compact = oneLine(value);
+  return compact.length <= 180 ? compact : `${compact.slice(0, 177)}...`;
 }

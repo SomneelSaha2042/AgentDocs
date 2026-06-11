@@ -268,8 +268,11 @@ Inspects generated state.
 ```bash
 agentdocs inspect links
 agentdocs inspect entities
+agentdocs inspect task-pack <id>
 ```
 
+`task-pack <id>` explains why a generated task pack exists using its validated
+confidence, required pages, steps, related entities, and source evidence.
 Additional inspect targets are planned.
 
 ### 2.8 `agentdocs export`

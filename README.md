@@ -132,6 +132,7 @@ Search built artifacts without network access:
 ```bash
 agentdocs search "webhook signature verification"
 agentdocs search "API key" --json
+agentdocs inspect task-pack quickstart
 ```
 
 ## MCP
@@ -145,6 +146,8 @@ agentdocs serve-mcp
 The server provides six read-only tools for search, pages, task packs, start context, code examples, and related pages. It cannot crawl, execute documentation commands, or read arbitrary filesystem paths.
 
 See the [MCP setup guide](https://somneelsaha2042.github.io/AgentDocs/guide/search-mcp).
+Real-repository pass criteria and current failures are tracked in the
+[dogfood workflow matrix](https://somneelsaha2042.github.io/AgentDocs/guide/workflow-matrix).
 
 ## How It Works
 
@@ -199,7 +202,7 @@ doctor:
 - OpenAPI and repository source ingestion are planned but not implemented.
 - Export is not implemented.
 - Removing configured sources does not prune previously collected pages; use a fresh output directory when changing source sets.
-- `build --clean` and additional inspect targets are not implemented.
+- `build --clean` and additional inspect targets beyond entities, links, and task-pack explanations are not implemented.
 - Broken-link checks do not validate heading fragments.
 - The crawler is intended for public, statically accessible documentation.
 - Full-origin archival crawls and JavaScript-rendered-only documentation are not

@@ -8,6 +8,7 @@ on:
       - "README.md"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "scripts/verify-pages-links.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -37,7 +38,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm docs:build
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.vitepress/dist

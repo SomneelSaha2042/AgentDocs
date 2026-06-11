@@ -370,13 +370,14 @@ export function createProgram(): Command {
     );
 
   program
-    .command("inspect <target>")
+    .command("inspect <target> [id]")
     .description("Inspect generated AgentDocs state")
-    .action(async (target: string, _options: unknown, command: Command) => {
+    .action(async (target: string, id: string | undefined, _options: unknown, command: Command) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
       const context = await resolveCommandContext(command, globals);
       const result = await inspectAgentMap({
         cwd: context.cwd,
+        id,
         out: context.out,
         target,
       });

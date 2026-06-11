@@ -4,12 +4,14 @@ export default defineConfig({
   title: "AgentDocs",
   description: "Deterministic, local-first tooling for agent-readable documentation.",
   base: "/AgentDocs/",
-  cleanUrls: true,
+  // Explicit file URLs keep the deployed artifact portable and verifiable.
+  cleanUrls: false,
   lastUpdated: true,
   themeConfig: {
     logo: "/logo.svg",
     nav: [
       { text: "Guide", link: "/guide/installation" },
+      { text: "Results", link: "/results/" },
       { text: "Reference", link: "/reference/configuration" },
       { text: "GitHub", link: "https://github.com/SomneelSaha2042/AgentDocs" },
     ],
@@ -26,6 +28,15 @@ export default defineConfig({
           { text: "Architecture and Security", link: "/guide/architecture" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
           { text: "Live Dogfood Runs", link: "/guide/live-dogfood" },
+          { text: "Dogfood Workflow Matrix", link: "/guide/workflow-matrix" },
+        ],
+      },
+      {
+        text: "Results",
+        items: [
+          { text: "Real-World Results", link: "/results/" },
+          { text: "Findings by Target", link: "/results/findings" },
+          { text: "Methodology", link: "/results/methodology" },
         ],
       },
       {
