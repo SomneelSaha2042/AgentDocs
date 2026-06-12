@@ -4,7 +4,7 @@ layout: home
 hero:
   name: AgentDocs
   text: Compile documentation for coding agents
-  tagline: Deterministic, local-first, evidence-linked artifacts, audits, search, and MCP.
+  tagline: Deterministic, local-first, context-safe artifacts, audits, search, and MCP.
   image:
     src: /brand/hero-agentdocs.png
     alt: AgentDocs compiling documentation into structured agent context
@@ -44,7 +44,7 @@ Start with the [installation guide](/guide/installation), then complete the
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
     <img src="/brand/feature-search.png" alt="Search indexed documentation" />
     <h3>Search offline</h3>
-    <p>Build a local SQLite or lexical index and retrieve evidence without network access.</p>
+    <p>Filter versions, frameworks, routers, and runtimes while retrieving evidence offline.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
     <img src="/brand/feature-audit-evidence.png" alt="Trace generated outputs to source evidence" />
@@ -54,7 +54,7 @@ Start with the [installation guide](/guide/installation), then complete the
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
     <img src="/brand/feature-task-packs.png" alt="Task-specific context packs for coding agents" />
     <h3>Generate task packs</h3>
-    <p>Give coding agents compact, evidence-backed context for concrete implementation tasks.</p>
+    <p>Give coding agents compact evidence without silently combining conflicting context.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
     <img src="/brand/feature-mcp-tools.png" alt="Read-only MCP tools for coding agents" />
@@ -71,21 +71,21 @@ Start with the [installation guide](/guide/installation), then complete the
 ## Proven on real documentation
 
 AgentDocs was tested against its own docs and documentation from Hono, Fastify,
-Supabase, TanStack Query, Next.js, and Octokit. The regression suite compiled
-successful targets twice, audited their readiness, and compared search results
-against concrete agent tasks.
+Supabase, TanStack Query, Next.js, and Octokit. The post-hardening regression
+suite compiled successful targets twice, audited readiness, and checked
+version, framework, router, MDX, and task-pack behavior.
 
 | Result | Evidence |
 | --- | --- |
 | Deterministic output | Every successful target produced the same artifact hash on its repeated build |
-| Large local corpus | TanStack Query compiled 493 pages into 2,600 searchable chunks |
+| Resilient MDX | Supabase compiled 737 pages while preserving per-file degraded and failed diagnostics |
 | Large website crawl | Next.js compiled a bounded 100-page crawl into 823 chunks and 7 task packs |
-| Actionable failure | Supabase stopped on the exact unsupported MDX partial instead of emitting misleading context |
-| Context risk detection | Tests exposed version mixing, framework mixing, weak retrieval, and crawl-scope drift |
+| Context-safe retrieval | Fastify v5 filters exclude v3 evidence; TanStack React filters exclude other frameworks |
+| Context risk detection | Unsafe unfiltered retrieval emits explicit conflict warnings |
 
-The important result is not that every target passed. It is that AgentDocs made
-both useful context and unsafe context measurable before a coding agent relied
-on it.
+The important result is not that every target passed. It is that AgentDocs
+makes useful context, unsafe context, and degraded normalization measurable
+before a coding agent relies on them.
 
 [Explore the real-world findings](/results/) or read the
 [reproducible methodology](/results/methodology).

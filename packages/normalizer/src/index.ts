@@ -17,3 +17,5 @@ export {
   extractWarnings,
 } from "./extract.js";
 export type { DeterministicExtraction } from "./extract.js";
+export { applyContextFacets } from "./context.js";
+export type { ApplyContextFacetsOptions, ContextRule } from "./context.js";

@@ -6,7 +6,9 @@ import path from "node:path";
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const options = parseOptions(process.argv.slice(2));
 const target = path.resolve(options.target);
-const resultsDirectory = path.resolve(target, options.results);
+const resultsDirectory = options.results === undefined
+  ? path.resolve(target, options.out ?? ".", "results")
+  : path.resolve(target, options.results);
 const matrixPath = path.resolve(repositoryRoot, options.matrix);
 const command = process.execPath;
 const commandPrefix = [path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js")];
@@ -55,6 +57,7 @@ const brokenLinks = agentMap.pages.flatMap((page) =>
 const deprecated = agentMap.entities.filter(
   (entity) => entity.type === "concept" && /deprecated/i.test(entity.name),
 );
+const assertions = evaluateAssertions(options, searches, agentMap);
 const warnings = doctor.checks.filter((check) => check.status === "warn");
 const summary = {
   target: options.name ?? path.basename(target),
@@ -103,6 +106,7 @@ const summary = {
     agentTaskPassed: options.agentTaskPassed,
     notes: options.notes,
   },
+  assertions,
 };
 
 await writeJson(path.join(resultsDirectory, "build-repeat.json"), secondBuild);
@@ -112,6 +116,9 @@ await updateMatrix(matrixPath, summary);
 
 if (!repeatedBuildStable) {
   throw new Error(`Repeated build output changed. Inspect ${path.join(resultsDirectory, "summary.json")}.`);
+}
+if (assertions.failed > 0) {
+  throw new Error(`${assertions.failed} automated regression assertion(s) failed. Inspect ${path.join(resultsDirectory, "summary.json")}.`);
 }
 process.stdout.write(
   `Dogfood regression passed for ${summary.target}: ${summary.counts.pages} pages, ${summary.counts.taskPacks} task packs, readiness ${summary.readinessScore}, stable hash ${summary.repeatedBuild.secondHash}.\n`,
@@ -123,9 +130,9 @@ function parseOptions(args) {
     matrix: ".dogfood/regression-summary.csv",
     notes: "",
     queries: [],
-    results: "results",
     searchAuthGood: "unknown",
     searchQuickstartGood: "unknown",
+    expectations: [],
   };
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
@@ -146,12 +153,44 @@ function parseOptions(args) {
     else if (key === "results") parsed.results = next;
     else if (key === "search-auth-good") parsed.searchAuthGood = judgment(next);
     else if (key === "search-quickstart-good") parsed.searchQuickstartGood = judgment(next);
+    else if (["expect-top", "expect-task-pack", "expect-no-mixed", "expect-warning"].includes(key)) {
+      parsed.expectations.push({ kind: key, value: next });
+    }
     else throw new Error(`Unknown option --${key}.`);
   }
   if (parsed.target === undefined) {
     throw new Error("Usage: pnpm regression:dogfood -- <target> [--out <path>] [--agent-task-passed true|false|unknown]");
   }
   return parsed;
+}
+
+function evaluateAssertions(options, searches, agentMap) {
+  const results = options.expectations.map((expectation) => {
+    if (expectation.kind === "expect-task-pack") {
+      const passed = agentMap.taskPacks.some((pack) => pack.id === expectation.value);
+      return { ...expectation, passed, message: passed ? "Task pack found." : "Task pack missing." };
+    }
+    const { label, query } = parseQuery(expectation.value);
+    const response = searches[label];
+    if (response === undefined) return { ...expectation, passed: false, message: `Search label "${label}" was not run.` };
+    if (expectation.kind === "expect-top") {
+      const passed = response.results[0]?.title === query;
+      return { ...expectation, passed, message: `Top title: ${response.results[0]?.title ?? "none"}.` };
+    }
+    if (expectation.kind === "expect-warning") {
+      const passed = response.warnings.some((warning) => warning.code === query);
+      return { ...expectation, passed, message: `Warnings: ${response.warnings.map((warning) => warning.code).join(", ") || "none"}.` };
+    }
+    const values = new Set(response.results.flatMap((result) =>
+      result.facets.filter((facet) => facet.key === query).map((facet) => facet.value)));
+    const passed = response.results.length > 0 && values.size === 1;
+    return { ...expectation, passed, message: `${query} values: ${[...values].join(", ") || "none"}.` };
+  });
+  return {
+    passed: results.filter((result) => result.passed).length,
+    failed: results.filter((result) => !result.passed).length,
+    results,
+  };
 }
 
 function parseQuery(value) {

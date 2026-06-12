@@ -24,7 +24,8 @@ working directory before starting the server.
 
 ## Current Beta Limitations
 
-- OpenAPI and repository source ingestion are planned.
+- OpenAPI ingestion is planned. Repository sources reuse local ingestion and
+  do not clone remote repositories.
 - Export and `build --clean` are not implemented.
 - Removed configured sources are not pruned from an existing output directory.
 - Broken-link checks do not validate heading fragments.

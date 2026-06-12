@@ -14,6 +14,8 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { parse as parseYaml } from "yaml";
 
+import { applyContextFacets, type ApplyContextFacetsOptions } from "./context.js";
+
 type Position = {
   start?: { line?: number };
   end?: { line?: number };
@@ -33,9 +35,11 @@ export type NormalizeMarkdownOptions = {
   markdown: string;
   format?: "markdown" | "mdx";
   repoPath?: string;
-  sourceType?: "local_markdown" | "website";
+  sourceType?: "local_markdown" | "repo" | "website";
   sourceUrl?: string;
   canonicalUrl?: string;
+  context?: ApplyContextFacetsOptions;
+  mdxMode?: "tolerant" | "strict";
 };
 
 const DETERMINISTIC_DISCOVERY_TIME = "1970-01-01T00:00:00.000Z";
@@ -54,21 +58,36 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
   const sourceType = options.sourceType ?? "local_markdown";
   const repoPath =
     options.repoPath === undefined ? undefined : toPosixPath(options.repoPath);
-  const contentHash = hash(options.markdown);
+  let normalizedMarkdown = options.markdown;
   const stableSource = options.canonicalUrl ?? options.sourceUrl ?? repoPath;
   if (stableSource === undefined) {
     throw new Error("A repoPath, sourceUrl, or canonicalUrl is required.");
   }
-  const pageId = `page_${hash(`${stableSource}:${contentHash}`).slice(0, 16)}`;
-  const processor = unified().use(remarkParse);
   const format =
     options.format ??
     (repoPath?.toLowerCase().endsWith(".mdx") ? "mdx" : "markdown");
-  if (format === "mdx") {
-    processor.use(remarkMdx);
+  let normalization: DocPage["normalization"] = { mode: "strict", warnings: [] };
+  let tree: MarkdownNode;
+  try {
+    tree = parseMarkdown(normalizedMarkdown, format);
+  } catch (error) {
+    if (format !== "mdx" || options.mdxMode === "strict") {
+      throw error;
+    }
+    const fallback = sanitizeMdx(normalizedMarkdown);
+    normalizedMarkdown = fallback.markdown;
+    tree = parseMarkdown(normalizedMarkdown, "markdown");
+    normalization = {
+      mode: "mdx-fallback",
+      warnings: [
+        `Strict MDX parsing failed: ${errorMessage(error)}`,
+        ...fallback.warnings,
+      ],
+      omittedCharacterRatio: fallback.omittedCharacterRatio,
+    };
   }
-  processor.use(remarkFrontmatter, ["yaml"]);
-  const tree = processor.parse(options.markdown) as MarkdownNode;
+  const contentHash = hash(normalizedMarkdown);
+  const pageId = `page_${hash(`${stableSource}:${contentHash}`).slice(0, 16)}`;
 
   const frontmatter = parseFrontmatter(tree);
   const headings: Heading[] = [];
@@ -123,7 +142,7 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     fallbackTitle(repoPath, options.sourceUrl);
   const description = stringValue(frontmatter?.description);
 
-  return DocPageSchema.parse({
+  return applyContextFacets(DocPageSchema.parse({
     id: pageId,
     sourceType,
     sourceUrl: options.sourceUrl,
@@ -131,7 +150,7 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     repoPath,
     title,
     description,
-    markdown: options.markdown,
+    markdown: normalizedMarkdown,
     headings,
     links,
     codeBlocks,
@@ -139,7 +158,63 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     contentHash,
     discoveredAt: DETERMINISTIC_DISCOVERY_TIME,
     versionHints: [],
+    facets: [],
+    normalization,
+  }), options.context);
+}
+
+function parseMarkdown(markdown: string, format: "markdown" | "mdx"): MarkdownNode {
+  const processor = unified().use(remarkParse);
+  if (format === "mdx") processor.use(remarkMdx);
+  processor.use(remarkFrontmatter, ["yaml"]);
+  return processor.parse(markdown) as MarkdownNode;
+}
+
+function sanitizeMdx(markdown: string): {
+  markdown: string;
+  omittedCharacterRatio: number;
+  warnings: string[];
+} {
+  const lines = markdown.split(/\r?\n/);
+  let fence: string | undefined;
+  let omitted = 0;
+  const warnings = new Set<string>();
+  const sanitized = lines.map((line) => {
+    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+    if (fence === undefined && fenceMatch !== null) {
+      fence = fenceMatch[1]![0];
+      return line;
+    }
+    if (fence !== undefined) {
+      if (fenceMatch?.[1]?.[0] === fence) fence = undefined;
+      return line;
+    }
+    if (/^\s*(?:import|export)\b/.test(line)) {
+      omitted += line.length;
+      warnings.add("Omitted top-level MDX import/export declarations.");
+      return "<!-- AgentDocs omitted MDX import/export -->";
+    }
+    let value = line.replace(/<\/?[A-Za-z][^>]*>/g, (match) => {
+      omitted += match.length;
+      warnings.add("Omitted MDX JSX tags outside fenced code.");
+      return "<!-- AgentDocs omitted MDX JSX tag -->";
+    });
+    value = value.replace(/\{[^}]*\}|\{.*$/g, (match) => {
+      omitted += match.length;
+      warnings.add("Omitted MDX brace expressions outside fenced code.");
+      return "<!-- AgentDocs omitted MDX expression -->";
+    });
+    return value;
   });
+  return {
+    markdown: sanitized.join("\n"),
+    omittedCharacterRatio: markdown.length === 0 ? 0 : omitted / markdown.length,
+    warnings: [...warnings].sort(compareStrings),
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
 }
 
 function visit(node: MarkdownNode, visitor: (node: MarkdownNode) => void): void {
@@ -242,6 +317,10 @@ function stringValue(value: unknown): string | undefined {
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function toPosixPath(value: string): string {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import {
+  AgentMapSchema,
   AGENTDOCS_PACKAGE_NAME,
   ConfigValidationError,
   parseConfig,
@@ -9,6 +12,15 @@ import {
 describe("@agentdocs/shared", () => {
   it("exposes the package placeholder", () => {
     expect(AGENTDOCS_PACKAGE_NAME).toBe("AgentDocs");
+  });
+
+  it("upgrades 0.1.0 artifacts with missing facets in memory", async () => {
+    const file = path.resolve(import.meta.dirname, "../../../fixtures/hardening/old-0.1-agent-map.json");
+    const map = AgentMapSchema.parse(JSON.parse(await readFile(file, "utf8")));
+
+    expect(map.schemaVersion).toBe("0.2.0");
+    expect(map.pages[0]?.facets).toEqual([]);
+    expect(map.chunks[0]?.facets).toEqual([]);
   });
 
   it("parses a valid YAML config and applies defaults", () => {
@@ -22,6 +34,34 @@ sources:
 
     expect(config.output.dir).toBe(".agentdocs");
     expect(config.doctor.minScore).toBe(70);
+    expect(config.context.exclusiveKeys).toEqual(["version", "framework", "router", "runtime"]);
+    expect(config.normalization.mdx).toBe("tolerant");
+  });
+
+  it("parses preferred context and deterministic facet rules", () => {
+    const config = parseConfig(`
+name: Example Docs
+slug: example-docs
+sources:
+  - type: local_markdown
+    path: ./docs
+    facets:
+      runtime: node
+context:
+  preferred:
+    version: v5
+    framework: react
+  rules:
+    - match: "**/react/**"
+      facets:
+        framework: react
+`);
+
+    expect(config.context.preferred).toEqual({ version: "v5", framework: "react" });
+    expect(config.context.rules[0]).toEqual({
+      match: "**/react/**",
+      facets: { framework: "react" },
+    });
   });
 
   it("returns actionable validation errors", () => {

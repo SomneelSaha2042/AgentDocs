@@ -60,6 +60,7 @@ export function normalizeHtml(options: NormalizeHtmlOptions): DocPage {
     ...page,
     title: title || page.title,
     description,
+    normalization: { mode: "html", warnings: [] },
   };
 }
 

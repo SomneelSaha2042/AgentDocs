@@ -5,6 +5,8 @@ import { renderReadinessMarkdown, scanReadiness } from "@agentdocs/doctor";
 import {
   AgentMapSchema,
   CrawlManifestSchema,
+  IngestManifestSchema,
+  parseConfig,
   ReadinessCategorySchema,
   ReadinessReportSchema,
   type AgentMap,
@@ -46,6 +48,10 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
   const crawlQuality = await readCrawlQuality(
     path.join(outputRoot, "sources", "crawl-manifest.json"),
   );
+  const ingestQuality = await readIngestQuality(
+    path.join(outputRoot, "sources", "ingest-manifest.json"),
+  );
+  const config = await readOptionalConfig(path.resolve(options.cwd, options.config));
   const report = ReadinessReportSchema.parse(scanReadiness({
     agentMap,
     category,
@@ -60,6 +66,10 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
       taskPackFileIds: await readMarkdownFileIds(path.join(outputRoot, "task-packs")),
       usablePages: crawlQuality?.usable,
       unusablePages: crawlQuality?.unusable,
+      degradedPages: ingestQuality?.degraded,
+      skippedPages: ingestQuality?.skipped,
+      expectedTaskIds: config?.tasks.map((task) => task.id),
+      preferredFacets: config?.context.preferred,
     },
   }));
   const markdownPath = path.join(reportsDirectory, "agent-readiness.md");
@@ -68,6 +78,27 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
   await writeFile(markdownPath, renderReadinessMarkdown(report), "utf8");
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   return { jsonPath, markdownPath, report };
+}
+
+async function readIngestQuality(
+  filePath: string,
+): Promise<{ degraded: number; skipped: number } | undefined> {
+  try {
+    const manifest = IngestManifestSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
+    return { degraded: manifest.counts.degraded, skipped: manifest.counts.skipped };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw new DoctorError(`Invalid ingest manifest at ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function readOptionalConfig(filePath: string) {
+  try {
+    return parseConfig(await readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 async function readCrawlQuality(

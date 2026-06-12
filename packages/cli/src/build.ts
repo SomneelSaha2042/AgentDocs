@@ -9,6 +9,7 @@ import { buildAgentMap } from "@agentdocs/graph";
 import { buildSearchIndex } from "@agentdocs/indexer";
 import {
   chunkMarkdownByHeading,
+  applyContextFacets,
   extractDeterministicEntities,
   extractVersionHints,
 } from "@agentdocs/normalizer";
@@ -29,6 +30,12 @@ export type BuildOptions = {
   writeLlmsTxt?: boolean;
   writeManifest?: boolean;
   writeTaskPacks?: boolean;
+  tasks?: Array<{ id: string; title: string; queries: string[]; requiredFacets: Record<string, string> }>;
+  context?: {
+    preferred?: Record<string, string>;
+    exclusiveKeys?: string[];
+    rules?: Array<{ match: string; facets: Record<string, string> }>;
+  };
 };
 
 export type BuildResult = {
@@ -73,7 +80,7 @@ export async function buildFromSources(
 
   const enrichedPages = pages.map(({ file, page }) => ({
     file,
-    page: enrichPage(page),
+    page: enrichPage(page, options.context?.rules),
   }));
   const chunks = enrichedPages
     .flatMap(({ page }) => chunkMarkdownByHeading(page))
@@ -94,6 +101,9 @@ export async function buildFromSources(
     linkTaskPacks: options.writeTaskPacks !== false,
     project: options.project ?? fallbackProject(graph.pages),
     rules: options.rules,
+    preferredFacets: options.context?.preferred,
+    exclusiveKeys: options.context?.exclusiveKeys,
+    tasks: options.tasks,
   });
   const agentMap = generated.agentMap;
 
@@ -143,6 +153,8 @@ export async function buildFromSources(
     agentMap,
     cwd: options.cwd,
     out: options.out,
+    preferredFacets: options.context?.preferred,
+    exclusiveKeys: options.context?.exclusiveKeys,
   });
 
   return {
@@ -231,8 +243,11 @@ async function readPages(pagesDirectory: string): Promise<PageFile[]> {
   return pages.sort((left, right) => comparePages(left.page, right.page));
 }
 
-function enrichPage(page: DocPage): DocPage {
-  return DocPageSchema.parse({
+function enrichPage(
+  page: DocPage,
+  rules?: Array<{ match: string; facets: Record<string, string> }>,
+): DocPage {
+  return applyContextFacets(DocPageSchema.parse({
     ...page,
     versionHints: extractVersionHints(page.markdown),
     codeBlocks: page.codeBlocks.map((block) => {
@@ -248,7 +263,7 @@ function enrichPage(page: DocPage): DocPage {
         },
       };
     }),
-  });
+  }), { rules });
 }
 
 async function writeChunks(filePath: string, chunks: Chunk[]): Promise<void> {

@@ -68,6 +68,13 @@ export type CrawlResult = {
   sitemapUrls: string[];
   unusablePages: UnusablePage[];
   warnings: string[];
+  diagnostics: {
+    scopeConfidence: "low" | "medium" | "high";
+    topLevelPathDistribution: Record<string, number>;
+    suggestedIncludes: string[];
+    budgetExhausted: boolean;
+    uncollectedLinkCount: number;
+  };
 };
 
 export class CrawlError extends Error {
@@ -145,6 +152,14 @@ export async function crawlWebsite(options: CrawlOptions): Promise<CrawlResult> 
         include: [] as string[],
         exclude: stableUnique(options.exclude ?? []),
       };
+  const topLevelPathDistribution = pathDistribution(startLinks, origin);
+  const suggestedIncludes = Object.entries(topLevelPathDistribution)
+    .sort((left, right) => right[1] - left[1] || compareStrings(left[0], right[0]))
+    .slice(0, 5)
+    .map(([segment]) => `/${segment}/**`);
+  if (scope.kind === "inferred" && scope.pathPrefix === "/" && suggestedIncludes.length > 1) {
+    warnings.push(`broad_inferred_scope: multiple top-level sections compete; consider --include ${suggestedIncludes.join(" or ")}`);
+  }
 
   const sitemapSeeds = stableUnique(
     options.sitemap !== undefined
@@ -329,6 +344,13 @@ export async function crawlWebsite(options: CrawlOptions): Promise<CrawlResult> 
     sitemapUrls: sitemap.urls,
     unusablePages,
     warnings,
+    diagnostics: {
+      scopeConfidence: scope.kind === "explicit" ? "high" : scope.pathPrefix === "/" ? "low" : "medium",
+      topLevelPathDistribution,
+      suggestedIncludes,
+      budgetExhausted: queue.length > 0 && (attempted >= maxRequests || pages.length >= maxPages),
+      uncollectedLinkCount: queue.length,
+    },
   };
 }
 
@@ -751,9 +773,28 @@ function sortQueue(queue: QueueItem[], startUrl: string, goal?: string): void {
     if (right.url === startUrl) return 1;
     const goalDifference = scoreGoal(right, goal) - scoreGoal(left, goal);
     return goalDifference
+      || pathPriority(right.url) - pathPriority(left.url)
       || pathDistance(left.url, startUrl) - pathDistance(right.url, startUrl)
       || compareStrings(left.url, right.url);
   });
+}
+
+function pathPriority(url: string): number {
+  const path = new URL(url).pathname.toLowerCase();
+  if (/\/(?:docs?|guide|reference|api)(?:\/|$)/.test(path)) return 3;
+  if (/\/(?:examples?|blog|changelog)(?:\/|$)/.test(path)) return -2;
+  return 0;
+}
+
+function pathDistribution(links: PageLink[], origin: string): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const link of links) {
+    const url = new URL(link.url);
+    if (url.origin !== origin) continue;
+    const segment = url.pathname.split("/").filter(Boolean)[0];
+    if (segment !== undefined) counts.set(segment, (counts.get(segment) ?? 0) + 1);
+  }
+  return Object.fromEntries([...counts.entries()].sort(([left], [right]) => compareStrings(left, right)));
 }
 
 function scoreGoal(item: QueueItem, goal?: string): number {

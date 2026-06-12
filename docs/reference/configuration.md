@@ -16,6 +16,28 @@ sources:
     path: ./docs
     include: ["**/*.md", "**/*.mdx"]
     exclude: ["**/drafts/**"]
+    facets:
+      runtime: node
+
+context:
+  preferred:
+    version: v5
+    framework: react
+  exclusiveKeys: [version, framework, router, runtime]
+  rules:
+    - match: "**/react/**"
+      facets:
+        framework: react
+
+normalization:
+  mdx: tolerant
+
+tasks:
+  - id: route-handler
+    title: App Router route handler
+    queries: [route handler, POST route]
+    requiredFacets:
+      router: app
 
 output:
   dir: .agentdocs
@@ -30,8 +52,16 @@ doctor:
   failOnMissingTaskPacks: false
 ```
 
-Supported beta source types are `local_markdown` and `website`. OpenAPI and
-repository declarations are recognized but fail explicitly until implemented.
+Supported beta source types are `local_markdown`, `repo`, and `website`.
+Repository sources reuse local ingestion and do not clone. Prepare repositories
+containing Windows-invalid filenames on Linux or WSL. OpenAPI declarations are
+recognized but fail explicitly until implemented.
+Fixed source facets, matching path rules, recognized frontmatter, and
+deterministic version extraction add evidence-linked context facets to pages,
+chunks, and search results.
+Tolerant MDX normalization is the default. It records diagnostics and uses a
+line-preserving sanitizer only after strict MDX parsing fails. Set
+`normalization.mdx: strict` to fail on unsupported MDX.
 
 For the complete contract, see
 [APIS_AND_DOCUMENTATION.md](https://github.com/SomneelSaha2042/AgentDocs/blob/master/APIS_AND_DOCUMENTATION.md).

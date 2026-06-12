@@ -38,3 +38,15 @@ agentdocs --json inspect task-pack authentication
 `try` accepts `--include`, `--exclude`, `--max-pages`, and `--sitemap` for
 scoped website trials. Direct `crawl` and `try` infer a guide scope unless
 explicit include patterns are supplied.
+
+`ingest --strict` disables tolerant MDX fallback. `search --facet key=value`
+is repeatable and applies hard context filters:
+
+```bash
+agentdocs ingest ./docs --strict
+agentdocs search "migration" --facet version=v5
+agentdocs search "route handler" --facet framework=nextjs --facet router=app
+```
+
+Search JSON includes evidence-linked facets and deterministic
+`context_conflict` warnings when unfiltered top results mix exclusive context.

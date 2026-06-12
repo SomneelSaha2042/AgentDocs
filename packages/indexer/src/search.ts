@@ -17,6 +17,8 @@ export type BuildSearchIndexOptions = {
   agentMap: AgentMap;
   cwd: string;
   out: string;
+  preferredFacets?: Record<string, string>;
+  exclusiveKeys?: string[];
 };
 
 export type BuildSearchIndexResult = {
@@ -30,6 +32,14 @@ export type SearchIndexOptions = {
   limit?: number;
   out: string;
   query: string;
+  facets?: Record<string, string>;
+  task?: string;
+};
+
+type IndexData = {
+  documents: SearchDocument[];
+  preferredFacets: Record<string, string>;
+  exclusiveKeys: string[];
 };
 
 type SqliteDatabase = {
@@ -61,7 +71,7 @@ export async function buildSearchIndex(
   const sqlite = await loadSqlite();
   if (sqlite !== undefined) {
     try {
-      writeSqliteIndex(sqlite, stagingPath, documents);
+      writeSqliteIndex(sqlite, stagingPath, documents, options.preferredFacets ?? {}, options.exclusiveKeys ?? []);
       await replaceIndex(stagingPath, indexPath);
       return { backend: "sqlite-fts5", documentCount: documents.length, indexPath };
     } catch (error) {
@@ -78,6 +88,8 @@ export async function buildSearchIndex(
     schemaVersion: 1,
     backend: "lexical",
     documents,
+    preferredFacets: options.preferredFacets ?? {},
+    exclusiveKeys: options.exclusiveKeys ?? [],
   });
   await writeFile(stagingPath, `${JSON.stringify(fallback)}\n`, "utf8");
   await replaceIndex(stagingPath, indexPath);
@@ -105,12 +117,22 @@ export async function searchIndex(
     throw error;
   }
 
-  const documents = isSqlite(contents)
-    ? await readSqliteDocuments(indexPath, options.query)
+  const data = isSqlite(contents)
+    ? await readSqliteDocuments(indexPath)
     : readFallbackDocuments(contents, indexPath);
+  const documents = data.documents.filter((document) =>
+    matchesFacetFilters(document, options.facets ?? {})
+    && (options.task === undefined || document.taskPackIds.includes(options.task)));
+  const results = diversifyResults(rankDocuments(
+    documents,
+    options.query,
+    data.preferredFacets,
+    data.exclusiveKeys,
+  ), limit);
   return SearchResponseSchema.parse({
     query: options.query,
-    results: diversifyResults(rankDocuments(documents, options.query), limit),
+    results,
+    warnings: contextWarnings(results, data.exclusiveKeys),
   });
 }
 
@@ -118,17 +140,28 @@ export function formatSearchResponse(response: SearchResponse): string {
   if (response.results.length === 0) {
     return `No results found for "${response.query}".\n`;
   }
-  return `${response.results.map((result, index) => {
+  const warnings = response.warnings.map((warning) =>
+    `WARNING: ${warning.code} ${warning.key}=${warning.values.join(",")}`).join("\n");
+  return `${warnings.length === 0 ? "" : `${warnings}\n\n`}${response.results.map((result, index) => {
     const source = result.sourceUrl ?? result.repoPath ?? "Unknown source";
     const heading = result.headingPath.length === 0
       ? ""
       : ` > ${result.headingPath.join(" > ")}`;
-    return `${index + 1}. ${result.title}${heading}\n   ${source}\n   score=${result.score} page=${result.pageId} chunk=${result.chunkId}\n   ${result.snippet}`;
+    const facets = result.facets.length === 0
+      ? ""
+      : ` facets=${result.facets.map((facet) => `${facet.key}=${facet.value}`).join(",")}`;
+    return `${index + 1}. ${result.title}${heading}\n   ${source}\n   score=${result.score} page=${result.pageId} chunk=${result.chunkId}${facets}\n   ${result.snippet}`;
   }).join("\n\n")}\n`;
 }
 
 function buildDocuments(agentMap: AgentMap): SearchDocument[] {
   const pages = new Map(agentMap.pages.map((page) => [page.id, page]));
+  const taskPacksByPage = new Map<string, string[]>();
+  for (const pack of agentMap.taskPacks) {
+    for (const pageId of pack.requiredPages) {
+      taskPacksByPage.set(pageId, [...(taskPacksByPage.get(pageId) ?? []), pack.id].sort(compareStrings));
+    }
+  }
   return agentMap.chunks
     .map((chunk) => {
       const page = pages.get(chunk.pageId);
@@ -146,6 +179,8 @@ function buildDocuments(agentMap: AgentMap): SearchDocument[] {
         headingPath: chunk.headingPath,
         text: chunk.text,
         contentHash: chunk.contentHash,
+        facets: chunk.facets,
+        taskPackIds: taskPacksByPage.get(page.id) ?? [],
       });
     })
     .sort((left, right) => compareStrings(left.chunkId, right.chunkId));
@@ -170,6 +205,8 @@ function writeSqliteIndex(
   sqlite: SqliteModule,
   indexPath: string,
   documents: SearchDocument[],
+  preferredFacets: Record<string, string>,
+  exclusiveKeys: string[],
 ): void {
   const database = new sqlite.DatabaseSync(indexPath);
   try {
@@ -189,7 +226,9 @@ function writeSqliteIndex(
         repo_path TEXT,
         heading_path TEXT NOT NULL,
         text TEXT NOT NULL,
-        content_hash TEXT NOT NULL
+        content_hash TEXT NOT NULL,
+        facets_json TEXT NOT NULL,
+        task_pack_ids_json TEXT NOT NULL
       );
       CREATE VIRTUAL TABLE search_fts USING fts5(
         title,
@@ -198,13 +237,15 @@ function writeSqliteIndex(
         content='search_documents',
         content_rowid='rowid'
       );
-      INSERT INTO metadata(key, value) VALUES ('schema_version', '1');
+      INSERT INTO metadata(key, value) VALUES ('schema_version', '2');
       INSERT INTO metadata(key, value) VALUES ('backend', 'sqlite-fts5');
+      INSERT INTO metadata(key, value) VALUES ('preferred_facets', '${escapeSql(JSON.stringify(preferredFacets))}');
+      INSERT INTO metadata(key, value) VALUES ('exclusive_keys', '${escapeSql(JSON.stringify(exclusiveKeys))}');
     `);
     const insertDocument = database.prepare(`
       INSERT INTO search_documents(
-        rowid, page_id, chunk_id, title, source_url, repo_path, heading_path, text, content_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        rowid, page_id, chunk_id, title, source_url, repo_path, heading_path, text, content_hash, facets_json, task_pack_ids_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertFts = database.prepare(`
       INSERT INTO search_fts(rowid, title, heading_path, text) VALUES (?, ?, ?, ?)
@@ -222,6 +263,8 @@ function writeSqliteIndex(
         headingPath,
         document.text,
         document.contentHash,
+        JSON.stringify(document.facets),
+        JSON.stringify(document.taskPackIds),
       );
       insertFts.run(rowid, document.title, headingPath, document.text);
     });
@@ -233,8 +276,7 @@ function writeSqliteIndex(
 
 async function readSqliteDocuments(
   indexPath: string,
-  query: string,
-): Promise<SearchDocument[]> {
+): Promise<IndexData> {
   const sqlite = await loadSqlite();
   if (sqlite === undefined) {
     throw new SearchIndexError(
@@ -249,16 +291,11 @@ async function readSqliteDocuments(
     const values = Object.fromEntries(
       metadata.map((row) => [String(row.key), String(row.value)]),
     );
-    if (values.schema_version !== "1" || values.backend !== "sqlite-fts5") {
+    if (values.schema_version !== "2" || values.backend !== "sqlite-fts5") {
       throw new SearchIndexError(
         `Unsupported search index metadata: schema_version=${values.schema_version ?? "missing"}, backend=${values.backend ?? "missing"}.`,
       );
     }
-    const terms = stableUnique(tokenize(oneLine(query).toLowerCase()));
-    if (terms.length === 0) {
-      return [];
-    }
-    const ftsQuery = terms.map((term) => `"${term}"*`).join(" OR ");
     const rows = database.prepare(`
       SELECT
         documents.page_id,
@@ -268,13 +305,16 @@ async function readSqliteDocuments(
         documents.repo_path,
         documents.heading_path,
         documents.text,
-        documents.content_hash
+        documents.content_hash,
+        documents.facets_json,
+        documents.task_pack_ids_json
       FROM search_documents AS documents
-      JOIN search_fts ON search_fts.rowid = documents.rowid
-      WHERE search_fts MATCH ?
       ORDER BY documents.chunk_id
-    `).all(ftsQuery) as Record<string, unknown>[];
-    return rows.map((row) => SearchDocumentSchema.parse({
+    `).all() as Record<string, unknown>[];
+    return {
+      preferredFacets: JSON.parse(values.preferred_facets ?? "{}"),
+      exclusiveKeys: JSON.parse(values.exclusive_keys ?? "[]"),
+      documents: rows.map((row) => SearchDocumentSchema.parse({
       pageId: row.page_id,
       chunkId: row.chunk_id,
       title: row.title,
@@ -283,7 +323,10 @@ async function readSqliteDocuments(
       headingPath: JSON.parse(String(row.heading_path)),
       text: row.text,
       contentHash: row.content_hash,
-    }));
+      facets: JSON.parse(String(row.facets_json)),
+      taskPackIds: JSON.parse(String(row.task_pack_ids_json)),
+    })),
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new SearchIndexError(`Invalid search index at ${indexPath}: ${message}`);
@@ -292,16 +335,26 @@ async function readSqliteDocuments(
   }
 }
 
-function readFallbackDocuments(contents: Buffer, indexPath: string): SearchDocument[] {
+function readFallbackDocuments(contents: Buffer, indexPath: string): IndexData {
   try {
-    return SearchIndexFallbackSchema.parse(JSON.parse(contents.toString("utf8"))).documents;
+    const index = SearchIndexFallbackSchema.parse(JSON.parse(contents.toString("utf8")));
+    return {
+      documents: index.documents,
+      preferredFacets: index.preferredFacets,
+      exclusiveKeys: index.exclusiveKeys,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new SearchIndexError(`Invalid search index at ${indexPath}: ${message}`);
   }
 }
 
-function rankDocuments(documents: SearchDocument[], query: string): SearchResult[] {
+function rankDocuments(
+  documents: SearchDocument[],
+  query: string,
+  preferredFacets: Record<string, string>,
+  exclusiveKeys: string[],
+): SearchResult[] {
   const compactQuery = oneLine(query).toLowerCase();
   const queryTerms = tokenize(compactQuery);
   const uniqueTerms = stableUnique(queryTerms);
@@ -309,6 +362,7 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
     return [];
   }
   const distinctiveness = termDistinctiveness(documents, uniqueTerms);
+  const namedFacets = queryNamedFacets(documents, compactQuery, exclusiveKeys);
   return documents
     .map((document) => {
       const title = document.title.toLowerCase();
@@ -327,15 +381,19 @@ function rankDocuments(documents: SearchDocument[], query: string): SearchResult
       score += containsTokenSequence(titleTerms, queryTerms) ? 20 : 0;
       score += containsTokenSequence(headingTerms, queryTerms) ? 10 : 0;
       score += containsTokenSequence(textTerms, queryTerms) ? 3 : 0;
+      score += document.taskPackIds.includes(compactQuery) ? 40 : 0;
+      score += facetPreferenceScore(document, preferredFacets, 3);
+      score += facetPreferenceScore(document, namedFacets, 30);
       return SearchResultSchema.parse({
         title: document.title,
         sourceUrl: document.sourceUrl,
         repoPath: document.repoPath,
         headingPath: document.headingPath,
         snippet: snippet(document.text, uniqueTerms),
-        score,
+        score: Math.max(0, score),
         pageId: document.pageId,
         chunkId: document.chunkId,
+        facets: document.facets,
       });
     })
     .filter((result) => result.score > 0)
@@ -384,6 +442,48 @@ function diversifyResults(results: SearchResult[], limit: number): SearchResult[
     }
   }
   return selected;
+}
+
+function matchesFacetFilters(
+  document: SearchDocument,
+  filters: Record<string, string>,
+): boolean {
+  return Object.entries(filters).every(([key, value]) =>
+    document.facets.some((facet) => facet.key === key && facet.value === value));
+}
+
+function queryNamedFacets(
+  documents: SearchDocument[],
+  query: string,
+  exclusiveKeys: string[],
+): Record<string, string> {
+  const named: Record<string, string> = {};
+  for (const key of exclusiveKeys) {
+    const values = stableUnique(documents.flatMap((document) =>
+      document.facets.filter((facet) => facet.key === key).map((facet) => facet.value)));
+    const matches = values.filter((value) => query.includes(value.toLowerCase()));
+    if (matches.length === 1) named[key] = matches[0]!;
+  }
+  return named;
+}
+
+function facetPreferenceScore(
+  document: SearchDocument,
+  preferred: Record<string, string>,
+  weight: number,
+): number {
+  return Object.entries(preferred).reduce((score, [key, value]) => {
+    const values = document.facets.filter((facet) => facet.key === key).map((facet) => facet.value);
+    return values.length === 0 ? score : score + (values.includes(value) ? weight : -weight);
+  }, 0);
+}
+
+function contextWarnings(results: SearchResult[], exclusiveKeys: string[]) {
+  return exclusiveKeys.flatMap((key) => {
+    const values = stableUnique(results.flatMap((result) =>
+      result.facets.filter((facet) => facet.key === key).map((facet) => facet.value)));
+    return values.length < 2 ? [] : [{ code: "context_conflict" as const, key, values }];
+  });
 }
 
 function termWeight(term: string): number {
@@ -458,4 +558,8 @@ async function replaceIndex(stagingPath: string, indexPath: string): Promise<voi
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function escapeSql(value: string): string {
+  return value.replaceAll("'", "''");
 }

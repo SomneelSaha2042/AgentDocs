@@ -32,7 +32,10 @@ const TOOLS = [
     limit: integerProperty(),
     filters: {
       type: "object",
-      properties: { task: stringProperty() },
+      properties: {
+        task: stringProperty(),
+        facets: { type: "object", additionalProperties: { type: "string" } },
+      },
       additionalProperties: false,
     },
   }, ["query"]),
@@ -44,6 +47,7 @@ const TOOLS = [
   }, ["task"]),
   tool("get_agent_start_context", "Get compact starting context for a goal.", {
     goal: stringProperty(),
+    facets: { type: "object", additionalProperties: { type: "string" } },
   }, ["goal"]),
   tool("get_code_examples", "Find source-linked code examples.", {
     query: stringProperty(),
@@ -160,6 +164,7 @@ async function callTool(
           requiredString(args.query, "query"),
           optionalInteger(args.limit),
           isRecord(args.filters) ? optionalString(args.filters.task) : undefined,
+          isRecord(args.filters) && isRecord(args.filters.facets) ? stringRecord(args.filters.facets) : undefined,
         );
         break;
       case "get_page":
@@ -169,7 +174,10 @@ async function callTool(
         result = { taskPack: await service.getTaskPack(requiredString(args.task, "task")) };
         break;
       case "get_agent_start_context":
-        result = await service.getAgentStartContext(requiredString(args.goal, "goal"));
+        result = await service.getAgentStartContext(
+          requiredString(args.goal, "goal"),
+          isRecord(args.facets) ? stringRecord(args.facets) : undefined,
+        );
         break;
       case "get_code_examples":
         result = await service.getCodeExamples(
@@ -305,4 +313,11 @@ function optionalInteger(value: unknown): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringRecord(value: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    requiredString(item, `facets.${key}`),
+  ]));
 }

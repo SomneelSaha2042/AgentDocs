@@ -14,7 +14,7 @@
 
 AgentDocs turns Markdown, MDX, and public documentation websites into compact task packs, searchable artifacts, readiness findings, and read-only MCP tools. It does not require an LLM, execute commands found in documentation, or mutate source docs.
 
-> **Beta status:** MVP phases 0-9 are implemented. The core ingest, crawl, build, audit, search, and MCP workflows are ready for real-repository testing.
+> **Beta status:** MVP phases 0-9 and the June 2026 real-world hardening milestone are implemented. Context boundaries, tolerant MDX ingestion, repository sources, regression assertions, and readiness safety caps are ready for real-repository testing.
 
 ## Install
 
@@ -81,6 +81,14 @@ agentdocs doctor
 agentdocs search "authentication"
 ```
 
+Keep version, framework, router, or runtime-specific results inside an explicit
+context boundary:
+
+```bash
+agentdocs search "migration" --facet version=v5
+agentdocs search "query invalidation" --facet framework=react
+```
+
 AgentDocs writes a separate `.agentdocs/` context layer:
 
 ```txt
@@ -101,9 +109,10 @@ The generated output is designed for task execution rather than document browsin
 - `llms.txt` provides a concise entry point.
 - Generated `AGENTS.md` captures setup, concepts, tasks, and common mistakes.
 - Task packs bundle evidence-backed instructions for detected task families.
-- `agent-map.json` exposes pages, chunks, entities, edges, and evidence.
+- `agent-map.json` exposes pages, chunks, entities, edges, context facets, and evidence.
 - `index.sqlite` provides ranked offline search.
-- The readiness report identifies actionable documentation gaps.
+- The readiness report identifies actionable gaps and caps scores when critical
+  task context conflicts remain.
 
 ## Website Documentation
 
@@ -136,8 +145,12 @@ Search built artifacts without network access:
 ```bash
 agentdocs search "webhook signature verification"
 agentdocs search "API key" --json
+agentdocs search "migration" --facet version=v5
 agentdocs inspect task-pack quickstart
 ```
+
+Unfiltered searches emit machine-readable warnings when top results mix
+exclusive context such as versions, frameworks, routers, or runtimes.
 
 ## MCP
 
@@ -174,6 +187,7 @@ The beta is built as a strict TypeScript monorepo with focused package boundarie
 Release gates cover:
 
 - deterministic fixture-based unit, snapshot, integration, and CLI tests;
+- an offline hardening regression for mixed context, tolerant MDX, and task-pack routing;
 - schema validation for generated JSON and JSONL artifacts;
 - repeated-build artifact hash checks;
 - SQLite/FTS5 search on Node 22 and deterministic lexical fallback on Node 20;
@@ -191,6 +205,18 @@ slug: example-project
 sources:
   - type: local_markdown
     path: ./docs
+  - type: repo
+    path: .
+    include: ["packages/*/docs/**/*.md"]
+
+context:
+  preferred:
+    version: v5
+    framework: react
+  exclusiveKeys: [version, framework, router, runtime]
+
+normalization:
+  mdx: tolerant
 
 output:
   dir: .agentdocs
@@ -199,11 +225,13 @@ doctor:
   minScore: 80
 ```
 
-`agentdocs build` automatically collects configured local Markdown sources and websites. See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/reference/configuration).
+`agentdocs build` automatically collects configured local Markdown, repository,
+and website sources. Repository sources reuse local ingestion and never clone.
+See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/reference/configuration).
 
 ## Current Limitations
 
-- OpenAPI and repository source ingestion are planned but not implemented.
+- OpenAPI ingestion is recognized but not implemented.
 - Export is not implemented.
 - Removing configured sources does not prune previously collected pages; use a fresh output directory when changing source sets.
 - `build --clean` and additional inspect targets beyond entities, links, and task-pack explanations are not implemented.
@@ -221,6 +249,7 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm regression:fixtures
 pnpm docs:build
 pnpm pack:verify
 pnpm smoke:bundle

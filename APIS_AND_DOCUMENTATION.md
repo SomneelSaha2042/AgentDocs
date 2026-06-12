@@ -158,6 +158,7 @@ Ingests a local docs folder or file.
 ```bash
 agentdocs ingest ./docs
 agentdocs ingest ./README.md
+agentdocs ingest ./docs --strict
 ```
 
 Supported inputs:
@@ -166,6 +167,11 @@ Supported inputs:
 .md
 .mdx
 ```
+
+MDX ingestion is tolerant by default. Strict parsing is attempted first. On
+failure, AgentDocs removes imports/exports and replaces JSX tags and brace
+expressions outside fenced code with explicit omission markers, then records
+file-level diagnostics. `--strict` disables this fallback.
 
 OpenAPI ingestion is planned for Phase 10.
 
@@ -241,12 +247,14 @@ Searches the local index.
 agentdocs search "webhook signature"
 agentdocs search "pagination" --json
 agentdocs search "authentication" --limit 5
+agentdocs search "migration" --facet version=v5
 ```
 
 Options:
 
 ```txt
 --limit <n>           Maximum ranked results to return
+--facet <key=value>   Hard context facet filter; repeatable
 ```
 
 Output fields:
@@ -259,6 +267,8 @@ snippet
 score
 pageId
 chunkId
+facets
+warnings
 ```
 
 ### 2.7 `agentdocs inspect <target>`
@@ -329,6 +339,8 @@ sources:
     exclude:
       - /blog/**
       - /changelog/old/**
+    facets:
+      runtime: node
 
   - type: local_markdown
     path: ./docs
@@ -354,6 +366,19 @@ agent:
   rules:
     - Do not use deprecated APIs.
     - Prefer current SDK examples.
+
+context:
+  preferred:
+    version: v5
+    framework: react
+  exclusiveKeys: [version, framework, router, runtime]
+  rules:
+    - match: "**/react/**"
+      facets:
+        framework: react
+
+normalization:
+  mdx: tolerant
 
 doctor:
   minScore: 70
@@ -421,6 +446,7 @@ type DocPage = {
   contentHash: string;
   discoveredAt: string;
   versionHints: string[];
+  facets: ContextFacet[];
 };
 ```
 
@@ -482,6 +508,13 @@ type Chunk = {
   links: string[];
   entityIds: string[];
   contentHash: string;
+  facets: ContextFacet[];
+};
+
+type ContextFacet = {
+  key: string;
+  value: string;
+  evidence: Evidence[];
 };
 ```
 
@@ -588,7 +621,7 @@ Purpose: build metadata.
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "project": {
     "name": "Example Docs",
     "slug": "example-docs",
@@ -612,7 +645,7 @@ Purpose: machine-readable graph.
 
 ```json
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "pages": [],
   "chunks": [],
   "entities": [],
@@ -803,7 +836,11 @@ Input:
   "query": "webhook signature verification",
   "limit": 8,
   "filters": {
-    "task": "webhooks"
+    "task": "webhooks",
+    "facets": {
+      "framework": "react",
+      "version": "v5"
+    }
   }
 }
 ```

@@ -8,6 +8,7 @@ const WebsiteSourceSchema = z
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     sitemap: z.string().url().optional(),
+    facets: z.record(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -17,6 +18,7 @@ const LocalMarkdownSourceSchema = z
     path: z.string().min(1),
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
+    facets: z.record(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -33,6 +35,7 @@ const RepoSourceSchema = z
     path: z.string().min(1),
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
+    facets: z.record(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -75,6 +78,44 @@ export const AgentDocsConfigSchema = z
       })
       .strict()
       .default({}),
+    context: z
+      .object({
+        preferred: z.record(z.string().min(1)).default({}),
+        exclusiveKeys: z.array(z.string().min(1)).default([
+          "version",
+          "framework",
+          "router",
+          "runtime",
+        ]),
+        rules: z
+          .array(
+            z
+              .object({
+                match: z.string().min(1),
+                facets: z.record(z.string().min(1)),
+              })
+              .strict(),
+          )
+          .default([]),
+      })
+      .strict()
+      .default({}),
+    normalization: z
+      .object({
+        mdx: z.enum(["tolerant", "strict"]).default("tolerant"),
+      })
+      .strict()
+      .default({}),
+    tasks: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          title: z.string().min(1),
+          queries: z.array(z.string().min(1)).min(1),
+          requiredFacets: z.record(z.string().min(1)).default({}),
+        }).strict(),
+      )
+      .default([]),
     doctor: z
       .object({
         minScore: z.number().int().min(0).max(100).default(70),

@@ -45,6 +45,26 @@ export const CodeBlockSchema = z
   })
   .strict();
 
+export const EvidenceSchema = z
+  .object({
+    source: z.enum(["page", "heading", "link", "code_block", "openapi", "config"]),
+    pageId: z.string().min(1).optional(),
+    headingId: z.string().min(1).optional(),
+    codeBlockId: z.string().min(1).optional(),
+    url: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    quote: z.string().optional(),
+  })
+  .strict();
+
+export const ContextFacetSchema = z
+  .object({
+    key: z.string().min(1),
+    value: z.string().min(1),
+    evidence: z.array(EvidenceSchema).min(1),
+  })
+  .strict();
+
 export const DocPageSchema = z
   .object({
     id: z.string().min(1),
@@ -62,6 +82,15 @@ export const DocPageSchema = z
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
     discoveredAt: z.string().datetime(),
     versionHints: z.array(z.string()),
+    facets: z.array(ContextFacetSchema).default([]),
+    normalization: z
+      .object({
+        mode: z.enum(["strict", "mdx-fallback", "html"]),
+        warnings: z.array(z.string()),
+        omittedCharacterRatio: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .default({ mode: "strict", warnings: [] }),
   })
   .strict();
 
@@ -75,18 +104,7 @@ export const ChunkSchema = z
     links: z.array(z.string()),
     entityIds: z.array(z.string()),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
-  })
-  .strict();
-
-export const EvidenceSchema = z
-  .object({
-    source: z.enum(["page", "heading", "link", "code_block", "openapi", "config"]),
-    pageId: z.string().min(1).optional(),
-    headingId: z.string().min(1).optional(),
-    codeBlockId: z.string().min(1).optional(),
-    url: z.string().optional(),
-    repoPath: z.string().min(1).optional(),
-    quote: z.string().optional(),
+    facets: z.array(ContextFacetSchema).default([]),
   })
   .strict();
 
@@ -168,12 +186,25 @@ export const TaskPackSchema = z
     gotchas: z.array(GotchaSchema),
     codeExamples: z.array(z.string()),
     evidence: z.array(EvidenceSchema).min(1),
+    context: z
+      .object({
+        facets: z.record(z.array(z.string().min(1))),
+        conflicts: z.array(
+          z.object({
+            key: z.string().min(1),
+            values: z.array(z.string().min(1)).min(2),
+            evidence: z.array(EvidenceSchema).min(1),
+          }).strict(),
+        ),
+      })
+      .strict()
+      .default({ facets: {}, conflicts: [] }),
   })
   .strict();
 
-export const AgentMapSchema = z
+const AgentMapV2Schema = z
   .object({
-    schemaVersion: z.literal("0.1.0"),
+    schemaVersion: z.literal("0.2.0"),
     pages: z.array(DocPageSchema),
     chunks: z.array(ChunkSchema),
     entities: z.array(EntitySchema),
@@ -182,9 +213,11 @@ export const AgentMapSchema = z
   })
   .strict();
 
-export const ManifestSchema = z
+export const AgentMapSchema = z.preprocess((value) => upgradeSchemaVersion(value), AgentMapV2Schema);
+
+const ManifestV2Schema = z
   .object({
-    schemaVersion: z.literal("0.1.0"),
+    schemaVersion: z.literal("0.2.0"),
     project: z
       .object({
         name: z.string().min(1),
@@ -213,6 +246,8 @@ export const ManifestSchema = z
   })
   .strict();
 
+export const ManifestSchema = z.preprocess((value) => upgradeSchemaVersion(value), ManifestV2Schema);
+
 export const ReadinessCategorySchema = z.enum([
   "discoverability",
   "structure",
@@ -234,9 +269,9 @@ export const ReadinessCheckResultSchema = z
   })
   .strict();
 
-export const ReadinessReportSchema = z
+const ReadinessReportV2Schema = z
   .object({
-    schemaVersion: z.literal("0.1.0"),
+    schemaVersion: z.literal("0.2.0"),
     score: z.number().int().min(0).max(100),
     category: ReadinessCategorySchema.optional(),
     summary: z
@@ -250,6 +285,11 @@ export const ReadinessReportSchema = z
   })
   .strict();
 
+export const ReadinessReportSchema = z.preprocess(
+  (value) => upgradeSchemaVersion(value),
+  ReadinessReportV2Schema,
+);
+
 export const SearchDocumentSchema = z
   .object({
     pageId: z.string().min(1),
@@ -260,6 +300,8 @@ export const SearchDocumentSchema = z
     headingPath: z.array(z.string()),
     text: z.string().min(1),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+    facets: z.array(ContextFacetSchema).default([]),
+    taskPackIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
@@ -268,6 +310,8 @@ export const SearchIndexFallbackSchema = z
     schemaVersion: z.literal(1),
     backend: z.literal("lexical"),
     documents: z.array(SearchDocumentSchema),
+    preferredFacets: z.record(z.string()).default({}),
+    exclusiveKeys: z.array(z.string()).default([]),
   })
   .strict();
 
@@ -281,6 +325,7 @@ export const SearchResultSchema = z
     score: z.number().nonnegative(),
     pageId: z.string().min(1),
     chunkId: z.string().min(1),
+    facets: z.array(ContextFacetSchema).default([]),
   })
   .strict();
 
@@ -288,6 +333,17 @@ export const SearchResponseSchema = z
   .object({
     query: z.string(),
     results: z.array(SearchResultSchema),
+    warnings: z
+      .array(
+        z
+          .object({
+            code: z.literal("context_conflict"),
+            key: z.string().min(1),
+            values: z.array(z.string().min(1)).min(2),
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict();
 
@@ -309,6 +365,17 @@ export const GoalBundleSchema = z
     ).min(1).max(5),
     gotchas: z.array(z.string().min(1)),
     supportingResources: z.array(z.string().min(1)),
+    warnings: z
+      .array(
+        z
+          .object({
+            code: z.literal("context_conflict"),
+            key: z.string().min(1),
+            values: z.array(z.string().min(1)).min(2),
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict();
 
@@ -382,9 +449,31 @@ export const TryResultSchema = z
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
-    sourceType: z.literal("local_markdown"),
+    sourceType: z.enum(["local_markdown", "repo"]),
     sourcePath: z.string().min(1),
     pageCount: z.number().int().nonnegative(),
+    counts: z
+      .object({
+        usable: z.number().int().nonnegative(),
+        degraded: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+      })
+      .strict()
+      .default({ usable: 0, degraded: 0, skipped: 0, failed: 0 }),
+    diagnostics: z
+      .array(
+        z
+          .object({
+            repoPath: z.string().min(1),
+            status: z.enum(["usable", "degraded", "skipped", "failed"]),
+            mode: z.enum(["strict", "mdx-fallback"]).optional(),
+            warnings: z.array(z.string()).default([]),
+            message: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .default([]),
     pages: z.array(
       z
         .object({
@@ -429,6 +518,13 @@ export const CrawlManifestSchema = z
       .strict()
       .optional(),
     warnings: z.array(z.string().min(1)).optional(),
+    diagnostics: z.object({
+      scopeConfidence: z.enum(["low", "medium", "high"]),
+      topLevelPathDistribution: z.record(z.number().int().nonnegative()),
+      suggestedIncludes: z.array(z.string()),
+      budgetExhausted: z.boolean(),
+      uncollectedLinkCount: z.number().int().nonnegative(),
+    }).strict().optional(),
     failures: z
       .array(
         z
@@ -481,6 +577,7 @@ export const CrawlManifestSchema = z
 export type Heading = z.infer<typeof HeadingSchema>;
 export type Link = z.infer<typeof LinkSchema>;
 export type CodeBlock = z.infer<typeof CodeBlockSchema>;
+export type ContextFacet = z.infer<typeof ContextFacetSchema>;
 export type DocPage = z.infer<typeof DocPageSchema>;
 export type Chunk = z.infer<typeof ChunkSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
@@ -505,3 +602,13 @@ export type ContextBundle = z.infer<typeof ContextBundleSchema>;
 export type TryResult = z.infer<typeof TryResultSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;
+
+function upgradeSchemaVersion(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const artifact = value as Record<string, unknown>;
+  return artifact.schemaVersion === "0.1.0"
+    ? { ...artifact, schemaVersion: "0.2.0" }
+    : value;
+}

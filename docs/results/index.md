@@ -4,9 +4,8 @@ AgentDocs was tested on real documentation systems with different failure
 modes: local repositories, bounded website crawls, large MDX trees,
 versioned docs, multi-framework docs, and its own documentation.
 
-> Results snapshot: June 11, 2026. Upstream documentation changes over time,
-> so these findings describe the captured sources and bounded crawls used in
-> this evaluation.
+> Results baseline: June 11, 2026. Post-hardening rerun: June 12, 2026.
+> Prepared website crawl artifacts were rebuilt without a live recrawl.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
@@ -26,18 +25,19 @@ included:
 - Next.js App Router route-handler documentation;
 - AgentDocs' own MCP, doctor, artifact, and contribution documentation.
 
-### Unsafe context becomes visible
+### Unsafe context becomes controllable
 
 The same runs exposed issues that a normal docs build would not identify:
 
-- Fastify local docs ranked a V3 migration guide while the task required v5;
-- generic TanStack Query retrieval ranked Angular and Lit before React;
+- Fastify v5-filtered migration and schema searches exclude v3 evidence;
+- TanStack React-filtered invalidation searches exclude other frameworks;
+- unsafe unfiltered searches emit explicit context-conflict warnings;
 - Next.js error-handling retrieval preferred Pages Router material for an App
   Router task;
 - Hono's website crawl inferred a broader scope and collected examples outside
   the intended docs area;
-- Supabase's custom MDX caused an explicit parser failure instead of a partial,
-  silently incomplete build.
+- Supabase's custom MDX completes with explicit usable, degraded, skipped, and
+  failed-file diagnostics.
 
 These are product findings, not just test failures. They identify exactly where
 an agent could receive plausible but unsafe guidance.
@@ -46,15 +46,15 @@ an agent could receive plausible but unsafe guidance.
 
 | Target | Source | Pages | Chunks | Entities | Task packs | Readiness | Repeat build | Main finding |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| AgentDocs | Local docs | 13 | 42 | 83 | 2 | 88 | Stable | Self-dogfood led directly to `inspect task-pack <id>` |
-| Hono | Local repo | 85 | 778 | 1,236 | 7 | 93 | Stable | Runtime retrieval works; quickstart and migration retrieval are missing |
+| AgentDocs | Local docs | 13 | - | - | 3 | 90 | Stable | Self-dogfood implementation task remains passed |
+| Hono | Local repo | 85 | - | - | 7 | 93 | Stable | Quickstart task pack restored with source-backed setup evidence |
 | Hono | Website | 100 | 101 | 0 | 4 | 81 | Stable | Bounded crawl succeeded, but scope drift is visible |
-| Fastify | Local repo | 43 | 805 | 944 | 6 | 93 | Stable | High score still hides outdated V3 migration guidance |
+| Fastify | Local repo | 43 | - | - | 4 | 93 | Stable | v5-filtered migration and schema results contain only v5 evidence |
 | Fastify | Website | 100 | 2,526 | 2,158 | 5 | 85 | Stable | Current v5 material ranks well, but minor versions mix |
-| TanStack Query | Local repo | 493 | 2,600 | 1,441 | 7 | 90 | Stable | Framework-specific queries work; generic retrieval mixes frameworks |
+| TanStack Query | Local repo | 411 | - | - | 7 | 90 | Stable | React-filtered retrieval excludes other frameworks |
 | Next.js | Website | 100 | 823 | 640 | 7 | 90 | Stable | Route handlers rank well; router families mix on other queries |
 | Octokit REST | Local docs | 14 | 25 | 61 | 4 | 95 | Stable | Small conventional docs compile cleanly |
-| Supabase | Local MDX | Build stopped | - | - | - | - | Not reached | Exact unsupported MDX partial identified |
+| Supabase | Local MDX | 737 | - | - | 9 | 94 | Stable | Completed with 731 usable, 6 degraded, and 45 failed-file diagnostics |
 | Prisma | Local monorepo | Blocked on Windows | - | - | - | - | Not reached | Upstream Windows-invalid filenames blocked preparation |
 
 All completed regressions reported zero known broken internal links. Every
@@ -65,10 +65,11 @@ build.
 
 A readiness score is a useful audit summary, but it is not a workflow pass.
 
-Fastify local docs scored **93** while ranking a V3 migration guide for a v5
-task. TanStack Query scored **90** while a generic invalidation query ranked
-Angular first. Next.js scored **90** while error-handling retrieval selected
-Pages Router material.
+Fastify and TanStack Query still demonstrate why a readiness score alone is
+not a workflow pass: broad unfiltered queries can cross context boundaries.
+AgentDocs now warns on those mixed results, supports hard filters, and avoids
+mixing conflicting evidence in generated task packs. Next.js still requires
+explicit App Router context for router-specific work.
 
 That is why the regression table keeps `agent_task_passed` separate from
 readiness and search quality. AgentDocs is intended to improve agent-mediated

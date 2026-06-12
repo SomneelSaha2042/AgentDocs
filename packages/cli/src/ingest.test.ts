@@ -5,7 +5,7 @@ import path from "node:path";
 import { DocPageSchema, IngestManifestSchema } from "@agentdocs/shared";
 import { describe, expect, it } from "vitest";
 
-import { ingestLocalMarkdown } from "./ingest.js";
+import { IngestError, ingestLocalMarkdown } from "./ingest.js";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../../..");
 
@@ -97,5 +97,95 @@ describe("ingestLocalMarkdown", () => {
     });
 
     expect(result.pages.map((page) => page.repoPath)).toEqual(["keep.md"]);
+  });
+
+  it("applies fixed source facets and matching context rules", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-context-"));
+    await mkdir(path.join(cwd, "docs", "react"), { recursive: true });
+    await writeFile(path.join(cwd, "docs", "react", "start.md"), "# Start v5\n", "utf8");
+
+    const result = await ingestLocalMarkdown({
+      cwd,
+      out: ".agentdocs",
+      source: "./docs",
+      facets: { runtime: "node" },
+      contextRules: [{ match: "**/react/**", facets: { framework: "react" } }],
+    });
+
+    expect(result.pages[0]?.facets.map(({ key, value }) => `${key}=${value}`)).toEqual([
+      "framework=react",
+      "runtime=node",
+      "version=v5",
+    ]);
+  });
+
+  it("continues through malformed MDX with explicit degraded diagnostics", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-mdx-"));
+    const sourcePath = path.join(REPOSITORY_ROOT, "fixtures", "hardening", "supabase", "malformed.mdx");
+    const before = await readFile(sourcePath, "utf8");
+
+    const first = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/hardening/supabase",
+    });
+    const second = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/hardening/supabase",
+    });
+
+    expect(first.manifest.counts).toEqual({ usable: 1, degraded: 1, skipped: 0, failed: 0 });
+    expect(first.manifest.diagnostics.find((item) => item.status === "degraded"))
+      .toMatchObject({ repoPath: "malformed.mdx", mode: "mdx-fallback" });
+    expect(first.pages.find((page) => page.repoPath === "malformed.mdx")?.markdown)
+      .toContain("Useful prose remains");
+    expect(second.pages).toEqual(first.pages);
+    expect(await readFile(sourcePath, "utf8")).toBe(before);
+  });
+
+  it("fails strict MDX ingestion with an actionable file-level error", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-mdx-strict-"));
+
+    await expect(ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/hardening/supabase",
+      mdxMode: "strict",
+    })).rejects.toThrowError(/malformed\.mdx in strict MDX mode/);
+  });
+
+  it("writes diagnostics and fails when all files are unusable", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-unusable-"));
+    await writeFile(path.join(cwd, "only.mdx"), "{unfinished(\n", "utf8");
+
+    await expect(ingestLocalMarkdown({ cwd, out: ".agentdocs", source: "." }))
+      .rejects.toThrowError(IngestError);
+    const manifest = IngestManifestSchema.parse(JSON.parse(
+      await readFile(path.join(cwd, ".agentdocs", "sources", "ingest-manifest.json"), "utf8"),
+    ));
+    expect(manifest.counts).toEqual({ usable: 0, degraded: 0, skipped: 1, failed: 0 });
+    expect(manifest.diagnostics[0]).toMatchObject({ repoPath: "only.mdx", status: "skipped" });
+  });
+
+  it("reuses local ingestion for repo sources with repository-relative paths", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-repo-"));
+    const result = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: ".",
+      sourceType: "repo",
+      include: ["fixtures/basic-docs/**/*.md"],
+      exclude: ["**/drafts/**"],
+    });
+
+    expect(result.manifest.sourceType).toBe("repo");
+    expect(result.pages.every((page) => page.sourceType === "repo")).toBe(true);
+    expect(result.pages.map((page) => page.repoPath)).toContain("fixtures/basic-docs/README.md");
   });
 });

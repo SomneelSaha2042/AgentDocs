@@ -19,6 +19,9 @@ export type GenerateStaticArtifactsOptions = {
   linkTaskPacks?: boolean;
   project: ProjectIdentity;
   rules?: string[];
+  preferredFacets?: Record<string, string>;
+  exclusiveKeys?: string[];
+  tasks?: Array<{ id: string; title: string; queries: string[]; requiredFacets: Record<string, string> }>;
 };
 
 export type GeneratedStaticArtifacts = {
@@ -35,6 +38,7 @@ type TaskFamily = {
   id: string;
   keywords: string[];
   title: string;
+  requiredFacets?: Record<string, string>;
 };
 
 const GENERATED_AT = "1970-01-01T00:00:00.000Z";
@@ -99,14 +103,26 @@ export function generateStaticArtifacts(
   options: GenerateStaticArtifactsOptions,
 ): GeneratedStaticArtifacts {
   const inputMap = AgentMapSchema.parse(options.agentMap);
-  const taskPacks = TASK_FAMILIES
-    .map((family) => generateTaskPack(family, inputMap))
+  const families = [...TASK_FAMILIES, ...(options.tasks ?? []).map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: `Complete ${task.title} using source-backed evidence.`,
+    keywords: task.queries,
+    requiredFacets: task.requiredFacets,
+  }))];
+  const taskPacks = families
+    .map((family) => generateTaskPack(
+      family,
+      inputMap,
+      options.preferredFacets ?? {},
+      options.exclusiveKeys ?? [],
+    ))
     .filter((pack): pack is TaskPack => pack !== undefined)
     .sort((left, right) => compareStrings(left.id, right.id));
   validateTaskPackReferences(taskPacks, inputMap);
   const agentMap = AgentMapSchema.parse({ ...inputMap, taskPacks });
   const manifest = ManifestSchema.parse({
-    schemaVersion: "0.1.0",
+    schemaVersion: "0.2.0",
     project: options.project,
     generatedAt: GENERATED_AT,
     sources: sourceEntries(agentMap),
@@ -122,10 +138,13 @@ export function generateStaticArtifacts(
     taskPacks.map((pack) => [pack.id, renderTaskPack(pack, agentMap)]),
   );
   const linkedTaskPacks = options.linkTaskPacks === false ? [] : taskPacks;
+  const contextRules = Object.entries(options.preferredFacets ?? {})
+    .sort(([left], [right]) => compareStrings(left, right))
+    .map(([key, value]) => `Preferred context: ${key}=${value}.`);
   return {
-    agentsMd: renderAgentsMd(options.project, agentMap, linkedTaskPacks, options.rules ?? []),
+    agentsMd: renderAgentsMd(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     agentMap,
-    llmsTxt: renderLlmsTxt(options.project, agentMap, linkedTaskPacks, options.rules ?? []),
+    llmsTxt: renderLlmsTxt(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     manifest,
     taskPackMarkdown,
     taskPacks,
@@ -135,7 +154,13 @@ export function generateStaticArtifacts(
 function generateTaskPack(
   family: TaskFamily,
   agentMap: AgentMap,
+  preferredFacets: Record<string, string>,
+  exclusiveKeys: string[],
 ): TaskPack | undefined {
+  const requestedFacets = {
+    ...preferredFacets,
+    ...(family.requiredFacets ?? {}),
+  };
   const candidates = agentMap.chunks
     .map((chunk) => ({
       chunk,
@@ -145,10 +170,23 @@ function generateTaskPack(
         chunk.headingPath,
         pageTitle(agentMap, chunk.pageId),
       ),
+      facetScore: facetSelectionScore(chunk.facets, requestedFacets),
     }))
     .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id));
-  const ranked = diversifyTaskChunks(candidates, 5);
+    .filter(({ chunk }) => contextCompatible(chunk.facets, requestedFacets, exclusiveKeys))
+    .sort((left, right) =>
+      right.facetScore - left.facetScore
+      || right.score - left.score
+      || compareStrings(left.chunk.id, right.chunk.id));
+  const anchoredFacets = anchorExclusiveFacets(
+    candidates[0]?.chunk.facets ?? [],
+    requestedFacets,
+    exclusiveKeys,
+  );
+  const ranked = diversifyTaskChunks(
+    candidates.filter(({ chunk }) => contextCompatible(chunk.facets, anchoredFacets, exclusiveKeys)),
+    5,
+  );
   if (ranked.length === 0) {
     return undefined;
   }
@@ -209,22 +247,79 @@ function generateTaskPack(
         .map((block) => block.value);
     }),
   ).slice(0, 4);
+  const context = taskContext(ranked.map(({ chunk }) => chunk.facets), exclusiveKeys);
+  const baseConfidence = strongest >= 6 && requiredPages.length >= 2
+    ? "high"
+    : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
+      ? "medium"
+      : "low";
   return TaskPackSchema.parse({
     id: family.id,
     title: family.title,
     description: family.description,
-    confidence: strongest >= 6 && requiredPages.length >= 2
-      ? "high"
-      : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
-        ? "medium"
-        : "low",
+    confidence: context.conflicts.length > 0 && baseConfidence === "high" ? "medium" : baseConfidence,
     requiredPages,
     relatedEntities,
     steps,
     gotchas,
     codeExamples,
     evidence,
+    context,
   });
+}
+
+function facetSelectionScore(
+  facets: AgentMap["chunks"][number]["facets"],
+  preferred: Record<string, string>,
+): number {
+  return Object.entries(preferred).reduce((score, [key, value]) =>
+    score + (facets.some((facet) => facet.key === key && facet.value === value) ? 10 : 0), 0);
+}
+
+function anchorExclusiveFacets(
+  facets: AgentMap["chunks"][number]["facets"],
+  requested: Record<string, string>,
+  exclusiveKeys: string[],
+): Record<string, string> {
+  const anchored = { ...requested };
+  for (const key of exclusiveKeys) {
+    if (anchored[key] !== undefined) continue;
+    const values = stableUnique(facets.filter((facet) => facet.key === key).map((facet) => facet.value));
+    if (values.length === 1) anchored[key] = values[0]!;
+  }
+  return anchored;
+}
+
+function contextCompatible(
+  facets: AgentMap["chunks"][number]["facets"],
+  requested: Record<string, string>,
+  exclusiveKeys: string[],
+): boolean {
+  return exclusiveKeys.every((key) => {
+    const expected = requested[key];
+    const values = stableUnique(facets.filter((facet) => facet.key === key).map((facet) => facet.value));
+    return expected === undefined || values.length === 0 || values.every((value) => value === expected);
+  });
+}
+
+function taskContext(
+  groups: Array<AgentMap["chunks"][number]["facets"]>,
+  exclusiveKeys: string[],
+): TaskPack["context"] {
+  const facets = groups.flat();
+  const values = Object.fromEntries(stableUnique(facets.map((facet) => facet.key)).map((key) => [
+    key,
+    stableUnique(facets.filter((facet) => facet.key === key).map((facet) => facet.value)),
+  ]));
+  const conflicts = exclusiveKeys.flatMap((key) => {
+    const keyValues = values[key] ?? [];
+    return keyValues.length < 2 ? [] : [{
+      key,
+      values: keyValues,
+      evidence: stableEvidence(facets.filter((facet) => facet.key === key).flatMap((facet) => facet.evidence)),
+    }];
+  });
+  return { facets: values, conflicts };
 }
 
 function diversifyTaskChunks<T extends { chunk: { id: string; pageId: string } }>(
@@ -248,8 +343,10 @@ function diversifyTaskChunks<T extends { chunk: { id: string; pageId: string } }
 }
 
 function hasStrongTaskEvidence(family: TaskFamily, texts: string[]): boolean {
-  return family.id === "installation" && texts.some((text) =>
-    /(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(text),
+  return texts.some((text) =>
+    (family.id === "installation"
+      && /(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(text))
+    || (family.id === "quickstart" && /\bnpm\s+create\b/i.test(text)),
   );
 }
 
@@ -387,6 +484,10 @@ ${pack.description}
 ## Required context
 
 ${pack.requiredPages.map((pageId) => `- ${pageTitle(agentMap, pageId)}: ${sourceReference(agentMap.pages.find((page) => page.id === pageId)!)}`).join("\n")}
+
+Context facets: ${Object.entries(pack.context.facets).map(([key, values]) => `${key}=${values.join("|")}`).join(", ") || "Unknown"}
+
+${pack.context.conflicts.length === 0 ? "No exclusive context conflicts detected." : pack.context.conflicts.map((conflict) => `WARNING: Conflicting ${conflict.key} context: ${conflict.values.join(", ")}.`).join("\n")}
 
 ## Steps
 

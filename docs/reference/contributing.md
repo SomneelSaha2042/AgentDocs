@@ -14,6 +14,7 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm regression:fixtures
 pnpm docs:build
 pnpm pack:verify
 pnpm smoke:bundle

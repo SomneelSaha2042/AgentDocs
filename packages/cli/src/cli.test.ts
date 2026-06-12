@@ -17,7 +17,7 @@ describe("agentdocs CLI", () => {
     expect(help).toContain("try [options] <url-or-path>");
     expect(help).toContain("context <goal>");
     expect(help).toContain("crawl [options] <url>");
-    expect(help).toContain("ingest <path>");
+    expect(help).toContain("ingest [options] <path>");
     expect(help).toContain("serve-mcp");
   });
 
@@ -32,6 +32,7 @@ describe("agentdocs CLI", () => {
     const search = createProgram().commands.find(
       (command) => command.name() === "search",
     );
+    const ingest = createProgram().commands.find((command) => command.name() === "ingest");
     const serveMcp = createProgram().commands.find(
       (command) => command.name() === "serve-mcp",
     );
@@ -42,6 +43,7 @@ describe("agentdocs CLI", () => {
     expect(crawl?.helpInformation()).toContain("--include <glob>");
     expect(doctor?.helpInformation()).toContain("--min-score <n>");
     expect(search?.helpInformation()).toContain("--limit <n>");
+    expect(ingest?.helpInformation()).toContain("--strict");
     expect(serveMcp?.description()).toContain("local AgentDocs MCP server");
   });
 

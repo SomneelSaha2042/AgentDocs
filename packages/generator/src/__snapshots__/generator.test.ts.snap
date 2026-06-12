@@ -72,6 +72,10 @@ Install the documented packages using source-backed commands.
 
 - Setup: setup.md
 
+Context facets: Unknown
+
+No exclusive context conflicts detected.
+
 ## Steps
 
 1. **Setup**: Install and configure the client. Code example available below.
@@ -101,6 +105,10 @@ Start using the project from the strongest available setup evidence.
 ## Required context
 
 - Setup: setup.md
+
+Context facets: Unknown
+
+No exclusive context conflicts detected.
 
 ## Steps
 

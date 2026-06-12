@@ -17,23 +17,29 @@ options. The runner saves the top five results for every query, verifies a
 second build has the same generated-artifact hash, and keeps
 `agent_task_passed` as an explicit human judgment.
 
+Committed offline fixtures now gate the context boundaries exposed by this
+matrix. Run `pnpm regression:fixtures` to verify version, framework, and router
+filters; mixed-context warnings; tolerant MDX ingestion; and quickstart
+generation. Live target results below remain historical until each target is
+prepared and rerun.
+
 ## Current Status
 
 | Workflow | Prepared locally | Regression | Agent task | Current finding |
 | --- | --- | --- | --- | --- |
-| AgentDocs self-dogfood | Yes, docs-only source | Passed: 13 pages, 2 packs, readiness 88 | Passed | `inspect task-pack <id>` was implemented after inspecting generated task packs and `agent-map.json`; requested build/test/MCP/search/doctor/contribution pack coverage is incomplete |
-| Hono dependency-user flow | Yes, local repo and website crawl | Local: 85 pages, 7 packs, 93; website: 100 pages, 4 packs, 81 | Pending | Cloudflare Workers search passes; `quickstart` and `migration` return no results; website crawl inferred `/` and collected examples beyond docs |
-| Fastify versioning flow | Yes, local repo and website crawl | Local: 43 pages, 6 packs, 93; website: 100 pages, 5 packs, 85 | Pending | Local context does not clearly identify v5 and ranks V3 migration guidance; website context mixes several v5 minor-version pages |
+| AgentDocs self-dogfood | Yes, docs-only source | Passed: 13 pages, 3 packs, readiness 90 | Passed | `inspect task-pack <id>` remains the completed implementation task |
+| Hono dependency-user flow | Yes, local repo and prepared website crawl | Local: 85 pages, 7 packs, 93; prepared crawl: 100 pages, 4 packs, 81 | Pending | Local quickstart task pack is restored with source-backed setup evidence; prepared crawl was rebuilt, not recrawled |
+| Fastify versioning flow | Yes, local repo and prepared website crawl | Local: 43 pages, 4 packs, 93; prepared crawl: 100 pages, 5 packs, 85 | Pending | v5-filtered migration and schema searches contain only v5 evidence; unfiltered migration warns about mixed versions |
 | Prisma local-docs monorepo | Blocked | Not run | Pending | Upstream repository contains Windows-invalid filenames; sparse checkout did not materialize the intended docs subtree |
-| Supabase large-MDX stress test | Yes | Failed before build | Pending | MDX normalization aborts on custom expressions in `_partials/api_keys_deprecation.mdx` |
-| TanStack Query multi-framework test | Yes | Passed: 493 pages, 7 packs, readiness 90 | Pending | React and Svelte-specific searches route correctly, but generic query invalidation ranks Angular first |
-| Next.js large-site crawl | Yes | Passed: 100 pages, 7 packs, readiness 90 | Pending | Route-handler search passes; error handling mixes Pages Router and server-actions ranking is weak |
+| Supabase large-MDX stress test | Yes | Passed: 737 pages, 9 packs, readiness 94 | Pending | Tolerant MDX completed with 731 usable, 6 degraded, and 45 failed files recorded in diagnostics |
+| TanStack Query multi-framework test | Yes | Passed: 411 pages, 7 packs, readiness 90 | Pending | React-filtered query invalidation contains only React evidence; unfiltered retrieval warns about framework mixing |
+| Next.js large-site crawl | Yes, prepared crawl | Passed: 100 pages, 7 packs, readiness 90 | Pending | Prepared crawl rebuilt deterministically; a live recrawl and App Router agent task remain unjudged |
 
 Octokit REST is an additional prepared local-docs target. Its regression passed
 with 14 pages, 4 packs, readiness 95, and a stable repeated build.
 
-All completed regressions produced stable repeated-build hashes and zero known
-broken internal links. Regression output is stored under each prepared target's
+All completed post-hardening regressions produced stable repeated-build hashes.
+Regression output is stored under each prepared target's
 ignored `results/` directory and summarized in
 `.dogfood/regression-summary.csv`.
 

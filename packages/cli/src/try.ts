@@ -27,6 +27,9 @@ export type TryOptions = {
   writeLlmsTxt?: boolean;
   writeManifest?: boolean;
   writeTaskPacks?: boolean;
+  context?: BuildOptions["context"];
+  mdxMode?: "tolerant" | "strict";
+  tasks?: BuildOptions["tasks"];
 };
 
 export async function runTry(options: TryOptions): Promise<TryResult> {
@@ -41,6 +44,7 @@ export async function runTry(options: TryOptions): Promise<TryResult> {
         out: options.out,
         sitemap: options.sitemap,
         startUrl: options.source,
+        contextRules: options.context?.rules,
       })
     : undefined;
   if (sourceKind === "local_markdown") {
@@ -48,6 +52,8 @@ export async function runTry(options: TryOptions): Promise<TryResult> {
       cwd: options.cwd,
       out: options.out,
       source: options.source,
+      contextRules: options.context?.rules,
+      mdxMode: options.mdxMode,
     });
   }
 
@@ -60,6 +66,8 @@ export async function runTry(options: TryOptions): Promise<TryResult> {
     writeLlmsTxt: options.writeLlmsTxt,
     writeManifest: options.writeManifest,
     writeTaskPacks: options.writeTaskPacks,
+    context: options.context,
+    tasks: options.tasks,
   });
   const doctor = await runDoctor({
     config: options.config,

@@ -18,9 +18,14 @@ export type IngestOptions = {
   source: string;
   include?: string[];
   exclude?: string[];
+  facets?: Record<string, string>;
+  contextRules?: Array<{ match: string; facets: Record<string, string> }>;
+  mdxMode?: "tolerant" | "strict";
+  sourceType?: "local_markdown" | "repo";
 };
 
 export type IngestResult = {
+  manifest: IngestManifest;
   manifestPath: string;
   pages: DocPage[];
 };
@@ -61,6 +66,7 @@ export async function ingestLocalMarkdown(
   }
 
   const pages: DocPage[] = [];
+  const diagnostics: IngestManifest["diagnostics"] = [];
   for (const filePath of files) {
     const markdown = await readFile(filePath, "utf8");
     const sourceRelativePath = sourceStats.isDirectory()
@@ -78,14 +84,42 @@ export async function ingestLocalMarkdown(
         : configuredSourcePath
       : sourceRelativePath;
     try {
-      pages.push(normalizeMarkdown({
+      const page = normalizeMarkdown({
         markdown,
         format: path.extname(filePath).toLowerCase() === ".mdx" ? "mdx" : "markdown",
         repoPath,
-      }));
+        context: { fixed: options.facets, rules: options.contextRules },
+        mdxMode: options.mdxMode ?? "tolerant",
+        sourceType: options.sourceType ?? "local_markdown",
+      });
+      if (!hasUsefulPageContent(page)) {
+        diagnostics.push({
+          repoPath: toPosixPath(repoPath),
+          status: "skipped",
+          mode: page.normalization.mode === "mdx-fallback" ? "mdx-fallback" : "strict",
+          warnings: page.normalization.warnings,
+          message: "No useful prose, headings, or fenced code remained after normalization.",
+        });
+        continue;
+      }
+      pages.push(page);
+      diagnostics.push({
+        repoPath: toPosixPath(repoPath),
+        status: page.normalization.mode === "mdx-fallback" ? "degraded" : "usable",
+        mode: page.normalization.mode === "mdx-fallback" ? "mdx-fallback" : "strict",
+        warnings: page.normalization.warnings,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new IngestError(`Failed to ingest ${toPosixPath(repoPath)}: ${message}`);
+      if (options.mdxMode === "strict") {
+        throw new IngestError(`Failed to ingest ${toPosixPath(repoPath)} in strict MDX mode: ${message}`);
+      }
+      diagnostics.push({
+        repoPath: toPosixPath(repoPath),
+        status: "failed",
+        warnings: [],
+        message,
+      });
     }
   }
 
@@ -103,9 +137,16 @@ export async function ingestLocalMarkdown(
 
   const manifest = IngestManifestSchema.parse({
     schemaVersion: 1,
-    sourceType: "local_markdown",
+    sourceType: options.sourceType ?? "local_markdown",
     sourcePath: sourceIdentity,
     pageCount: pages.length,
+    counts: {
+      usable: diagnostics.filter((item) => item.status === "usable").length,
+      degraded: diagnostics.filter((item) => item.status === "degraded").length,
+      skipped: diagnostics.filter((item) => item.status === "skipped").length,
+      failed: diagnostics.filter((item) => item.status === "failed").length,
+    },
+    diagnostics,
     pages: manifestPages,
   });
 
@@ -121,7 +162,25 @@ export async function ingestLocalMarkdown(
   await writeJson(manifestPath, manifest);
   await writeJson(stateManifestPath, manifest);
 
-  return { manifestPath, pages: validatedPages };
+  if (validatedPages.length === 0) {
+    throw new IngestError(
+      `No useful Markdown or MDX pages remained after normalization. Diagnostics were written to ${manifestPath}.`,
+    );
+  }
+
+  return { manifest, manifestPath, pages: validatedPages };
+}
+
+function hasUsefulPageContent(page: DocPage): boolean {
+  if (page.headings.some((heading) => heading.text.trim().length > 0)) return true;
+  if (page.codeBlocks.some((block) => block.value.trim().length > 0)) return true;
+  return page.markdown
+    .replace(/^---[\s\S]*?---/m, "")
+    .replace(/<!-- AgentDocs omitted MDX [^>]+ -->/g, "")
+    .replace(/[#>*_`~[\]()!-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .length >= 24;
 }
 
 async function statSource(sourcePath: string) {

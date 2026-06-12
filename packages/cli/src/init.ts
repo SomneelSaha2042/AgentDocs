@@ -51,6 +51,25 @@ agent:
   rules:
     - Do not use deprecated APIs.
 
+context:
+  preferred: {}
+  exclusiveKeys: [version, framework, router, runtime]
+  rules:
+    # - match: "**/react/**"
+    #   facets:
+    #     framework: react
+    []
+
+normalization:
+  mdx: tolerant
+
+tasks: []
+  # - id: route-handler
+  #   title: App Router route handler
+  #   queries: [route handler, POST route]
+  #   requiredFacets:
+  #     router: app
+
 doctor:
   minScore: 70
   failOnBrokenLinks: false

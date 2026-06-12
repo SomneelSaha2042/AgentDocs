@@ -67,7 +67,7 @@ export function buildAgentMap(options: BuildAgentMapOptions): AgentMap {
   }
 
   const agentMap = AgentMapSchema.parse({
-    schemaVersion: "0.1.0",
+    schemaVersion: "0.2.0",
     pages,
     chunks,
     entities: [...entityMap.values()].map(sortEntity).sort(compareEntities),

@@ -422,6 +422,25 @@ describe("crawlWebsite", () => {
     ]);
   });
 
+  it("warns on broad root scope and suggests authoritative include globs", async () => {
+    const origin = await startFixtureServer((path) => {
+      if (path === "/sitemap.xml") return { body: "missing", contentType: "text/plain", status: 404 };
+      return html(`<main><h1>Root</h1>
+        <a href="/docs/start">Docs</a>
+        <a href="/docs/api">API</a>
+        <a href="/examples/demo">Example</a>
+        <a href="/blog/news">Blog</a>
+      </main>`);
+    });
+
+    const result = await crawlWebsite({ maxPages: 1, startUrl: origin });
+
+    expect(result.diagnostics.scopeConfidence).toBe("low");
+    expect(result.diagnostics.suggestedIncludes).toContain("/docs/**");
+    expect(result.warnings).toContainEqual(expect.stringContaining("broad_inferred_scope"));
+    expect(result.pages[0]?.page.canonicalUrl).toBe(`${origin}/`);
+  });
+
   it("normalizes locale query variants before crawling", async () => {
     const requestedPaths: string[] = [];
     const origin = await startFixtureServer((path, origin) => {

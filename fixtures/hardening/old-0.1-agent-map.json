@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1.0",
+  "pages": [{
+    "id": "page_old",
+    "sourceType": "local_markdown",
+    "repoPath": "docs/old.md",
+    "title": "Old artifact",
+    "markdown": "# Old artifact\n",
+    "headings": [],
+    "links": [],
+    "codeBlocks": [],
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "discoveredAt": "1970-01-01T00:00:00.000Z",
+    "versionHints": []
+  }],
+  "chunks": [{
+    "id": "chunk_old",
+    "pageId": "page_old",
+    "headingPath": ["Old artifact"],
+    "text": "# Old artifact",
+    "tokenEstimate": 4,
+    "links": [],
+    "entityIds": [],
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }],
+  "entities": [],
+  "edges": [],
+  "taskPacks": []
+}

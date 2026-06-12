@@ -19,6 +19,10 @@ export type ReadinessArtifacts = {
   taskPackFileIds: string[];
   usablePages?: number;
   unusablePages?: number;
+  degradedPages?: number;
+  skippedPages?: number;
+  expectedTaskIds?: string[];
+  preferredFacets?: Record<string, string>;
 };
 
 export type ScanReadinessOptions = {
@@ -59,7 +63,7 @@ export function scanReadiness(options: ScanReadinessOptions): ReadinessReport {
   const score = Math.min(rawScore, qualityCap);
   const impactScale = 100 / available;
   return ReadinessReportSchema.parse({
-    schemaVersion: "0.1.0",
+    schemaVersion: "0.2.0",
     score,
     category: options.category,
     summary: {
@@ -163,6 +167,16 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
     : totalCrawled > 0 && unusablePages > usablePages
       ? "warn"
       : "pass";
+  const contextConflicts = packs.flatMap((pack) => pack.context.conflicts);
+  const preferredMismatches = Object.entries(options.artifacts.preferredFacets ?? {}).filter(
+    ([key, value]) => packs.some((pack) =>
+      (pack.context.facets[key]?.length ?? 0) > 0
+      && !pack.context.facets[key]!.includes(value)),
+  );
+  const missingExpectedTasks = (options.artifacts.expectedTaskIds ?? [])
+    .filter((id) => !packs.some((pack) => pack.id === id));
+  const degradedOrSkipped = (options.artifacts.degradedPages ?? 0)
+    + (options.artifacts.skippedPages ?? 0);
 
   return [
     check("has_config", "discoverability", 5, options.artifacts.hasConfig ? "pass" : "warn",
@@ -189,6 +203,32 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
           : `${usablePages} useful normalized page(s) are available.`,
       evidence(pages[0]),
       "Inspect raw crawl snapshots and improve extraction before trusting generated context."),
+    check("has_context_facets", "structure", 0,
+      pages.some((page) => page.facets.length > 0) ? "pass" : "warn",
+      pages.some((page) => page.facets.length > 0) ? "Context facets found." : "No context facets found.",
+      pages.filter((page) => page.facets.length > 0).slice(0, 3).map(pageEvidence),
+      "Add version, framework, router, or runtime evidence."),
+    check("has_context_consistency", "version_safety", 0,
+      contextConflicts.length === 0 ? "pass" : "fail",
+      contextConflicts.length === 0 ? "No exclusive context conflicts found." : `${contextConflicts.length} exclusive context conflict(s) found.`,
+      contextConflicts.flatMap((conflict) => conflict.evidence),
+      "Split task evidence by exclusive version, framework, router, or runtime context."),
+    check("matches_preferred_context", "version_safety", 0,
+      preferredMismatches.length === 0 ? "pass" : "warn",
+      preferredMismatches.length === 0 ? "Generated context matches configured preferences." : `${preferredMismatches.length} preferred context value(s) are not matched.`,
+      [], "Add canonical evidence for the configured preferred context."),
+    check("has_normalization_quality", "structure", 0,
+      degradedOrSkipped === 0 ? "pass" : "warn",
+      degradedOrSkipped === 0 ? "No degraded or skipped normalized pages." : `${degradedOrSkipped} page(s) were degraded or skipped during normalization.`,
+      [], "Review normalization diagnostics and unsupported MDX."),
+    check("has_expected_task_coverage", "task_coverage", 0,
+      missingExpectedTasks.length === 0 ? "pass" : "fail",
+      missingExpectedTasks.length === 0 ? "All configured tasks are covered." : `Missing configured task packs: ${missingExpectedTasks.join(", ")}.`,
+      [], "Add source evidence matching each configured task query."),
+    check("has_entity_extraction", "structure", 0,
+      !hasPages || entities.length > 0 ? "pass" : "warn",
+      entities.length > 0 ? `${entities.length} entities extracted.` : "No entities extracted from the corpus.",
+      [], "Add concrete commands, imports, routes, configuration, or version evidence."),
     check("has_titles", "structure", 3,
       pages.length > 0 && pages.every((page) => page.title.trim().length > 0) ? "pass" : "fail",
       pages.length > 0 && pages.every((page) => page.title.trim().length > 0)
@@ -352,7 +392,20 @@ function readinessQualityCap(options: ScanReadinessOptions): number {
   if (usable === 0 || (options.agentMap?.chunks.length ?? 0) === 0) {
     return 40;
   }
-  return unusable > usable ? 60 : 100;
+  let cap = 100;
+  if (options.agentMap?.taskPacks.some((pack) => pack.context.conflicts.length > 0)) cap = Math.min(cap, 69);
+  const preferred = options.artifacts.preferredFacets ?? {};
+  if (Object.entries(preferred).some(([key, value]) =>
+    options.agentMap?.taskPacks.some((pack) =>
+      (pack.context.facets[key]?.length ?? 0) > 0 && !pack.context.facets[key]!.includes(value)))) {
+    cap = Math.min(cap, 79);
+  }
+  const degraded = (options.artifacts.degradedPages ?? 0) + (options.artifacts.skippedPages ?? 0);
+  const normalizedTotal = usable + degraded;
+  if (normalizedTotal > 0 && degraded / normalizedTotal > 0.5) cap = Math.min(cap, 59);
+  else if (normalizedTotal > 0 && degraded / normalizedTotal > 0.2) cap = Math.min(cap, 79);
+  if (unusable > usable) cap = Math.min(cap, 59);
+  return cap;
 }
 
 function pageEvidence(page: DocPage): Evidence {

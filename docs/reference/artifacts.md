@@ -14,3 +14,5 @@
 
 Generated JSON and JSONL must pass repository schemas before a build succeeds.
 Task packs are emitted only when the source provides sufficient task evidence.
+New build artifacts use schema `0.2.0`. Readers accept `0.1.0` agent maps,
+manifests, and readiness reports and upgrade missing context facets in memory.

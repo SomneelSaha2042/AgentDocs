@@ -2,7 +2,7 @@ import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "AgentDocs",
-  description: "Deterministic, local-first tooling for agent-readable documentation.",
+  description: "Deterministic, local-first, context-safe tooling for agent-readable documentation.",
   base: "/AgentDocs/",
   // Explicit file URLs keep the deployed artifact portable and verifiable.
   cleanUrls: false,

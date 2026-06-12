@@ -59,25 +59,22 @@ export class ArtifactService {
     await this.loadAgentMap();
   }
 
-  async searchDocs(query: string, limit = 8, task?: string) {
+  async searchDocs(
+    query: string,
+    limit = 8,
+    task?: string,
+    facets?: Record<string, string>,
+  ) {
     validateLimit(limit);
     const response = await searchIndex({
       cwd: this.options.cwd,
       out: this.options.out,
       query,
-      limit: task === undefined ? limit : 100,
+      limit,
+      task,
+      facets,
     });
-    if (task === undefined) {
-      return response;
-    }
-    const pack = await this.getTaskPack(task);
-    const requiredPages = new Set(pack.requiredPages);
-    return {
-      ...response,
-      results: response.results
-        .filter((result) => requiredPages.has(result.pageId))
-        .slice(0, limit),
-    };
+    return response;
   }
 
   async getPage(pageId: string): Promise<DocPage> {
@@ -104,7 +101,7 @@ export class ArtifactService {
     return { ...pack, markdown };
   }
 
-  async getAgentStartContext(goal: string) {
+  async getAgentStartContext(goal: string, facets?: Record<string, string>) {
     const map = await this.loadAgentMap();
     const normalized = goal.toLowerCase();
     const ranked = map.taskPacks
@@ -119,7 +116,7 @@ export class ArtifactService {
       .sort((left, right) =>
         right.score - left.score || compareStrings(left.pack.id, right.pack.id));
     const selected = (ranked[0]?.score ?? 0) >= 3 ? ranked[0]?.pack : undefined;
-    const goalBundle = await this.buildGoalBundle(goal);
+    const goalBundle = await this.buildGoalBundle(goal, facets);
     const supportingResources = stableUnique([
       ...goalBundle.supportingResources,
       ...(selected?.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`) ?? []),
@@ -140,9 +137,9 @@ export class ArtifactService {
     };
   }
 
-  private async buildGoalBundle(goal: string) {
+  private async buildGoalBundle(goal: string, facets?: Record<string, string>) {
     const map = await this.loadAgentMap();
-    const search = await this.searchDocs(goal, 12);
+    const search = await this.searchDocs(goal, 12, undefined, facets);
     const chunks = new Map(map.chunks.map((chunk) => [chunk.id, chunk]));
     const candidates = (search.results.length > 0
       ? search.results
@@ -194,6 +191,7 @@ export class ArtifactService {
       steps,
       gotchas,
       supportingResources: stableUnique(steps.map((step) => step.resource)),
+      warnings: search.warnings,
     };
   }
 

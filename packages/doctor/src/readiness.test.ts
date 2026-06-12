@@ -194,4 +194,44 @@ describe("scanReadiness", () => {
       .toBe("warn");
     expect(report.score).toBeLessThanOrEqual(60);
   });
+
+  it("caps unavoidable mixed exclusive task context and fails missing configured tasks", () => {
+    const v3 = normalizeMarkdown({
+      markdown: "---\nversion: v3\n---\n# Migration\n\nUpgrade the schema.\n\n```js\nmigrate()\n```\n",
+      repoPath: "v3/migration.md",
+    });
+    const v5 = normalizeMarkdown({
+      markdown: "---\nversion: v5\n---\n# Migration\n\nUpgrade the schema.\n",
+      repoPath: "v5/migration.md",
+    });
+    const mixed = { ...v3, facets: [...v3.facets, ...v5.facets] };
+    const generated = generateStaticArtifacts({
+      agentMap: buildAgentMap({
+        pages: [mixed],
+        chunks: chunkMarkdownByHeading(mixed),
+      }),
+      project: { name: "Fixture", slug: "fixture" },
+      exclusiveKeys: ["version"],
+    });
+    const report = scanReadiness({
+      agentMap: generated.agentMap,
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: true,
+        hasConfig: true,
+        hasLlmsTxt: true,
+        hasSitemap: false,
+        taskPackFileIds: generated.taskPacks.map((pack) => pack.id),
+        expectedTaskIds: ["route-handler"],
+      },
+    });
+
+    expect(generated.taskPacks.find((pack) => pack.id === "migration")?.context.conflicts[0])
+      .toMatchObject({ key: "version", values: ["v3", "v5"] });
+    expect(report.checks.find((check) => check.id === "has_context_consistency")?.status)
+      .toBe("fail");
+    expect(report.checks.find((check) => check.id === "has_expected_task_coverage")?.status)
+      .toBe("fail");
+    expect(report.score).toBeLessThanOrEqual(69);
+  });
 });

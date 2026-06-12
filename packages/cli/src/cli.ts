@@ -35,6 +35,16 @@ function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function facetRecord(values: string[]): Record<string, string> {
+  return Object.fromEntries(values.map((value) => {
+    const separator = value.indexOf("=");
+    if (separator < 1 || separator === value.length - 1) {
+      throw new InvalidArgumentError("facet must use key=value");
+    }
+    return [value.slice(0, separator), value.slice(separator + 1)];
+  }));
+}
+
 function parseInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
@@ -161,6 +171,9 @@ export function createProgram(): Command {
           writeLlmsTxt: config?.output.writeLlmsTxt,
           writeManifest: config?.output.writeMcpManifest,
           writeTaskPacks: config?.output.writeTaskPacks,
+          context: config?.context,
+          mdxMode: config?.normalization.mdx,
+          tasks: config?.tasks,
         });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -229,13 +242,15 @@ export function createProgram(): Command {
   program
     .command("ingest <path>")
     .description("Ingest a local documentation source")
-    .action(async (source: string, _options: unknown, command: Command) => {
+    .option("--strict", "Fail on unsupported MDX instead of using the tolerant fallback")
+    .action(async (source: string, options: { strict?: boolean }, command: Command) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
       const context = await resolveCommandContext(command, globals);
       const result = await ingestLocalMarkdown({
         cwd: context.cwd,
         out: context.out,
         source,
+        mdxMode: options.strict ? "strict" : context.config?.normalization.mdx,
       });
 
       if (globals.json) {
@@ -243,11 +258,13 @@ export function createProgram(): Command {
           `${JSON.stringify({
             manifestPath: result.manifestPath,
             pageCount: result.pages.length,
+            counts: result.manifest.counts,
+            diagnostics: result.manifest.diagnostics,
           })}\n`,
         );
       } else if (!globals.quiet) {
         process.stdout.write(
-          `Ingested ${result.pages.length} page(s) to ${result.manifestPath}\n`,
+          `Ingested ${result.pages.length} page(s) to ${result.manifestPath} (${result.manifest.counts.degraded} degraded, ${result.manifest.counts.skipped} skipped, ${result.manifest.counts.failed} failed)\n${result.manifest.diagnostics.filter((item) => item.status !== "usable").map((item) => `- ${item.repoPath}: ${item.status}${item.message === undefined ? "" : `: ${item.message}`}${item.warnings.length === 0 ? "" : ` (${item.warnings.join(" ")})`}`).join("\n")}${result.manifest.diagnostics.some((item) => item.status !== "usable") ? "\n" : ""}`,
         );
       }
     });
@@ -283,6 +300,8 @@ export function createProgram(): Command {
           writeLlmsTxt: config?.output.writeLlmsTxt,
           writeManifest: config?.output.writeMcpManifest,
           writeTaskPacks: config?.output.writeTaskPacks,
+          context: config?.context,
+          tasks: config?.tasks,
         });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -347,10 +366,11 @@ export function createProgram(): Command {
     .command("search <query>")
     .description("Search the local documentation index")
     .option("--limit <n>", "Maximum results to return", parseInteger)
+    .option("--facet <key=value>", "Hard context facet filter", collect, [])
     .action(
       async (
         query: string,
-        options: { limit?: number },
+        options: { limit?: number; facet: string[] },
         command: Command,
       ) => {
         const globals = command.optsWithGlobals<GlobalOptions>();
@@ -360,6 +380,7 @@ export function createProgram(): Command {
           limit: options.limit,
           out: context.out,
           query,
+          facets: facetRecord(options.facet),
         });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(response)}\n`);
@@ -431,6 +452,23 @@ async function collectConfiguredSources(
         source: source.path,
         include: source.include,
         exclude: source.exclude,
+        facets: source.facets,
+        contextRules: config.context.rules,
+        mdxMode: config.normalization.mdx,
+      });
+      continue;
+    }
+    if (source.type === "repo") {
+      await ingestLocalMarkdown({
+        cwd,
+        out,
+        source: source.path,
+        sourceType: "repo",
+        include: source.include,
+        exclude: source.exclude,
+        facets: source.facets,
+        contextRules: config.context.rules,
+        mdxMode: config.normalization.mdx,
       });
       continue;
     }
@@ -443,12 +481,14 @@ async function collectConfiguredSources(
           include: source.include,
           exclude: source.exclude,
           sitemap: source.sitemap,
+          facets: source.facets,
+          contextRules: config.context.rules,
         });
       }
       continue;
     }
     throw new BuildError(
-      `Configured ${source.type} sources are not implemented yet. Remove the source or use a supported local_markdown or website source.`,
+      `Configured ${source.type} sources are not implemented yet. Remove the source or use a supported local_markdown, repo, or website source.`,
     );
   }
 }

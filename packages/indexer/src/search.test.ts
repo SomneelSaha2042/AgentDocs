@@ -43,9 +43,9 @@ describe("search index", () => {
     await buildSearchIndex({ agentMap: fixtureMap(), cwd: out, out: "." });
 
     await expect(searchIndex({ cwd: out, out: ".", query: "   " }))
-      .resolves.toEqual({ query: "   ", results: [] });
+      .resolves.toEqual({ query: "   ", results: [], warnings: [] });
     await expect(searchIndex({ cwd: out, out: ".", query: "webhook" }))
-      .resolves.toEqual({ query: "webhook", results: [] });
+      .resolves.toEqual({ query: "webhook", results: [], warnings: [] });
   });
 
   it("does not let repeated body terms outrank a stronger title match", async () => {
@@ -175,7 +175,7 @@ describe("search index", () => {
       repoPath: "docs/webhooks.md",
     });
     await expect(searchIndex({ cwd: out, out: ".", query: "api" }))
-      .resolves.toEqual({ query: "api", results: [] });
+      .resolves.toEqual({ query: "api", results: [], warnings: [] });
     expect((await searchIndex({ cwd: out, out: ".", query: "認証" })).results[0])
       .toMatchObject({ pageId: "page_unicode" });
   });
@@ -228,8 +228,67 @@ describe("search index", () => {
       "score=",
     );
     expect(formatSearchResponse(response)).toContain("page=page_auth chunk=chunk_auth");
-    expect(formatSearchResponse({ query: "missing", results: [] }))
+    expect(formatSearchResponse({ query: "missing", results: [], warnings: [] }))
       .toBe('No results found for "missing".\n');
+  });
+
+  it("carries deterministic evidence-linked facets into search results", async () => {
+    const out = await temporaryDirectory();
+    const map = fixtureMap();
+    const evidence = [{ source: "config" as const, quote: "framework=react" }];
+    map.pages[0]!.facets = [{ key: "framework", value: "react", evidence }];
+    map.chunks[0]!.facets = [{ key: "framework", value: "react", evidence }];
+    await buildSearchIndex({ agentMap: AgentMapSchema.parse(map), cwd: out, out: "." });
+
+    const response = await searchIndex({ cwd: out, out: ".", query: "authentication" });
+
+    expect(response.results[0]?.facets).toEqual([
+      { key: "framework", value: "react", evidence },
+    ]);
+    expect(formatSearchResponse(response)).toContain("facets=framework=react");
+  });
+
+  it("hard-filters facets, prefers configured context, warns on mixing, and routes task queries", async () => {
+    const out = await temporaryDirectory();
+    const map = fixtureMap();
+    const evidence = [{ source: "config" as const, quote: "fixture facet" }];
+    map.pages[0]!.facets = [{ key: "framework", value: "react", evidence }];
+    map.chunks[0]!.facets = [{ key: "framework", value: "react", evidence }];
+    map.pages[1]!.facets = [{ key: "framework", value: "vue", evidence }];
+    map.chunks[1]!.facets = [{ key: "framework", value: "vue", evidence }];
+    map.taskPacks = [{
+      id: "quickstart",
+      title: "Quickstart",
+      description: "Start here.",
+      confidence: "high",
+      requiredPages: ["page_auth"],
+      relatedEntities: [],
+      steps: [{ title: "Start", description: "Use the source.", evidence }],
+      gotchas: [],
+      codeExamples: [],
+      evidence,
+      context: { facets: {}, conflicts: [] },
+    }];
+    await buildSearchIndex({
+      agentMap: AgentMapSchema.parse(map),
+      cwd: out,
+      out: ".",
+      preferredFacets: { framework: "react" },
+      exclusiveKeys: ["framework"],
+    });
+
+    const filtered = await searchIndex({
+      cwd: out, out: ".", query: "authentication", facets: { framework: "react" },
+    });
+    expect(filtered.results.every((result) =>
+      result.facets.some((facet) => facet.value === "react"))).toBe(true);
+    const mixed = await searchIndex({ cwd: out, out: ".", query: "authentication" });
+    expect(mixed.results[0]?.pageId).toBe("page_auth");
+    expect(mixed.warnings).toEqual([
+      { code: "context_conflict", key: "framework", values: ["react", "vue"] },
+    ]);
+    const task = await searchIndex({ cwd: out, out: ".", query: "quickstart" });
+    expect(task.results[0]?.pageId).toBe("page_auth");
   });
 });
 

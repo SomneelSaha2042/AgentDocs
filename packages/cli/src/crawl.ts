@@ -12,10 +12,13 @@ import {
   DocPageSchema,
   type CrawlManifest,
 } from "@agentdocs/shared";
+import { applyContextFacets } from "@agentdocs/normalizer";
 
 export type CrawlOptions = WebsiteCrawlOptions & {
   cwd: string;
   out: string;
+  facets?: Record<string, string>;
+  contextRules?: Array<{ match: string; facets: Record<string, string> }>;
 };
 
 export type CrawlOutput = {
@@ -36,6 +39,7 @@ export type CrawlOutput = {
   scope: NonNullable<CrawlManifest["scope"]>;
   sitemapUrls: string[];
   warnings: string[];
+  diagnostics: CrawlManifest["diagnostics"];
 };
 
 export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
@@ -46,7 +50,10 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
   const pages = result.pages.map(({ page, rawHtml, normalizedFrom, markdownAlternateUrl }) => ({
     markdownAlternateUrl,
     normalizedFrom,
-    page: DocPageSchema.parse(page),
+    page: applyContextFacets(DocPageSchema.parse(page), {
+      fixed: options.facets,
+      rules: options.contextRules,
+    }),
     rawHtml,
   }));
   const manifestPages: CrawlManifest["pages"] = pages.map((entry) => ({
@@ -80,6 +87,7 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
     pages: manifestPages,
     unusablePages,
     warnings: result.warnings,
+    diagnostics: result.diagnostics,
   });
   const stateManifestPath = path.join(
     outputRoot,
@@ -124,6 +132,7 @@ export async function crawlToDisk(options: CrawlOptions): Promise<CrawlOutput> {
     scope: result.scope,
     sitemapUrls: result.sitemapUrls,
     warnings: result.warnings,
+    diagnostics: result.diagnostics,
   };
 }
 

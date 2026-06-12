@@ -3,6 +3,38 @@
 Each target was chosen for a different documentation challenge. The findings
 below distinguish successful compilation from successful agent context.
 
+## Hardening fixture regression
+
+The committed offline corpus reproduces the version, framework, router, MDX,
+and quickstart failure modes found during dogfooding. CI now requires filtered
+searches to stay within their requested context, broad mixed-version searches
+to warn, malformed MDX to remain diagnosable in tolerant mode, and a supported
+quickstart to produce a task pack.
+
+## Post-hardening rerun
+
+The local targets and previously prepared crawl artifacts were rebuilt twice
+after hardening. Every successful rerun produced identical generated-artifact
+hashes.
+
+| Target | Before | After | Key result |
+| --- | --- | --- | --- |
+| AgentDocs self-docs | 13 pages, 2 packs, 88 | 13 pages, 3 packs, 90 | Prior implementation task remains passed |
+| Hono local | 85 pages, 7 packs, 93 | 85 pages, 7 packs, 93 | Quickstart task pack restored |
+| Fastify local | 43 pages, 6 packs, 93 | 43 pages, 4 context-safe packs, 93 | v5-filtered migration and schema results contain only v5 evidence |
+| Supabase local MDX | Build aborted | 737 pages, 9 packs, 94 | Build completed with 731 usable, 6 degraded, and 45 failed-file diagnostics |
+| TanStack Query local | 493 pages, 7 packs, 90 | 411 pages, 7 context-safe packs, 90 | React-filtered invalidation results contain only React evidence |
+| Octokit local | 14 pages, 4 packs, 95 | 14 pages, 4 packs, 95 | Stable baseline retained |
+| Hono/Fastify/Next.js prepared crawls | Stable historical builds | Stable post-hardening rebuilds | Live network recrawls remain opt-in |
+
+Unfiltered Fastify migration and TanStack query-invalidation searches emit
+explicit context-conflict warnings. Prisma remains blocked on this Windows
+workspace and must be prepared on Linux/WSL. Dependency implementation tasks
+remain unjudged because the prepared targets contain documentation corpora, not
+runnable task harnesses; they have not been relabeled as failures or passes.
+
+The detailed sections below preserve the June 11, 2026 pre-hardening evidence.
+
 ## AgentDocs self-dogfood
 
 **Result:** 13 pages, 42 chunks, 83 entities, 2 task packs, readiness 88,

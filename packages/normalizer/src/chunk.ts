@@ -48,6 +48,7 @@ export function chunkMarkdownByHeading(
           links,
           entityIds: extractionEntityIds(extraction),
           contentHash,
+          facets: page.facets,
         }),
       );
     }

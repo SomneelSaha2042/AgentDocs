@@ -9,6 +9,7 @@ export type { AgentDocsConfig } from "./config.js";
 export {
   AgentMapSchema,
   CodeBlockSchema,
+  ContextFacetSchema,
   ChunkSchema,
   ContextBundleSchema,
   GoalBundleSchema,
@@ -38,6 +39,7 @@ export {
 export type {
   AgentMap,
   CodeBlock,
+  ContextFacet,
   Chunk,
   ContextBundle,
   GoalBundle,

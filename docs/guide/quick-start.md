@@ -44,6 +44,18 @@ agentdocs doctor
 agentdocs search "authentication"
 ```
 
+Use hard context filters when a task requires a specific version, framework,
+router, or runtime:
+
+```bash
+agentdocs search "migration" --facet version=v5
+agentdocs search "query invalidation" --facet framework=react
+```
+
+Without a filter, AgentDocs preserves relevant mixed results but emits an
+explicit context warning. Configure preferred context and custom task packs in
+`agentdocs.config.yaml`.
+
 Inspect the most useful generated files:
 
 ```txt
@@ -65,3 +77,13 @@ The crawler stays on the configured origin by default. AgentDocs parses code
 and commands as untrusted text and never executes them. It records inferred
 scope, sitemap discovery, request counts, failures, and Markdown alternatives
 in `.agentdocs/sources/crawl-manifest.json`.
+
+## Ingest Repository Docs And MDX
+
+Configured `repo` sources reuse local ingestion while preserving
+repository-relative paths. AgentDocs never clones a remote repository.
+
+Tolerant MDX normalization is the default: strict MDX parsing runs first, then
+a deterministic sanitizer preserves useful prose, headings, links, and fenced
+code while recording degraded or failed files. Use `agentdocs ingest --strict`
+or `normalization.mdx: strict` when unsupported MDX must stop the ingest.

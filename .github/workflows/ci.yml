@@ -31,6 +31,7 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm regression:fixtures
       - run: pnpm docs:build
       - run: pnpm pack:verify
       - run: pnpm smoke:bundle

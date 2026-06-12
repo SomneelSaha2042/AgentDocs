@@ -12,11 +12,17 @@ After a build, search does not require network access:
 ```bash
 agentdocs search "webhook signature verification"
 agentdocs search "API key" --limit 5 --json
+agentdocs search "query invalidation" --facet framework=react
+agentdocs search "migration" --facet version=v5
 ```
 
 Node.js runtimes with `node:sqlite` and FTS5 use the SQLite backend. Other
 supported runtimes build a deterministic lexical fallback at the same
 `index.sqlite` path.
+
+Facet filters are hard boundaries. Without them, search boosts query-named and
+configured preferred facets, penalizes conflicting exclusive facets, and emits
+`context_conflict` warnings when returned results still mix contexts.
 
 ## MCP Server
 

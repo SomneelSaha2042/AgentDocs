@@ -54,6 +54,7 @@ describe("buildFromSources", () => {
     expect(chunks.length).toBeGreaterThanOrEqual(3);
     expect(chunks.some((chunk) => chunk.headingPath.includes("Create a client"))).toBe(true);
     const agentMap = AgentMapSchema.parse(JSON.parse(firstAgentMap));
+    expect(JSON.parse(firstAgentMap).schemaVersion).toBe("0.2.0");
     expect(agentMap.entities.length).toBeGreaterThan(0);
     expect(agentMap.edges.some((edge) => edge.type === "links_to")).toBe(true);
     expect(agentMap.edges.every((edge) => edge.evidence.length > 0)).toBe(true);
@@ -64,6 +65,7 @@ describe("buildFromSources", () => {
       expect(taskPack.evidence.length).toBeGreaterThan(0);
     }
     const manifest = ManifestSchema.parse(JSON.parse(firstManifest));
+    expect(JSON.parse(firstManifest).schemaVersion).toBe("0.2.0");
     expect(manifest.counts.taskPacks).toBe(agentMap.taskPacks.length);
     expect(manifest.project.name).toBe("Basic Docs Fixture");
     expect(firstLlmsTxt).toContain("## Task packs");
