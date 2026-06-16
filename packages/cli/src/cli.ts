@@ -13,6 +13,17 @@ import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 import { ReadinessThresholdError, runDoctor } from "./doctor.js";
 import { formatTryResult, runTry } from "./try.js";
 import { buildContextBundle, formatContextBundle } from "./context.js";
+import {
+  buildHandoffBundle,
+  formatContextVerification,
+  formatHandoffBundle,
+  formatSetupSnippets,
+  formatStatusReport,
+  readStatusReport,
+  setupSnippets,
+  verifyContext,
+  writeWorkflowBuildArtifacts,
+} from "./workflow.js";
 import { formatSearchResponse, searchIndex } from "@agentdocs/indexer";
 import type { AgentDocsConfig } from "@agentdocs/shared";
 
@@ -59,6 +70,13 @@ function parseScore(value: string): number {
     throw new InvalidArgumentError("must be an integer from 0 to 100");
   }
   return parsed;
+}
+
+function parseClient(value: string): "codex" | "claude" | "cursor" | "generic" {
+  if (value !== "codex" && value !== "claude" && value !== "cursor" && value !== "generic") {
+    throw new InvalidArgumentError("client must be codex, claude, cursor, or generic");
+  }
+  return value;
 }
 
 function addPlaceholderAction(command: Command): Command {
@@ -152,7 +170,7 @@ export function createProgram(): Command {
         command: Command,
       ) => {
         const globals = command.optsWithGlobals<GlobalOptions>();
-        const { config, cwd, out } = await resolveCommandContext(command, globals);
+        const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
         const result = await runTry({
           config: globals.config,
           cwd,
@@ -175,6 +193,12 @@ export function createProgram(): Command {
           mdxMode: config?.normalization.mdx,
           tasks: config?.tasks,
         });
+        await writeWorkflowBuildArtifacts({
+          config,
+          configPath,
+          cwd,
+          out,
+        });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result)}\n`);
         } else if (!globals.quiet) {
@@ -194,6 +218,69 @@ export function createProgram(): Command {
         process.stdout.write(`${JSON.stringify(result)}\n`);
       } else if (!globals.quiet) {
         process.stdout.write(formatContextBundle(result));
+      }
+    });
+
+  program
+    .command("handoff <goal>")
+    .description("Build an agent-native task handoff from existing artifacts")
+    .action(async (goal: string, _options: unknown, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+      const result = await buildHandoffBundle({ config, configPath, cwd, out }, goal);
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatHandoffBundle(result));
+      }
+    });
+
+  program
+    .command("setup-agent")
+    .description("Print MCP setup snippets for coding-agent clients")
+    .option("--client <client>", "Client to print: codex, claude, cursor, or generic", parseClient)
+    .action(async (options: { client?: "codex" | "claude" | "cursor" | "generic" }, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { out } = await resolveCommandContext(command, globals);
+      const snippets = setupSnippets(out, options.client);
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify({ snippets })}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatSetupSnippets(snippets));
+      }
+    });
+
+  program
+    .command("status")
+    .description("Check whether built AgentDocs artifacts are fresh")
+    .action(async (_options: unknown, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+      const result = await readStatusReport({ config, configPath, cwd, out });
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatStatusReport(result));
+      }
+    });
+
+  program
+    .command("verify-context")
+    .description("Verify that task context is fresh, consistent, and evidence-backed")
+    .requiredOption("--task <goal>", "Task or implementation goal to verify")
+    .option("--facet <key=value>", "Hard context facet filter", collect, [])
+    .action(async (options: { facet: string[]; task: string }, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+      const result = await verifyContext(
+        { config, configPath, cwd, out },
+        options.task,
+        facetRecord(options.facet),
+      );
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(formatContextVerification(result));
       }
     });
 
@@ -287,7 +374,7 @@ export function createProgram(): Command {
           );
         }
         const globals = command.optsWithGlobals<GlobalOptions>();
-        const { config, cwd, out } = await resolveCommandContext(command, globals);
+        const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
         await collectConfiguredSources(config, cwd, out, options.skipCrawl ?? false);
         const result = await buildFromSources({
           cwd,
@@ -303,6 +390,7 @@ export function createProgram(): Command {
           context: config?.context,
           tasks: config?.tasks,
         });
+        await writeWorkflowBuildArtifacts({ config, configPath, cwd, out });
         if (globals.json) {
           process.stdout.write(`${JSON.stringify(result)}\n`);
         } else if (!globals.quiet) {
@@ -312,6 +400,93 @@ export function createProgram(): Command {
         }
       },
     );
+
+  program
+    .command("rebuild")
+    .description("Rebuild AgentDocs artifacts")
+    .option("--changed", "Recollect only stale configured sources before building")
+    .action(async (options: { changed?: boolean }, command: Command) => {
+      if (options.changed !== true) {
+        throw new CommanderError(
+          1,
+          "agentdocs.rebuildRequiresChanged",
+          'The "rebuild" command currently requires --changed.',
+        );
+      }
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+      if (config === undefined) {
+        throw new BuildError('The "rebuild --changed" command requires agentdocs.config.yaml.');
+      }
+      const status = await readStatusReport({ config, configPath, cwd, out });
+      const staleSourceKeys = status.sources.length === 0 || status.state === "unknown"
+        ? undefined
+        : new Set(status.sources
+          .filter((source) => source.state !== "fresh")
+          .map((source) => `${source.type}:${source.value}`));
+      if (staleSourceKeys === undefined || staleSourceKeys.size > 0) {
+        await collectConfiguredSources(config, cwd, out, false, staleSourceKeys);
+      }
+      const result = await buildFromSources({
+        cwd,
+        out,
+        project: { name: config.name, slug: config.slug, version: config.version },
+        rules: config.agent.rules,
+        writeAgentsMd: config.output.writeAgentsMd,
+        writeLlmsTxt: config.output.writeLlmsTxt,
+        writeManifest: config.output.writeMcpManifest,
+        writeTaskPacks: config.output.writeTaskPacks,
+        context: config.context,
+        tasks: config.tasks,
+      });
+      await writeWorkflowBuildArtifacts({ config, configPath, cwd, out });
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(
+          `Rebuilt ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}\n`,
+        );
+      }
+    });
+
+  program
+    .command("watch")
+    .description("Poll for stale AgentDocs sources and rebuild when needed")
+    .option("--interval-ms <n>", "Polling interval", parseInteger, 2000)
+    .option("--once", "Run one polling cycle and exit")
+    .action(async (options: { intervalMs: number; once?: boolean }, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const context = await resolveCommandContext(command, globals);
+      if (context.config === undefined) {
+        throw new BuildError('The "watch" command requires agentdocs.config.yaml.');
+      }
+      do {
+        const status = await readStatusReport(context);
+        if (!globals.quiet) {
+          process.stdout.write(`AgentDocs watch: ${status.state}\n`);
+        }
+        if (status.state !== "fresh") {
+          await collectConfiguredSources(context.config, context.cwd, context.out, false);
+          await buildFromSources({
+            cwd: context.cwd,
+            out: context.out,
+            project: { name: context.config.name, slug: context.config.slug, version: context.config.version },
+            rules: context.config.agent.rules,
+            writeAgentsMd: context.config.output.writeAgentsMd,
+            writeLlmsTxt: context.config.output.writeLlmsTxt,
+            writeManifest: context.config.output.writeMcpManifest,
+            writeTaskPacks: context.config.output.writeTaskPacks,
+            context: context.config.context,
+            tasks: context.config.tasks,
+          });
+          await writeWorkflowBuildArtifacts(context);
+        }
+        if (options.once === true) {
+          break;
+        }
+        await delay(options.intervalMs);
+      } while (true);
+    });
 
   program
     .command("doctor")
@@ -439,11 +614,16 @@ async function collectConfiguredSources(
   cwd: string,
   out: string,
   skipCrawl: boolean,
+  onlySourceKeys?: Set<string>,
 ): Promise<void> {
   if (config === undefined) {
     return;
   }
   for (const source of config.sources) {
+    const sourceValue = source.type === "website" ? source.url : source.path;
+    if (onlySourceKeys !== undefined && !onlySourceKeys.has(`${source.type}:${sourceValue}`)) {
+      continue;
+    }
     if (source.type === "local_markdown") {
       await ingestLocalMarkdown({
         cwd,
@@ -516,10 +696,16 @@ function resolveConfiguredOut(
 
 async function resolveCommandContext(command: Command, globals: GlobalOptions) {
   const cwd = globals.cwd ?? process.cwd();
-  const config = await readOptionalConfig(path.resolve(cwd, globals.config));
+  const configPath = path.resolve(cwd, globals.config);
+  const config = await readOptionalConfig(configPath);
   return {
     config,
+    configPath,
     cwd,
     out: resolveConfiguredOut(command, globals.out, config?.output.dir),
   };
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

@@ -8,10 +8,10 @@ The regression workflow is designed to answer two different questions:
 
 The first question is automated. The second remains an explicit human judgment.
 
-The published findings preserve the June 11, 2026 baseline and a
-post-hardening rerun captured on June 12, 2026. Prepared crawl artifacts were
-rebuilt without a live network recrawl; live website results can change as
-upstream documentation changes.
+The published findings preserve the June 11, 2026 baseline, a post-hardening
+rerun captured on June 12, 2026, and an agent workflow-layer rerun captured on
+June 16, 2026. Prepared crawl artifacts were rebuilt without a live network
+recrawl; live website results can change as upstream documentation changes.
 
 ## Standard capture
 
@@ -53,6 +53,19 @@ pnpm regression:dogfood -- .dogfood/fastify \
 Use `--expect-warning <label>=<warning-code>` when a deliberately broad query
 must report a context conflict. Failed expectations are preserved in
 `summary.json` and fail the regression.
+
+Workflow-layer reruns may also check:
+
+```bash
+agentdocs status
+agentdocs handoff "<task>"
+agentdocs verify-context --task "<task>"
+```
+
+These commands answer a different question from the original build/search
+harness. They do not prove that an agent completed the implementation task;
+they show whether the built context is fresh and whether AgentDocs can produce
+a task-shaped, verified handoff for the requested goal.
 
 CI runs `pnpm regression:fixtures` against the committed hardening corpus. It
 checks version, framework, and router filtering; context-conflict warnings;

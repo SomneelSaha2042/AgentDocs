@@ -32,6 +32,9 @@ context:
 normalization:
   mdx: tolerant
 
+freshness:
+  websiteTtlHours: 24
+
 tasks:
   - id: route-handler
     title: App Router route handler
@@ -62,6 +65,10 @@ chunks, and search results.
 Tolerant MDX normalization is the default. It records diagnostics and uses a
 line-preserving sanitizer only after strict MDX parsing fails. Set
 `normalization.mdx: strict` to fail on unsupported MDX.
+
+`freshness.websiteTtlHours` controls when crawled website sources become stale.
+Local and repository sources use content hashes of configured Markdown/MDX
+files instead.
 
 For the complete contract, see
 [APIS_AND_DOCUMENTATION.md](https://github.com/SomneelSaha2042/AgentDocs/blob/master/APIS_AND_DOCUMENTATION.md).

@@ -16,6 +16,12 @@ describe("agentdocs CLI", () => {
     expect(help).toContain("Usage: agentdocs");
     expect(help).toContain("try [options] <url-or-path>");
     expect(help).toContain("context <goal>");
+    expect(help).toContain("handoff <goal>");
+    expect(help).toContain("setup-agent");
+    expect(help).toContain("status");
+    expect(help).toContain("verify-context");
+    expect(help).toContain("rebuild");
+    expect(help).toContain("watch");
     expect(help).toContain("crawl [options] <url>");
     expect(help).toContain("ingest [options] <path>");
     expect(help).toContain("serve-mcp");
@@ -36,6 +42,12 @@ describe("agentdocs CLI", () => {
     const serveMcp = createProgram().commands.find(
       (command) => command.name() === "serve-mcp",
     );
+    const setupAgent = createProgram().commands.find(
+      (command) => command.name() === "setup-agent",
+    );
+    const verifyContext = createProgram().commands.find(
+      (command) => command.name() === "verify-context",
+    );
 
     expect(crawl?.helpInformation()).toContain("--max-pages <n>");
     expect(tryCommand?.helpInformation()).toContain("--goal <goal>");
@@ -45,6 +57,8 @@ describe("agentdocs CLI", () => {
     expect(search?.helpInformation()).toContain("--limit <n>");
     expect(ingest?.helpInformation()).toContain("--strict");
     expect(serveMcp?.description()).toContain("local AgentDocs MCP server");
+    expect(setupAgent?.helpInformation()).toContain("--client <client>");
+    expect(verifyContext?.helpInformation()).toContain("--task <goal>");
   });
 
   it("creates a schema-valid starter config in --out", async () => {

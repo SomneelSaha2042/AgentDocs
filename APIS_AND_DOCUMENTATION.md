@@ -75,6 +75,81 @@ supporting resources, and a dynamic goal bundle composed from up to five
 complementary evidence sections. Fixed task packs are included only when they
 materially match the goal.
 
+### 2.0.2 `agentdocs handoff <goal>`
+
+Produces the recommended multi-session task handoff from existing artifacts.
+
+```bash
+agentdocs handoff "implement webhook verification"
+agentdocs handoff "build Fastify v5 route" --json
+```
+
+The handoff includes the compact context bundle, selected task pack, top source
+pages, gotchas, setup commands, freshness status, MCP tool/resource suggestions,
+and context warnings. `agentdocs context` remains supported for the earlier
+compact bundle shape.
+
+### 2.0.3 `agentdocs setup-agent`
+
+Prints copy-paste MCP setup snippets for common coding-agent clients.
+
+```bash
+agentdocs setup-agent
+agentdocs setup-agent --client codex
+agentdocs setup-agent --client claude --json
+```
+
+Supported clients are `codex`, `claude`, `cursor`, and `generic`.
+
+### 2.0.4 `agentdocs status`
+
+Checks whether the built context layer is fresh.
+
+```bash
+agentdocs status
+agentdocs status --json
+```
+
+Local and repository sources are compared by deterministic content hash.
+Website sources are fresh until their configured TTL expires. Missing
+`state/build-state.json` reports `unknown`.
+
+### 2.0.5 `agentdocs rebuild --changed`
+
+Recollects stale configured sources and runs the normal build pipeline.
+
+```bash
+agentdocs rebuild --changed
+```
+
+The command requires `agentdocs.config.yaml`. It does not mutate source docs and
+does not use an LLM.
+
+### 2.0.6 `agentdocs watch`
+
+Polls `agentdocs status` and rebuilds when context is stale.
+
+```bash
+agentdocs watch
+agentdocs watch --interval-ms 5000
+agentdocs watch --once
+```
+
+`--once` performs a single check, useful for smoke tests and scripts.
+
+### 2.0.7 `agentdocs verify-context`
+
+Checks whether task context is safe to use.
+
+```bash
+agentdocs verify-context --task "build Fastify v5 route"
+agentdocs verify-context --task "build Fastify v5 route" --facet version=v5 --json
+```
+
+Verification reports `pass`, `warn`, or `fail` for stale artifacts, mixed
+exclusive facets, deprecated evidence, weak or missing task-pack evidence,
+missing canonical sources, and preferred-context mismatches.
+
 ### 2.1 `agentdocs init`
 
 Creates a starter config.
@@ -200,11 +275,13 @@ Outputs:
 ```txt
 .agentdocs/llms.txt
 .agentdocs/AGENTS.md
+.agentdocs/agent-brief.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/index.sqlite
+.agentdocs/state/build-state.json
 ```
 
 Local builds keep generated `llms.txt` and `AGENTS.md` inside `--out` so the
@@ -379,6 +456,9 @@ context:
 
 normalization:
   mdx: tolerant
+
+freshness:
+  websiteTtlHours: 24
 
 doctor:
   minScore: 70
@@ -754,6 +834,56 @@ Required sections:
 ## Recommended next actions
 ```
 
+### 5.8 `agent-brief.md`
+
+Path:
+
+```txt
+.agentdocs/agent-brief.md
+```
+
+Purpose: persistent first-read brief for coding agents.
+
+Required sections:
+
+```md
+# AgentDocs Brief
+
+## Project
+## First Steps
+## Persistent Agent Prompt
+## Preferred Context
+## Task Packs
+## Version Policy
+```
+
+### 5.9 `state/build-state.json`
+
+Purpose: local operational state for freshness checks and changed-source
+rebuilds.
+
+```ts
+type BuildState = {
+  schemaVersion: 1;
+  generatedAt: string;
+  outputDir: string;
+  configHash?: string;
+  sources: {
+    id: string;
+    type: "website" | "local_markdown" | "repo" | "openapi";
+    value: string;
+    hash: string;
+    fileCount?: number;
+    collectedAt: string;
+    expiresAt?: string;
+  }[];
+  artifacts: {
+    path: string;
+    hash: string;
+  }[];
+};
+```
+
 ## 6. SQLite index
 
 MVP database file:
@@ -826,6 +956,24 @@ CREATE TABLE edges (
 The MCP server reads from generated artifacts and the SQLite index.
 
 ### 7.1 Tools
+
+Implemented tools:
+
+```txt
+search_docs
+get_page
+get_task_pack
+get_agent_start_context
+list_available_tasks
+get_task_context
+verify_task_context
+explain_warning
+get_setup_commands
+get_version_policy
+get_code_examples
+find_code_examples
+get_related_pages
+```
 
 #### `search_docs`
 
@@ -930,6 +1078,65 @@ Output:
 }
 ```
 
+#### `list_available_tasks`
+
+Lists generated task packs, confidence, required pages, MCP resources, and
+warnings.
+
+#### `get_task_context`
+
+Input:
+
+```json
+{
+  "goal": "implement webhook signature verification",
+  "facets": {
+    "version": "v5"
+  }
+}
+```
+
+Output: the same handoff bundle shape as `agentdocs handoff --json`.
+
+#### `verify_task_context`
+
+Input:
+
+```json
+{
+  "task": "build Fastify v5 route",
+  "facets": {
+    "version": "v5"
+  }
+}
+```
+
+Output:
+
+```json
+{
+  "schemaVersion": 1,
+  "task": "build Fastify v5 route",
+  "status": "pass",
+  "summary": "Context is safe to use for this task.",
+  "issues": []
+}
+```
+
+#### `explain_warning`
+
+Explains warning codes such as `context_conflict`, `stale_context`, and
+`weak_evidence`.
+
+#### `get_setup_commands`
+
+Returns documented installation/setup commands extracted from source evidence.
+
+#### `get_version_policy`
+
+Returns the configured preferred version when available plus extracted version
+evidence.
+
 #### `get_code_examples`
 
 Input:
@@ -957,6 +1164,10 @@ Output:
   ]
 }
 ```
+
+#### `find_code_examples`
+
+Alias of `get_code_examples`.
 
 #### `get_related_pages`
 

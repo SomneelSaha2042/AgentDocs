@@ -23,6 +23,7 @@ export default defineConfig({
           { text: "Overview", link: "/" },
           { text: "Installation", link: "/guide/installation" },
           { text: "Quick Start", link: "/guide/quick-start" },
+          { text: "Agent Workflow", link: "/guide/agent-workflow" },
           { text: "Readiness Doctor", link: "/guide/doctor" },
           { text: "Search and MCP", link: "/guide/search-mcp" },
           { text: "Architecture and Security", link: "/guide/architecture" },
@@ -35,6 +36,7 @@ export default defineConfig({
         text: "Results",
         items: [
           { text: "Real-World Results", link: "/results/" },
+          { text: "Evaluation History", link: "/results/history" },
           { text: "Findings by Target", link: "/results/findings" },
           { text: "Methodology", link: "/results/methodology" },
         ],

@@ -1,0 +1,138 @@
+import { readFile, writeFile, mkdir, mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import {
+  AgentSetupSnippetSchema,
+  ContextVerificationSchema,
+  HandoffBundleSchema,
+  StatusReportSchema,
+} from "@agentdocs/shared";
+import { describe, expect, it, vi } from "vitest";
+
+import { createProgram } from "./cli.js";
+
+describe("agent workflow CLI", () => {
+  it("prints setup snippets for common MCP clients", async () => {
+    const cwd = await createFixtureProject();
+    const output = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "setup-agent", "--client", "codex",
+      ]);
+    });
+
+    const parsed = JSON.parse(output) as { snippets: unknown[] };
+    expect(parsed.snippets).toHaveLength(1);
+    const snippet = AgentSetupSnippetSchema.parse(parsed.snippets[0]);
+    expect(snippet.client).toBe("codex");
+    expect(snippet.contents).toContain("[mcp_servers.agentdocs]");
+    expect(snippet.prompt).toContain("Use the AgentDocs MCP server before web search.");
+  });
+
+  it("reports fresh, stale, and refreshed status for configured local docs", async () => {
+    const cwd = await createFixtureProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    const fresh = StatusReportSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "status",
+      ]);
+    })));
+    expect(fresh.state).toBe("fresh");
+    expect(await readFile(path.join(cwd, ".agentdocs", "agent-brief.md"), "utf8"))
+      .toContain("Persistent Agent Prompt");
+
+    await writeFile(
+      path.join(cwd, "docs", "auth.md"),
+      "# Authentication\n\n## API key\n\nInstall and use EXAMPLE_API_KEY safely.\n",
+      "utf8",
+    );
+    const stale = StatusReportSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "status",
+      ]);
+    })));
+    expect(stale.state).toBe("stale");
+    expect(stale.sources.some((source) => source.reason.includes("fingerprint changed"))).toBe(true);
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "rebuild", "--changed",
+    ]);
+    const refreshed = StatusReportSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "status",
+      ]);
+    })));
+    expect(refreshed.state).toBe("fresh");
+  });
+
+  it("emits handoff and verification bundles", async () => {
+    const cwd = await createFixtureProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    const handoff = HandoffBundleSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "handoff", "authenticate with api key",
+      ]);
+    })));
+    expect(handoff.mcp.suggestedTools).toContain("get_task_context");
+    expect(handoff.topSources.length).toBeGreaterThan(0);
+
+    const verification = ContextVerificationSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "verify-context", "--task", "authenticate with api key",
+      ]);
+    })));
+    expect(["pass", "warn", "fail"]).toContain(verification.status);
+    expect(verification.freshness?.state).toBe("fresh");
+  });
+
+  it("supports one-cycle watch checks", async () => {
+    const cwd = await createFixtureProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "watch", "--once",
+    ]);
+  });
+});
+
+async function createFixtureProject(): Promise<string> {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-workflow-"));
+  await mkdir(path.join(cwd, "docs"), { recursive: true });
+  await writeFile(
+    path.join(cwd, "docs", "auth.md"),
+    "# Authentication\n\n## Install\n\nRun `npm install @example/sdk`.\n\n## API key\n\nUse EXAMPLE_API_KEY for authentication. Never expose API keys.\n",
+    "utf8",
+  );
+  await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Workflow Fixture
+slug: workflow-fixture
+version: v1
+sources:
+  - type: local_markdown
+    path: ./docs
+doctor:
+  minScore: 0
+`, "utf8");
+  return cwd;
+}
+
+async function captureStdout(action: () => Promise<void>): Promise<string> {
+  const writes: string[] = [];
+  const write = vi.spyOn(process.stdout, "write").mockImplementation((value) => {
+    writes.push(String(value));
+    return true;
+  });
+  try {
+    await action();
+  } finally {
+    write.mockRestore();
+  }
+  return writes.join("");
+}

@@ -1,13 +1,21 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { searchIndex } from "@agentdocs/indexer";
 import {
   AgentMapSchema,
+  BuildStateSchema,
+  ContextBundleSchema,
+  ContextVerificationSchema,
+  HandoffBundleSchema,
   ManifestSchema,
+  StatusReportSchema,
   type AgentMap,
+  type ContextVerification,
   type DocPage,
   type Manifest,
+  type StatusReport,
   type TaskPack,
 } from "@agentdocs/shared";
 
@@ -134,6 +142,206 @@ export class ArtifactService {
       ],
       supportingResources: stableUnique(supportingResources),
       goalBundle,
+    };
+  }
+
+  async listAvailableTasks() {
+    const map = await this.loadAgentMap();
+    return {
+      tasks: map.taskPacks.map((pack) => ({
+        id: pack.id,
+        title: pack.title,
+        confidence: pack.confidence,
+        requiredPages: pack.requiredPages,
+        resources: [`agentdocs://task-packs/${pack.id}.md`],
+        warnings: [
+          ...(pack.confidence === "low" ? ["Evidence is weak."] : []),
+          ...pack.context.conflicts.map((conflict) =>
+            `Conflicting ${conflict.key} context: ${conflict.values.join(", ")}.`),
+        ],
+      })),
+    };
+  }
+
+  async getTaskContext(goal: string, facets?: Record<string, string>) {
+    const start = await this.getAgentStartContext(goal, facets);
+    const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
+    const selected = taskId === undefined ? undefined : await this.getTaskPack(taskId);
+    const search = await this.searchDocs(goal, 5, taskId, facets);
+    const setup = await this.getSetupCommands();
+    const context = ContextBundleSchema.parse({
+      goal,
+      summary: start.summary,
+      readFirst: start.readFirst,
+      rules: start.rules,
+      goalBundle: start.goalBundle,
+      selectedTaskPack: selected === undefined
+        ? undefined
+        : {
+            id: selected.id,
+            title: selected.title,
+            confidence: selected.confidence,
+            markdown: selected.markdown,
+          },
+      supportingResources: start.supportingResources,
+      search,
+    });
+    const freshness = await this.getRecordedStatus();
+    return HandoffBundleSchema.parse({
+      schemaVersion: 1,
+      goal,
+      context,
+      freshness,
+      selectedTaskPack: context.selectedTaskPack,
+      topSources: search.results,
+      gotchas: selected?.gotchas.map((gotcha) => gotcha.text) ?? start.goalBundle.gotchas,
+      setupCommands: setup.commands,
+      mcp: {
+        command: "agentdocs serve-mcp",
+        prompt: "Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
+        suggestedTools: ["get_task_context", "verify_task_context", "search_docs", "find_code_examples"],
+        resources: start.readFirst,
+      },
+      warnings: [
+        ...(freshness.state === "fresh" ? [] : [`Freshness ${freshness.state}: ${freshness.summary}`]),
+        ...search.warnings.map((warning) => `${warning.code}: ${warning.key}=${warning.values.join(",")}`),
+        ...(selected?.context.conflicts.map((conflict) => `context_conflict: ${conflict.key}=${conflict.values.join(",")}`) ?? []),
+        ...(selected?.confidence === "low" ? ["Task-pack evidence is weak."] : []),
+      ],
+    });
+  }
+
+  async verifyTaskContext(task: string, facets?: Record<string, string>): Promise<ContextVerification> {
+    const freshness = await this.getRecordedStatus();
+    const start = await this.getAgentStartContext(task, facets);
+    const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
+    const pack = taskId === undefined ? undefined : await this.getTaskPack(taskId);
+    const search = await this.searchDocs(task, 8, taskId, facets);
+    const issues: ContextVerification["issues"] = [];
+    if (freshness.state !== "fresh") {
+      issues.push({
+        code: "stale_context",
+        severity: freshness.state === "stale" ? "critical" : "warning",
+        message: freshness.summary,
+        evidence: [],
+      });
+    }
+    if (pack === undefined) {
+      issues.push({
+        code: "missing_task_pack",
+        severity: "critical",
+        message: "No matching task pack was found for this task.",
+        evidence: [],
+      });
+    } else {
+      if (pack.confidence === "low") {
+        issues.push({
+          code: "weak_evidence",
+          severity: "warning",
+          message: `Task pack "${pack.id}" has low confidence.`,
+          evidence: pack.evidence,
+        });
+      }
+      for (const conflict of pack.context.conflicts) {
+        issues.push({
+          code: "mixed_context",
+          severity: "critical",
+          message: `Task pack mixes ${conflict.key} values: ${conflict.values.join(", ")}.`,
+          evidence: conflict.evidence,
+        });
+      }
+      for (const [key, value] of Object.entries(facets ?? {})) {
+        const values = pack.context.facets[key] ?? [];
+        if (values.length > 0 && !values.includes(value)) {
+          issues.push({
+            code: "preferred_context_mismatch",
+            severity: "critical",
+            message: `Task pack does not match requested ${key}=${value}.`,
+            evidence: pack.evidence,
+          });
+        }
+      }
+      if (pack.requiredPages.length === 0) {
+        issues.push({
+          code: "missing_canonical_source",
+          severity: "critical",
+          message: "Task pack has no required source pages.",
+          evidence: pack.evidence,
+        });
+      }
+      for (const gotcha of pack.gotchas.filter((item) => /deprecated/i.test(item.text))) {
+        issues.push({
+          code: "deprecated_evidence",
+          severity: "warning",
+          message: gotcha.text,
+          evidence: gotcha.evidence,
+        });
+      }
+    }
+    for (const warning of search.warnings) {
+      issues.push({
+        code: "mixed_search_context",
+        severity: "warning",
+        message: `Search results mix ${warning.key} values: ${warning.values.join(", ")}.`,
+        evidence: [],
+      });
+    }
+    const status = issues.some((issue) => issue.severity === "critical")
+      ? "fail"
+      : issues.length > 0
+        ? "warn"
+        : "pass";
+    return ContextVerificationSchema.parse({
+      schemaVersion: 1,
+      task,
+      status,
+      summary: status === "pass"
+        ? "Context is safe to use for this task."
+        : status === "fail"
+          ? "Context has critical issues. Stop and refresh or narrow context before using it."
+          : "Context has warnings. Review before using it.",
+      issues,
+      freshness,
+    });
+  }
+
+  async explainWarning(code: string) {
+    const explanations: Record<string, string> = {
+      context_conflict: "Results or task packs contain mutually exclusive context such as multiple versions, frameworks, routers, or runtimes.",
+      stale_context: "The built AgentDocs artifacts are stale or their freshness cannot be verified from recorded build state.",
+      weak_evidence: "The selected task pack was generated from limited evidence and requires manual review before implementation.",
+      missing_task_pack: "No task-specific context bundle matched the requested goal.",
+      deprecated_evidence: "The selected context includes deprecated evidence or warnings that should not be used without replacement guidance.",
+    };
+    return {
+      code,
+      explanation: explanations[code] ?? "Unknown warning code. Inspect task-pack evidence and source pages before using this context.",
+    };
+  }
+
+  async getSetupCommands() {
+    const map = await this.loadAgentMap();
+    const commands = stableUnique(map.entities
+      .filter((entity) => entity.type === "cli_command")
+      .map((entity) => entity.name)
+      .filter((command) => /^(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(command)));
+    return { commands };
+  }
+
+  async getVersionPolicy() {
+    const map = await this.loadAgentMap();
+    const manifest = await this.loadManifest().catch(() => undefined);
+    const versions = stableUnique(map.entities
+      .filter((entity) => entity.type === "version")
+      .map((entity) => entity.name));
+    return {
+      preferredVersion: manifest?.project.version,
+      versionEvidence: versions,
+      policy: manifest?.project.version !== undefined
+        ? `Prefer configured version ${manifest.project.version}.`
+        : versions.length > 0
+          ? `Version evidence found: ${versions.join(", ")}. Verify task context before mixing versions.`
+          : "Unknown. No version policy evidence found.",
     };
   }
 
@@ -277,6 +485,71 @@ export class ArtifactService {
     throw new McpArtifactError(`Resource "${uri}" is not available.`, "NOT_FOUND");
   }
 
+  private async getRecordedStatus(): Promise<StatusReport> {
+    const checkedAt = new Date().toISOString();
+    let state;
+    try {
+      state = BuildStateSchema.parse(
+        JSON.parse(await this.readArtifact("state/build-state.json", "build-state.json was not found.")),
+      );
+    } catch {
+      return StatusReportSchema.parse({
+        schemaVersion: 1,
+        checkedAt,
+        state: "unknown",
+        outputDir: this.options.out,
+        summary: "Freshness is unknown because build-state.json is missing or invalid.",
+        sources: [],
+        artifacts: [],
+        recommendations: ['Run "agentdocs status" or "agentdocs build" outside MCP for live source checks.'],
+      });
+    }
+    const sources = state.sources.map((source) => {
+      const expired = source.expiresAt !== undefined && Date.parse(source.expiresAt) <= Date.parse(checkedAt);
+      return {
+        id: source.id,
+        type: source.type,
+        value: source.value,
+        state: expired ? "stale" as const : "fresh" as const,
+        reason: expired ? "Website source TTL has expired." : "Recorded source was fresh when artifacts were built.",
+        fileCount: source.fileCount,
+        collectedAt: source.collectedAt,
+        expiresAt: source.expiresAt,
+      };
+    });
+    const artifacts = await Promise.all(state.artifacts.map(async (artifact) => {
+      try {
+        const current = await this.readArtifactBuffer(artifact.path, `${artifact.path} was not found.`);
+        const hash = hashBuffer(current);
+        return {
+          path: artifact.path,
+          state: hash === artifact.hash ? "fresh" as const : "stale" as const,
+          reason: hash === artifact.hash ? "Artifact matches recorded build hash." : "Artifact hash changed since build.",
+        };
+      } catch {
+        return { path: artifact.path, state: "missing" as const, reason: "Artifact is missing." };
+      }
+    }));
+    const reportState = sources.some((source) => source.state === "stale")
+      || artifacts.some((artifact) => artifact.state === "stale" || artifact.state === "missing")
+      ? "stale"
+      : "fresh";
+    return StatusReportSchema.parse({
+      schemaVersion: 1,
+      checkedAt,
+      state: reportState,
+      outputDir: this.options.out,
+      summary: reportState === "fresh"
+        ? "Recorded AgentDocs artifacts are fresh."
+        : "Recorded AgentDocs artifacts are stale.",
+      sources,
+      artifacts,
+      recommendations: reportState === "fresh"
+        ? ["No rebuild required from recorded artifact state."]
+        : ['Run "agentdocs status" for live source checks, then "agentdocs rebuild --changed".'],
+    });
+  }
+
   private async loadAgentMap(): Promise<AgentMap> {
     if (this.agentMap !== undefined) {
       return this.agentMap;
@@ -312,13 +585,17 @@ export class ArtifactService {
   }
 
   private async readArtifact(relativePath: string, missingMessage: string): Promise<string> {
+    return (await this.readArtifactBuffer(relativePath, missingMessage)).toString("utf8");
+  }
+
+  private async readArtifactBuffer(relativePath: string, missingMessage: string): Promise<Buffer> {
     const artifactPath = path.resolve(this.outputRoot, relativePath);
     const relative = path.relative(this.outputRoot, artifactPath);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new McpArtifactError("Artifact path escaped the output directory.", "INVALID_ARGUMENT");
     }
     try {
-      return await readFile(artifactPath, "utf8");
+      return await readFile(artifactPath);
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
         throw new McpArtifactError(missingMessage, "NOT_FOUND");
@@ -417,4 +694,8 @@ function stableUnique(values: string[]): string[] {
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function hashBuffer(value: Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
 }

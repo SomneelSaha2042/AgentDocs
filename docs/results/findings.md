@@ -35,6 +35,33 @@ runnable task harnesses; they have not been relabeled as failures or passes.
 
 The detailed sections below preserve the June 11, 2026 pre-hardening evidence.
 
+## Workflow-layer rerun
+
+On June 16, 2026, the documented prepared targets were rerun after adding the
+agent workflow layer: `agentdocs status`, `agentdocs handoff`,
+`agentdocs verify-context`, `agentdocs setup-agent`, `rebuild --changed`,
+`watch`, `.agentdocs/agent-brief.md`, `.agentdocs/state/build-state.json`, and
+the richer task-oriented MCP tools.
+
+All documented prepared targets passed the regression harness again:
+
+| Target | Result | Workflow-layer finding |
+| --- | --- | --- |
+| AgentDocs self-docs | 13 pages, 3 packs, 90 | Fresh; self-dogfood task remains passed. Exact MCP-serving goal needs stronger task-pack routing. |
+| Hono local | 85 pages, 7 packs, 93 | Fresh; handoff selected deployment and verification passed for Cloudflare Worker deployment. |
+| Fastify local | 43 pages, 4 packs, 93 | Fresh; unfiltered migration warns about mixed v3/v4/v5 context as expected. |
+| Supabase local MDX | 737 pages, 9 packs, 94 | Fresh; authentication handoff and auth/RLS verification passed. |
+| TanStack Query local | 411 pages, 7 packs, 90 | Fresh; broad framework queries warn about mixed context. Exact React invalidation goal needs stronger task-pack routing. |
+| Octokit local | 14 pages, 4 packs, 95 | Fresh; compact REST baseline remains stable. |
+| Next.js prepared crawl | 100 pages, 7 packs, 90 | Fresh from prepared crawl rebuild; App Router POST route task still needs richer task-pack routing. |
+| Hono prepared crawl | 100 pages, 4 packs, 81 | Fresh from prepared crawl rebuild; live recrawl remains opt-in. |
+| Fastify prepared crawl | 100 pages, 5 packs, 85 | Fresh from prepared crawl rebuild; migration still routes to the V5 Migration Guide first. |
+
+The important new distinction is that AgentDocs can now say: "the context layer
+is fresh, but this exact task does or does not have safe task-shaped evidence."
+That is more actionable than treating every successful build as an agent-task
+success.
+
 ## AgentDocs self-dogfood
 
 **Result:** 13 pages, 42 chunks, 83 entities, 2 task packs, readiness 88,

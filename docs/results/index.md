@@ -5,7 +5,8 @@ modes: local repositories, bounded website crawls, large MDX trees,
 versioned docs, multi-framework docs, and its own documentation.
 
 > Results baseline: June 11, 2026. Post-hardening rerun: June 12, 2026.
-> Prepared website crawl artifacts were rebuilt without a live recrawl.
+> Agent workflow layer rerun: June 16, 2026. Prepared website crawl artifacts
+> were rebuilt without a live recrawl unless explicitly noted.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
@@ -60,6 +61,20 @@ an agent could receive plausible but unsafe guidance.
 All completed regressions reported zero known broken internal links. Every
 successful target produced the same generated-artifact hash on its second
 build.
+
+## Version history
+
+The published numbers are kept as a history of runs instead of replacing old
+findings with the latest summary.
+
+| Date | Run | Main progress |
+| --- | --- | --- |
+| June 11, 2026 | Baseline | Established first real-world successes and failures across local docs, large MDX trees, versioned docs, multi-framework docs, and prepared website crawls. |
+| June 12, 2026 | Post-hardening | Added context safety, tolerant MDX diagnostics, and regression assertions; Supabase completed and filtered Fastify/TanStack retrieval became safer. |
+| June 16, 2026 | Workflow layer | Reran all documented prepared targets after adding `status`, `handoff`, `verify-context`, setup snippets, build-state freshness, `agent-brief.md`, and richer MCP tools. All prepared targets passed regression; all reported fresh status. |
+
+Read the [evaluation history](./history.md) for the run-by-run table and the
+workflow-layer findings.
 
 ## The readiness-score lesson
 

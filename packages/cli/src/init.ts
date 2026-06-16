@@ -63,6 +63,9 @@ context:
 normalization:
   mdx: tolerant
 
+freshness:
+  websiteTtlHours: 24
+
 tasks: []
   # - id: route-handler
   #   title: App Router route handler

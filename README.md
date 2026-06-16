@@ -15,6 +15,10 @@
 AgentDocs turns Markdown, MDX, and public documentation websites into compact task packs, searchable artifacts, readiness findings, and read-only MCP tools. It does not require an LLM, execute commands found in documentation, or mutate source docs.
 
 > **Beta status:** MVP phases 0-9 and the June 2026 real-world hardening milestone are implemented. Context boundaries, tolerant MDX ingestion, repository sources, regression assertions, and readiness safety caps are ready for real-repository testing.
+>
+> The current milestone adds the agent workflow layer: persistent handoffs,
+> freshness checks, MCP setup snippets, context verification, and an
+> `agent-brief.md` first-read file for multi-session coding-agent use.
 
 ## Install
 
@@ -63,8 +67,14 @@ guide scope instead of attempting to mirror the entire documentation domain.
 Reuse the built context without crawling again:
 
 ```bash
-agentdocs context "implement authentication"
+agentdocs status
+agentdocs handoff "implement authentication"
 ```
+
+`handoff` is the recommended multi-session command. It wraps the compact
+`context` bundle with freshness, selected task pack, source pages, gotchas,
+setup commands, and MCP tool/resource suggestions. The older
+`agentdocs context "<goal>"` command remains available for the smaller bundle.
 
 For a maintained project configuration, start from the repository whose docs
 you want to compile:
@@ -87,6 +97,7 @@ context boundary:
 ```bash
 agentdocs search "migration" --facet version=v5
 agentdocs search "query invalidation" --facet framework=react
+agentdocs verify-context --task "build Fastify v5 route" --facet version=v5
 ```
 
 AgentDocs writes a separate `.agentdocs/` context layer:
@@ -95,10 +106,12 @@ AgentDocs writes a separate `.agentdocs/` context layer:
 .agentdocs/
   llms.txt
   AGENTS.md
+  agent-brief.md
   manifest.json
   agent-map.json
   chunks.jsonl
   index.sqlite
+  state/build-state.json
   task-packs/*.md
   reports/agent-readiness.md
   reports/agent-readiness.json
@@ -108,9 +121,11 @@ The generated output is designed for task execution rather than document browsin
 
 - `llms.txt` provides a concise entry point.
 - Generated `AGENTS.md` captures setup, concepts, tasks, and common mistakes.
+- `agent-brief.md` is the first persistent file to show a coding agent.
 - Task packs bundle evidence-backed instructions for detected task families.
 - `agent-map.json` exposes pages, chunks, entities, edges, context facets, and evidence.
 - `index.sqlite` provides ranked offline search.
+- `state/build-state.json` powers freshness checks and changed-source rebuilds.
 - The readiness report identifies actionable gaps and caps scores when critical
   task context conflicts remain.
 
@@ -157,12 +172,24 @@ exclusive context such as versions, frameworks, routers, or runtimes.
 Expose only built AgentDocs artifacts to an MCP-compatible coding agent:
 
 ```bash
+agentdocs setup-agent --client codex
 agentdocs serve-mcp
 ```
 
-The server provides six read-only tools for search, pages, task packs, start context, code examples, and related pages. It cannot crawl, execute documentation commands, or read arbitrary filesystem paths.
+The server provides read-only tools for search, pages, task packs, task handoff,
+context verification, setup commands, version policy, code examples, and related
+pages. It cannot crawl, execute documentation commands, or read arbitrary
+filesystem paths.
+
+For multi-session work, run `agentdocs status` before starting. Reuse existing
+artifacts when fresh, or run `agentdocs rebuild --changed` after local docs
+change. `agentdocs watch --once` performs the same check once; without `--once`,
+it polls and rebuilds when freshness changes.
 
 See the [MCP setup guide](https://somneelsaha2042.github.io/AgentDocs/guide/search-mcp).
+The [agent workflow guide](https://somneelsaha2042.github.io/AgentDocs/guide/agent-workflow)
+explains the design tradeoffs behind handoff, freshness, verification, and MCP
+client setup.
 Real-repository pass criteria and current failures are tracked in the
 [dogfood workflow matrix](https://somneelsaha2042.github.io/AgentDocs/guide/workflow-matrix).
 
@@ -178,7 +205,23 @@ ingest / crawl -> normalize -> chunk -> extract graph -> generate -> index -> au
 static artifacts + offline search + read-only MCP
 ```
 
-AgentDocs uses stable IDs, deterministic ordering, explicit schemas, and evidence-linked outputs. When evidence is weak or missing, generated artifacts say so rather than inventing instructions.
+AgentDocs uses stable IDs, deterministic ordering, explicit schemas, and
+evidence-linked outputs. When evidence is weak or missing, generated artifacts
+say so rather than inventing instructions.
+
+The workflow layer follows the same rule. Freshness is computed from local
+source hashes, website TTLs, config hashes, and build-owned artifact hashes.
+Context verification is deterministic: it checks stale artifacts, mixed
+exclusive facets, deprecated evidence, weak task packs, missing canonical
+sources, and requested facet mismatches. No LLM decides whether context is safe.
+
+Two tradeoffs are deliberate:
+
+- Website freshness uses a TTL instead of live network revalidation so
+  `agentdocs status` stays local and predictable.
+- `setup-agent` prints copy-paste snippets instead of silently editing client
+  config files, because agent clients change formats and developers should stay
+  in control of their editor/assistant settings.
 
 ## Engineering Quality
 

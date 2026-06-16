@@ -106,6 +106,12 @@ export const AgentDocsConfigSchema = z
       })
       .strict()
       .default({}),
+    freshness: z
+      .object({
+        websiteTtlHours: z.number().positive().default(24),
+      })
+      .strict()
+      .default({}),
     tasks: z
       .array(
         z.object({

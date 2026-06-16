@@ -4,7 +4,7 @@ layout: home
 hero:
   name: AgentDocs
   text: Compile documentation for coding agents
-  tagline: Deterministic, local-first, context-safe artifacts, audits, search, and MCP.
+  tagline: Deterministic, local-first, context-safe artifacts, handoffs, audits, search, and MCP.
   image:
     src: /brand/hero-agentdocs.png
     alt: AgentDocs compiling documentation into structured agent context
@@ -27,11 +27,12 @@ Human documentation is optimized for navigation. AgentDocs adds a separate
 context layer optimized for task execution, without rewriting the source docs.
 
 ```txt
-docs -> collect -> normalize -> graph -> task packs -> search -> doctor -> MCP
+docs -> collect -> normalize -> graph -> task packs -> status -> handoff -> MCP
 ```
 
 Start with the [installation guide](/guide/installation), then complete the
-[five-minute quick start](/guide/quick-start).
+[five-minute quick start](/guide/quick-start). For the design behind
+multi-session agent use, read the [agent workflow guide](/guide/agent-workflow).
 
 ## From docs to agent-ready context
 
@@ -58,8 +59,8 @@ Start with the [installation guide](/guide/installation), then complete the
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
     <img src="/brand/feature-mcp-tools.png" alt="Read-only MCP tools for coding agents" />
-    <h3>Expose read-only MCP</h3>
-    <p>Serve validated built artifacts through focused tools without arbitrary file access.</p>
+    <h3>Hand off to agents</h3>
+    <p>Serve task context, freshness, verification, setup commands, and source evidence through read-only MCP.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/architecture.html">
     <img src="/brand/feature-local-first-safe.png" alt="Local-first and safe documentation processing" />
@@ -67,6 +68,19 @@ Start with the [installation guide](/guide/installation), then complete the
     <p>Keep the core offline, treat docs as untrusted input, and never execute crawled commands.</p>
   </a>
 </div>
+
+## Why the workflow layer exists
+
+The first version proved that AgentDocs could compile docs into task packs,
+search, readiness reports, and MCP resources. The next problem was operational:
+an agent needs to reuse the right context tomorrow without rereading the
+internet or mixing stale evidence into a task.
+
+AgentDocs now records build state, fingerprints local sources, expires website
+crawls by TTL, emits `agent-brief.md`, and exposes `handoff` and
+`verify-context` through both CLI and MCP. The tradeoff is intentionally boring:
+status checks are deterministic and local, while live recrawling remains an
+explicit build action.
 
 ## Proven on real documentation
 

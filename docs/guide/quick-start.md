@@ -25,8 +25,14 @@ agentdocs try https://docs.example.com/product/latest/start \
 Reuse the built artifacts without crawling again:
 
 ```bash
-agentdocs context "configure authentication"
+agentdocs status
+agentdocs handoff "configure authentication"
+agentdocs verify-context --task "configure authentication"
 ```
+
+Use `context` only when you want the smaller compatibility bundle. `handoff` is
+the normal agent workflow because it includes freshness, gotchas, top source
+pages, setup commands, and MCP suggestions.
 
 ## Maintained Configuration
 
@@ -42,6 +48,7 @@ The generated configuration points at `./docs` by default. Review it, then run:
 agentdocs build
 agentdocs doctor
 agentdocs search "authentication"
+agentdocs setup-agent --client codex
 ```
 
 Use hard context filters when a task requires a specific version, framework,
@@ -61,9 +68,15 @@ Inspect the most useful generated files:
 ```txt
 .agentdocs/llms.txt
 .agentdocs/AGENTS.md
+.agentdocs/agent-brief.md
+.agentdocs/state/build-state.json
 .agentdocs/task-packs/
 .agentdocs/reports/agent-readiness.md
 ```
+
+`agent-brief.md` is optimized as the first generated file an agent reads.
+`build-state.json` is operational state for `status`, `rebuild --changed`, and
+`watch`; it records source fingerprints and build-owned artifact hashes.
 
 ## Crawl Public Documentation
 
@@ -87,3 +100,11 @@ Tolerant MDX normalization is the default: strict MDX parsing runs first, then
 a deterministic sanitizer preserves useful prose, headings, links, and fenced
 code while recording degraded or failed files. Use `agentdocs ingest --strict`
 or `normalization.mdx: strict` when unsupported MDX must stop the ingest.
+
+## Multi-Session Tradeoffs
+
+AgentDocs avoids hidden network checks after a build. Local and repository docs
+are considered stale when configured Markdown/MDX content hashes change.
+Website crawls are considered stale when their TTL expires, defaulting to 24
+hours. That keeps `agentdocs status` predictable and offline, while making
+recrawl a deliberate user action.

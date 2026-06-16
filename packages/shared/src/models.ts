@@ -446,6 +446,122 @@ export const TryResultSchema = z
   })
   .strict();
 
+export const BuildStateSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    generatedAt: z.string().datetime(),
+    outputDir: z.string().min(1),
+    configHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    sources: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          type: z.enum(["website", "local_markdown", "repo", "openapi"]),
+          value: z.string().min(1),
+          hash: z.string().regex(/^[a-f0-9]{64}$/),
+          fileCount: z.number().int().nonnegative().optional(),
+          collectedAt: z.string().datetime(),
+          expiresAt: z.string().datetime().optional(),
+        })
+        .strict(),
+    ),
+    artifacts: z.array(
+      z
+        .object({
+          path: z.string().min(1),
+          hash: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const StatusReportSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    checkedAt: z.string().datetime(),
+    state: z.enum(["fresh", "stale", "unknown"]),
+    outputDir: z.string().min(1),
+    summary: z.string().min(1),
+    sources: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          type: z.enum(["website", "local_markdown", "repo", "openapi"]),
+          value: z.string().min(1),
+          state: z.enum(["fresh", "stale", "unknown"]),
+          reason: z.string().min(1),
+          fileCount: z.number().int().nonnegative().optional(),
+          collectedAt: z.string().datetime().optional(),
+          expiresAt: z.string().datetime().optional(),
+        })
+        .strict(),
+    ),
+    artifacts: z.array(
+      z
+        .object({
+          path: z.string().min(1),
+          state: z.enum(["fresh", "stale", "missing", "unknown"]),
+          reason: z.string().min(1),
+        })
+        .strict(),
+    ),
+    recommendations: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export const ContextVerificationSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    task: z.string().min(1),
+    status: z.enum(["pass", "warn", "fail"]),
+    summary: z.string().min(1),
+    issues: z.array(
+      z
+        .object({
+          code: z.string().min(1),
+          severity: z.enum(["info", "warning", "critical"]),
+          message: z.string().min(1),
+          evidence: z.array(EvidenceSchema).default([]),
+        })
+        .strict(),
+    ),
+    freshness: StatusReportSchema.optional(),
+  })
+  .strict();
+
+export const AgentSetupSnippetSchema = z
+  .object({
+    client: z.enum(["codex", "claude", "cursor", "generic"]),
+    title: z.string().min(1),
+    format: z.enum(["toml", "json", "shell", "text"]),
+    contents: z.string().min(1),
+    prompt: z.string().min(1),
+  })
+  .strict();
+
+export const HandoffBundleSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    goal: z.string().min(1),
+    context: ContextBundleSchema,
+    freshness: StatusReportSchema.optional(),
+    selectedTaskPack: ContextBundleSchema.shape.selectedTaskPack,
+    topSources: z.array(SearchResultSchema),
+    gotchas: z.array(z.string().min(1)),
+    setupCommands: z.array(z.string().min(1)),
+    mcp: z
+      .object({
+        command: z.string().min(1),
+        prompt: z.string().min(1),
+        suggestedTools: z.array(z.string().min(1)),
+        resources: z.array(z.string().min(1)),
+      })
+      .strict(),
+    warnings: z.array(z.string().min(1)),
+  })
+  .strict();
+
 export const IngestManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -600,6 +716,11 @@ export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
 export type TryResult = z.infer<typeof TryResultSchema>;
+export type BuildState = z.infer<typeof BuildStateSchema>;
+export type StatusReport = z.infer<typeof StatusReportSchema>;
+export type ContextVerification = z.infer<typeof ContextVerificationSchema>;
+export type AgentSetupSnippet = z.infer<typeof AgentSetupSnippetSchema>;
+export type HandoffBundle = z.infer<typeof HandoffBundleSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;
 

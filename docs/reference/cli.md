@@ -4,6 +4,12 @@
 | --- | --- |
 | `agentdocs try <url-or-path> --goal <goal>` | Build, audit, and find context in one command |
 | `agentdocs context <goal>` | Produce a compact agent context bundle from built artifacts |
+| `agentdocs handoff <goal>` | Produce an agent-native task handoff with freshness and MCP guidance |
+| `agentdocs setup-agent` | Print MCP setup snippets for common coding-agent clients |
+| `agentdocs status` | Check whether generated artifacts are fresh |
+| `agentdocs rebuild --changed` | Recollect stale configured sources and rebuild artifacts |
+| `agentdocs watch` | Poll status and rebuild when configured sources become stale |
+| `agentdocs verify-context --task <goal>` | Check task context for staleness, conflicts, weak evidence, and mismatches |
 | `agentdocs init` | Create starter configuration |
 | `agentdocs ingest <path>` | Collect local Markdown and MDX |
 | `agentdocs crawl <url>` | Collect same-origin website documentation |
@@ -21,6 +27,9 @@ Global options include `--config`, `--out`, `--cwd`, `--json`, `--quiet`, and
 ```bash
 agentdocs --help
 agentdocs try ./docs --goal "implement authentication"
+agentdocs handoff "implement authentication"
+agentdocs setup-agent --client codex
+agentdocs status
 agentdocs build --help
 ```
 
@@ -50,3 +59,8 @@ agentdocs search "route handler" --facet framework=nextjs --facet router=app
 
 Search JSON includes evidence-linked facets and deterministic
 `context_conflict` warnings when unfiltered top results mix exclusive context.
+
+`handoff` is the recommended multi-session command. `context` remains supported
+for the earlier compact bundle shape. `status`, `rebuild --changed`, and `watch`
+use deterministic source fingerprints for local/repo sources and a website TTL
+for crawled sources.

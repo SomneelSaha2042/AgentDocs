@@ -49,7 +49,26 @@ const TOOLS = [
     goal: stringProperty(),
     facets: { type: "object", additionalProperties: { type: "string" } },
   }, ["goal"]),
+  tool("list_available_tasks", "List generated task packs and their warnings.", {}, []),
+  tool("get_task_context", "Get an agent handoff bundle for a task goal.", {
+    goal: stringProperty(),
+    facets: { type: "object", additionalProperties: { type: "string" } },
+  }, ["goal"]),
+  tool("verify_task_context", "Check whether task context is fresh, consistent, and evidence-backed.", {
+    task: stringProperty(),
+    facets: { type: "object", additionalProperties: { type: "string" } },
+  }, ["task"]),
+  tool("explain_warning", "Explain an AgentDocs warning code.", {
+    code: stringProperty(),
+  }, ["code"]),
+  tool("get_setup_commands", "Get documented installation/setup commands.", {}, []),
+  tool("get_version_policy", "Get preferred version and version evidence.", {}, []),
   tool("get_code_examples", "Find source-linked code examples.", {
+    query: stringProperty(),
+    language: stringProperty(),
+    limit: integerProperty(),
+  }, ["query"]),
+  tool("find_code_examples", "Find source-linked code examples.", {
     query: stringProperty(),
     language: stringProperty(),
     limit: integerProperty(),
@@ -179,7 +198,32 @@ async function callTool(
           isRecord(args.facets) ? stringRecord(args.facets) : undefined,
         );
         break;
+      case "list_available_tasks":
+        result = await service.listAvailableTasks();
+        break;
+      case "get_task_context":
+        result = await service.getTaskContext(
+          requiredString(args.goal, "goal"),
+          isRecord(args.facets) ? stringRecord(args.facets) : undefined,
+        );
+        break;
+      case "verify_task_context":
+        result = await service.verifyTaskContext(
+          requiredString(args.task, "task"),
+          isRecord(args.facets) ? stringRecord(args.facets) : undefined,
+        );
+        break;
+      case "explain_warning":
+        result = await service.explainWarning(requiredString(args.code, "code"));
+        break;
+      case "get_setup_commands":
+        result = await service.getSetupCommands();
+        break;
+      case "get_version_policy":
+        result = await service.getVersionPolicy();
+        break;
       case "get_code_examples":
+      case "find_code_examples":
         result = await service.getCodeExamples(
           requiredString(args.query, "query"),
           optionalString(args.language),
