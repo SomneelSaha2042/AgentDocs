@@ -5,6 +5,8 @@ an evidence-linked context layer for coding agents.**
 
 AgentDocs turns Markdown, MDX, and public documentation websites into compact
 task packs, searchable artifacts, readiness findings, and read-only MCP tools.
+The beta is published as `@somneelsaha/agentdocs`; installing it exposes the
+`agentdocs` command.
 
 Start with a task-focused trial:
 
@@ -32,6 +34,7 @@ Run without installing:
 
 ```bash
 npx @somneelsaha/agentdocs@beta --help
+npx @somneelsaha/agentdocs@beta --version
 ```
 
 ## Quick Start
@@ -55,9 +58,10 @@ agent map, an offline search index, and an actionable readiness report inside
 agentdocs serve-mcp
 ```
 
-The MCP server provides six read-only tools and reads only validated built
-artifacts. It cannot crawl, execute documentation commands, or read arbitrary
-filesystem paths.
+The MCP server provides read-only tools for search, pages, task packs, handoff,
+context verification, setup commands, version policy, code examples, and
+related pages. It cannot crawl, execute documentation commands, or read
+arbitrary filesystem paths.
 
 ## Links
 

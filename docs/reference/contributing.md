@@ -20,13 +20,15 @@ pnpm pack:verify
 pnpm smoke:bundle
 ```
 
-CI runs the release gates on Windows and Linux with Node.js 20 and 22.
+CI runs the release gates on Linux with Node.js 20 and 22, and on Windows with
+Node.js 20. Windows Node.js 22 remains a follow-up compatibility lane after a
+hosted-runner-only test failure that did not reproduce locally.
 
 ## Beta Release
 
 1. Update the workspace and CLI versions together.
 2. Run every local gate.
-3. Create and push a matching version tag, such as `v0.1.0-beta.1`.
+3. Create and push a matching version tag, such as `v0.1.0-beta.5`.
 4. The release workflow verifies the package and publishes it with npm
    provenance under the `beta` dist-tag.
 

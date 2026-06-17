@@ -14,11 +14,14 @@
 
 AgentDocs turns Markdown, MDX, and public documentation websites into compact task packs, searchable artifacts, readiness findings, and read-only MCP tools. It does not require an LLM, execute commands found in documentation, or mutate source docs.
 
-> **Beta status:** MVP phases 0-9 and the June 2026 real-world hardening milestone are implemented. Context boundaries, tolerant MDX ingestion, repository sources, regression assertions, and readiness safety caps are ready for real-repository testing.
+> **Usable beta:** AgentDocs is published on npm as
+> `@somneelsaha/agentdocs` and can be installed today with Node.js 20 or later.
+> MVP phases 0-9, the June 2026 hardening work, and the agent workflow layer
+> are implemented for real-repository testing.
 >
-> The current milestone adds the agent workflow layer: persistent handoffs,
-> freshness checks, MCP setup snippets, context verification, and an
-> `agent-brief.md` first-read file for multi-session coding-agent use.
+> It is still beta software: OpenAPI ingestion and export are not implemented,
+> and large or unusual docs sites may need scoped crawl settings. The core
+> compile, audit, search, handoff, freshness, and MCP workflows are usable.
 
 ## Install
 
@@ -33,6 +36,7 @@ Run without installing:
 
 ```bash
 npx @somneelsaha/agentdocs@beta --help
+npx @somneelsaha/agentdocs@beta --version
 ```
 
 Turn a docs URL or local Markdown path into a coding-agent handoff in one
@@ -48,6 +52,10 @@ Or add it to a project:
 npm install --save-dev @somneelsaha/agentdocs
 npx agentdocs init
 ```
+
+The `beta` dist-tag currently tracks the published beta line. Pin an explicit
+version such as `@somneelsaha/agentdocs@0.1.0-beta.4` when you need a
+reproducible install.
 
 See the [installation guide](https://somneelsaha2042.github.io/AgentDocs/guide/installation) for PowerShell and Linux setup details.
 
@@ -223,6 +231,20 @@ Two tradeoffs are deliberate:
   config files, because agent clients change formats and developers should stay
   in control of their editor/assistant settings.
 
+## Published Beta
+
+The CLI is distributed as the scoped npm package
+`@somneelsaha/agentdocs`. Installing it exposes the `agentdocs` binary:
+
+```bash
+npm install --global @somneelsaha/agentdocs
+agentdocs try ./docs --goal "implement authentication"
+```
+
+Release verification builds the bundled CLI, checks the packed npm contents,
+installs the tarball, runs CLI and MCP smoke tests, and publishes future beta
+tags through npm trusted publishing with provenance.
+
 ## Engineering Quality
 
 The beta is built as a strict TypeScript monorepo with focused package boundaries for collection, normalization, graph extraction, generation, readiness auditing, search, and MCP serving.
@@ -234,7 +256,7 @@ Release gates cover:
 - schema validation for generated JSON and JSONL artifacts;
 - repeated-build artifact hash checks;
 - SQLite/FTS5 search on Node 22 and deterministic lexical fallback on Node 20;
-- Windows and Linux CI;
+- Linux Node 20/22 and Windows Node 20 CI;
 - npm tarball contents and clean global-install verification;
 - real CLI workflow and MCP stdio smoke tests;
 - path traversal, invalid artifacts, broken links, and untrusted-input behavior.

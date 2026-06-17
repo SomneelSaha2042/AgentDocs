@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: AgentDocs
-  text: Compile documentation for coding agents
-  tagline: Deterministic, local-first, context-safe artifacts, handoffs, audits, search, and MCP.
+  text: Usable agent-readable docs, from your existing documentation
+  tagline: "Install the beta today: deterministic, local-first task packs, handoffs, freshness, audits, search, and MCP."
   image:
     src: /brand/hero-agentdocs.png
     alt: AgentDocs compiling documentation into structured agent context
@@ -28,6 +28,13 @@ context layer optimized for task execution, without rewriting the source docs.
 
 ```txt
 docs -> collect -> normalize -> graph -> task packs -> status -> handoff -> MCP
+```
+
+Install the published beta from npm:
+
+```bash
+npm install --global @somneelsaha/agentdocs
+agentdocs try ./docs --goal "implement authentication"
 ```
 
 Start with the [installation guide](/guide/installation), then complete the
