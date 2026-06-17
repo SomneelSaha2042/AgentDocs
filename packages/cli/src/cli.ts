@@ -2,14 +2,16 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { ConfigValidationError, parseConfig } from "@agentdocs/shared";
+import { parseConfig } from "@agentdocs/shared";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 
 import { initConfig } from "./init.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
 import { BuildError, buildFromSources } from "./build.js";
+import { exportArtifacts } from "./export.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
+import { cleanOutputDirectory, pruneRemovedSourceArtifacts } from "./lifecycle.js";
 import { ReadinessThresholdError, runDoctor } from "./doctor.js";
 import { formatTryResult, runTry } from "./try.js";
 import { buildContextBundle, formatContextBundle } from "./context.js";
@@ -77,38 +79,6 @@ function parseClient(value: string): "codex" | "claude" | "cursor" | "generic" {
     throw new InvalidArgumentError("client must be codex, claude, cursor, or generic");
   }
   return value;
-}
-
-function addPlaceholderAction(command: Command): Command {
-  return command.action(async (_options: unknown, actionCommand: Command) => {
-    const globals = actionCommand.optsWithGlobals<GlobalOptions>();
-    const configPath = path.resolve(
-      globals.cwd ?? process.cwd(),
-      globals.config,
-    );
-    let contents: string;
-    try {
-      contents = await readFile(configPath, "utf8");
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        throw new ConfigValidationError(
-          `Config not found at ${configPath}. Run "agentdocs init" first or pass --config <path>.`,
-        );
-      }
-      throw error;
-    }
-    parseConfig(contents);
-
-    throw new CommanderError(
-      1,
-      "agentdocs.commandNotImplemented",
-      `The "${command.name()}" command is not implemented yet.`,
-    );
-  });
 }
 
 export function createProgram(): Command {
@@ -366,15 +336,13 @@ export function createProgram(): Command {
         options: { clean?: boolean; skipCrawl?: boolean },
         command: Command,
       ) => {
-        if (options.clean) {
-          throw new CommanderError(
-            1,
-            "agentdocs.cleanNotImplemented",
-            'The "build --clean" option is not implemented yet.',
-          );
-        }
         const globals = command.optsWithGlobals<GlobalOptions>();
         const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+        if (options.clean) {
+          await cleanOutputDirectory(cwd, out);
+        } else {
+          await pruneRemovedSourceArtifacts(config, cwd, out);
+        }
         await collectConfiguredSources(config, cwd, out, options.skipCrawl ?? false);
         const result = await buildFromSources({
           cwd,
@@ -424,6 +392,7 @@ export function createProgram(): Command {
         : new Set(status.sources
           .filter((source) => source.state !== "fresh")
           .map((source) => `${source.type}:${source.value}`));
+      await pruneRemovedSourceArtifacts(config, cwd, out);
       if (staleSourceKeys === undefined || staleSourceKeys.size > 0) {
         await collectConfiguredSources(config, cwd, out, false, staleSourceKeys);
       }
@@ -466,6 +435,7 @@ export function createProgram(): Command {
           process.stdout.write(`AgentDocs watch: ${status.state}\n`);
         }
         if (status.state !== "fresh") {
+          await pruneRemovedSourceArtifacts(context.config, context.cwd, context.out);
           await collectConfiguredSources(context.config, context.cwd, context.out, false);
           await buildFromSources({
             cwd: context.cwd,
@@ -584,13 +554,30 @@ export function createProgram(): Command {
       }
     });
 
-  addPlaceholderAction(
-    program
-      .command("export")
-      .description("Export generated artifacts")
-      .requiredOption("--format <format>", "Export format")
-      .requiredOption("--to <path>", "Export destination"),
-  );
+  program
+    .command("export")
+    .description("Export generated artifacts")
+    .requiredOption("--format <format>", "Export format: static or llms")
+    .requiredOption("--to <path>", "Export destination")
+    .option("--force", "Replace a non-empty export destination")
+    .action(async (options: { force?: boolean; format: string; to: string }, command: Command) => {
+      const globals = command.optsWithGlobals<GlobalOptions>();
+      const { cwd, out } = await resolveCommandContext(command, globals);
+      const result = await exportArtifacts({
+        cwd,
+        force: options.force,
+        format: options.format,
+        out,
+        to: options.to,
+      });
+      if (globals.json) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+      } else if (!globals.quiet) {
+        process.stdout.write(
+          `Exported ${result.format} AgentDocs artifacts from ${result.source} to ${result.destination}\n`,
+        );
+      }
+    });
 
   program
     .command("serve-mcp")

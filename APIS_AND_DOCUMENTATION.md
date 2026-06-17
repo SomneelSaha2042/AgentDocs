@@ -257,11 +257,15 @@ Builds normalized docs, graph, index, and generated artifacts.
 ```bash
 agentdocs build
 agentdocs build --skip-crawl
+agentdocs build --clean
 ```
 
 Behavior:
 
 - reads config and ingested sources;
+- prunes output from sources removed from the current config;
+- with `--clean`, safely removes the configured output directory before
+  collecting and building;
 - normalizes pages;
 - chunks pages;
 - extracts entities;
@@ -287,6 +291,9 @@ Outputs:
 Local builds keep generated `llms.txt` and `AGENTS.md` inside `--out` so the
 source project's existing files are never overwritten silently. A later export
 or publishing phase may place reviewed copies at the target project root.
+
+`--clean` refuses to remove the project root, filesystem roots, or paths outside
+the configured working directory.
 
 ### 2.5 `agentdocs doctor`
 
@@ -369,7 +376,22 @@ Exports artifacts to a destination.
 ```bash
 agentdocs export --format static --to ./dist-agentdocs
 agentdocs export --format llms --to ./public
+agentdocs export --format llms --to ./public --force
 ```
+
+Options:
+
+```txt
+--format <format>    Export format: static or llms
+--to <path>          Destination directory
+--force              Replace a non-empty destination
+```
+
+`static` copies the complete built output directory. `llms` copies only the
+publishable agent-facing subset: `llms.txt`, generated `AGENTS.md`,
+`agent-brief.md`, `manifest.json`, `agent-map.json`, `chunks.jsonl`,
+`task-packs/`, and `reports/` when present. Export refuses destinations inside
+the active output directory or equal to it.
 
 ### 2.9 `agentdocs serve-mcp`
 

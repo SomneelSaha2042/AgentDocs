@@ -19,6 +19,7 @@
 | `agentdocs inspect entities` | Inspect extracted entities |
 | `agentdocs inspect links` | Inspect extracted relationships |
 | `agentdocs inspect task-pack <id>` | Explain why a task pack was generated |
+| `agentdocs export --format <format> --to <path>` | Export generated artifacts |
 | `agentdocs serve-mcp` | Start the read-only MCP server |
 
 Global options include `--config`, `--out`, `--cwd`, `--json`, `--quiet`, and
@@ -31,9 +32,23 @@ agentdocs handoff "implement authentication"
 agentdocs setup-agent --client codex
 agentdocs status
 agentdocs build --help
+agentdocs build --clean
+agentdocs export --format llms --to ./public --force
 ```
 
-`agentdocs export`, `build --clean`, and additional inspect targets are planned.
+Additional inspect targets are planned.
+
+`build --clean` safely removes the configured AgentDocs output directory before
+collecting and rebuilding. It refuses to clean the project root, filesystem
+roots, or paths outside the working directory.
+
+`export --format static` copies the complete built output directory.
+`export --format llms` copies the publishable agent-facing subset:
+`llms.txt`, generated `AGENTS.md`, `agent-brief.md`, `manifest.json`,
+`agent-map.json`, `chunks.jsonl`, `task-packs/`, and readiness reports when
+present. Export refuses destinations inside the active output directory unless
+they are moved elsewhere first, and `--force` is required to replace a non-empty
+destination.
 
 Task-pack inspection reads the validated `agent-map.json` and reports the
 pack's confidence, required pages, source evidence, steps, and related

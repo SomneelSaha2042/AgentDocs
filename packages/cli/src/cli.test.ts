@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -209,9 +209,154 @@ doctor:
     expect(map.pages.map((page: { repoPath: string }) => page.repoPath))
       .toEqual(["docs/README.md"]);
   });
+
+  it("cleans generated output before building when requested", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    await writeFile(path.join(cwd, ".agentdocs", "stale.txt"), "stale\n", "utf8");
+    const sourceBefore = await readFile(path.join(cwd, "docs", "one.md"), "utf8");
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build", "--clean",
+    ]);
+
+    await expect(access(path.join(cwd, ".agentdocs", "stale.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(cwd, ".agentdocs", "agent-map.json"))).resolves.toBeUndefined();
+    expect(await readFile(path.join(cwd, "docs", "one.md"), "utf8")).toBe(sourceBefore);
+  });
+
+  it("refuses to clean unsafe output directories", async () => {
+    const cwd = await createConfiguredDocsProject(".");
+
+    await expect(createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build", "--clean",
+    ])).rejects.toThrowError(/project root/i);
+
+    await expect(access(path.join(cwd, "docs", "one.md"))).resolves.toBeUndefined();
+  });
+
+  it("prunes artifacts from removed configured sources", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Configured Docs
+slug: configured-docs
+sources:
+  - type: local_markdown
+    path: ./docs/one.md
+  - type: local_markdown
+    path: ./docs/two.md
+doctor:
+  minScore: 0
+`, "utf8");
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Configured Docs
+slug: configured-docs
+sources:
+  - type: local_markdown
+    path: ./docs/one.md
+doctor:
+  minScore: 0
+`, "utf8");
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    const map = JSON.parse(await readFile(path.join(cwd, ".agentdocs", "agent-map.json"), "utf8"));
+    expect(map.pages.map((page: { repoPath: string }) => page.repoPath)).toEqual(["docs/one.md"]);
+    const pageFiles = await readdir(path.join(cwd, ".agentdocs", "sources", "pages"));
+    expect(pageFiles.filter((file) => file.endsWith(".json"))).toHaveLength(1);
+  });
+
+  it("exports static and llms artifact sets", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "doctor", "--min-score", "0",
+    ]);
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "export", "--format", "static", "--to", "dist-agentdocs",
+    ]);
+    await expect(access(path.join(cwd, "dist-agentdocs", "agent-map.json"))).resolves.toBeUndefined();
+    await expect(access(path.join(cwd, "dist-agentdocs", "sources", "pages"))).resolves.toBeUndefined();
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "export", "--format", "llms", "--to", "public-agentdocs",
+    ]);
+    await expect(access(path.join(cwd, "public-agentdocs", "agent-map.json"))).resolves.toBeUndefined();
+    await expect(access(path.join(cwd, "public-agentdocs", "task-packs"))).resolves.toBeUndefined();
+    await expect(access(path.join(cwd, "public-agentdocs", "reports", "agent-readiness.md"))).resolves.toBeUndefined();
+    await expect(access(path.join(cwd, "public-agentdocs", "sources"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(cwd, "public-agentdocs", "index.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("requires --force before replacing a non-empty export destination", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    await mkdir(path.join(cwd, "exported"), { recursive: true });
+    await writeFile(path.join(cwd, "exported", "old.txt"), "old\n", "utf8");
+
+    await expect(createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "export", "--format", "llms", "--to", "exported",
+    ])).rejects.toThrowError(/not empty/i);
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "export", "--format", "llms", "--to", "exported", "--force",
+    ]);
+    await expect(access(path.join(cwd, "exported", "old.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(cwd, "exported", "agent-map.json"))).resolves.toBeUndefined();
+  });
+
+  it("rejects export destinations inside the active output directory", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    await expect(createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "export", "--format", "static", "--to", ".agentdocs/exported",
+    ])).rejects.toThrowError(/inside the AgentDocs output directory/i);
+  });
 });
 
 async function createTemporaryDirectory(): Promise<string> {
   const { mkdtemp } = await import("node:fs/promises");
   return mkdtemp(path.join(os.tmpdir(), "agentdocs-cli-"));
+}
+
+async function createConfiguredDocsProject(outputDir = ".agentdocs"): Promise<string> {
+  const cwd = await createTemporaryDirectory();
+  await mkdir(path.join(cwd, "docs"), { recursive: true });
+  await writeFile(
+    path.join(cwd, "docs", "one.md"),
+    "# One\n\n## Install\n\nInstall the first package before use.\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(cwd, "docs", "two.md"),
+    "# Two\n\n## Configure\n\nConfigure the second package before use.\n",
+    "utf8",
+  );
+  await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Configured Docs
+slug: configured-docs
+sources:
+  - type: local_markdown
+    path: ./docs
+output:
+  dir: ${JSON.stringify(outputDir)}
+doctor:
+  minScore: 0
+`, "utf8");
+  return cwd;
 }

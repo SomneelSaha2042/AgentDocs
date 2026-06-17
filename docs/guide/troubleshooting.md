@@ -22,12 +22,34 @@ agentdocs search "your query"
 MCP validates `agent-map.json` at startup. Run a successful build in the same
 working directory before starting the server.
 
+## Stale output after changing sources
+
+`agentdocs build` prunes pages from sources that were removed from the current
+config. If you want to discard the entire generated context layer first, run:
+
+```bash
+agentdocs build --clean
+```
+
+`--clean` only removes the configured AgentDocs output directory and refuses
+unsafe targets such as the project root.
+
+## Export destination is not empty
+
+Use a new destination or opt into replacement:
+
+```bash
+agentdocs export --format llms --to ./public --force
+```
+
+`static` exports the full built output. `llms` exports only the publishable
+agent-facing subset.
+
 ## Current Beta Limitations
 
 - OpenAPI ingestion is planned. Repository sources reuse local ingestion and
   do not clone remote repositories.
-- Export and `build --clean` are not implemented.
-- Removed configured sources are not pruned from an existing output directory.
+- `build --check` for CI drift detection is planned.
 - Broken-link checks do not validate heading fragments.
 - The crawler targets public, statically accessible documentation.
 - Crawling is guide-scoped by default. Pass repeatable `--include` patterns

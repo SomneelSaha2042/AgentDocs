@@ -19,8 +19,8 @@ AgentDocs turns Markdown, MDX, and public documentation websites into compact ta
 > MVP phases 0-9, the June 2026 hardening work, and the agent workflow layer
 > are implemented for real-repository testing.
 >
-> It is still beta software: OpenAPI ingestion and export are not implemented,
-> and large or unusual docs sites may need scoped crawl settings. The core
+> It is still beta software: OpenAPI ingestion is not implemented, and large or
+> unusual docs sites may need scoped crawl settings. The core
 > compile, audit, search, handoff, freshness, and MCP workflows are usable.
 
 ## Install
@@ -136,6 +136,24 @@ The generated output is designed for task execution rather than document browsin
 - `state/build-state.json` powers freshness checks and changed-source rebuilds.
 - The readiness report identifies actionable gaps and caps scores when critical
   task context conflicts remain.
+
+Refresh generated state from scratch when you intentionally want to discard old
+context:
+
+```bash
+agentdocs build --clean
+```
+
+Publish or archive built context after review:
+
+```bash
+agentdocs export --format static --to ./dist-agentdocs
+agentdocs export --format llms --to ./public --force
+```
+
+`static` exports the full `.agentdocs/` output. `llms` exports the publishable
+agent-facing subset: `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, the
+manifest, agent map, chunks, task packs, and readiness reports when present.
 
 ## Website Documentation
 
@@ -297,9 +315,9 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 ## Current Limitations
 
 - OpenAPI ingestion is recognized but not implemented.
-- Export is not implemented.
-- Removing configured sources does not prune previously collected pages; use a fresh output directory when changing source sets.
-- `build --clean` and additional inspect targets beyond entities, links, and task-pack explanations are not implemented.
+- `build --check` for CI drift detection is planned.
+- Additional inspect targets beyond entities, links, and task-pack explanations
+  are planned.
 - Broken-link checks do not validate heading fragments.
 - The crawler is intended for public, statically accessible documentation.
 - Full-origin archival crawls and JavaScript-rendered-only documentation are not
