@@ -25,7 +25,7 @@ jobs:
             node: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.13.1
       - uses: actions/setup-node@v4
@@ -53,7 +53,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.13.1
       - run: npm install --global npm@11.5.1
