@@ -1,6 +1,6 @@
 {
   "name": "agentdocs-workspace",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "private": true,
   "description": "Deterministic, local-first tooling for agent-readable documentation.",
   "keywords": [
@@ -40,7 +40,7 @@
     "regression:dogfood": "corepack pnpm build && node scripts/dogfood-regression.mjs",
     "regression:fixtures": "corepack pnpm build && node scripts/regression-fixtures.mjs",
     "smoke:bundle": "node scripts/release-smoke.mjs node packages/cli/dist/agentdocs.js",
-    "test": "corepack pnpm -r --if-present test",
+    "test": "corepack pnpm -r --workspace-concurrency=1 --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck"
   },
   "devDependencies": {
