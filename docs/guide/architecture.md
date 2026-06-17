@@ -31,10 +31,28 @@ do not recrawl or rewrite docs. `agentdocs status` compares current inputs to
 `.agentdocs/state/build-state.json`, and `agentdocs rebuild --changed` then
 uses the normal deterministic build path.
 
+`agentdocs build --check` uses the same build-state model but refuses to write
+files. That choice is intentional for CI: a gate should report whether committed
+or cached context is current, not repair it while the job is evaluating it.
+Human output names stale sources, stale or missing artifacts, and next actions;
+JSON output uses the same status-report shape as `agentdocs status --json`.
+
 Website freshness is TTL-based rather than live network validation. That means
 status checks remain local and fast, at the cost of not knowing whether a remote
 site changed five minutes after a crawl. AgentDocs chooses explicit recrawls
 over surprising background network work.
+
+Generated-output lifecycle commands stay inside the configured output boundary.
+`build --clean` can delete the AgentDocs output directory, but refuses project
+roots, filesystem roots, and paths outside the working directory. Normal builds
+prune artifacts from sources removed from the current config by reading previous
+source manifests, not by scanning or mutating source docs.
+
+Export is split by intent. `export --format static` copies the complete built
+context for archival or tooling handoff. `export --format llms` copies only the
+publishable agent-facing subset so teams can review and publish context without
+shipping raw crawled HTML, normalized source snapshots, or the local search
+database.
 
 `setup-agent` prints MCP snippets instead of editing Codex, Claude, Cursor, or
 other client configuration files. The tradeoff favors transparency and

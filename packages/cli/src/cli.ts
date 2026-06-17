@@ -9,6 +9,7 @@ import { initConfig } from "./init.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 import { crawlToDisk } from "./crawl.js";
 import { BuildError, buildFromSources } from "./build.js";
+import { assertBuildCheckPassed, formatBuildCheckReport, runBuildCheck } from "./check.js";
 import { exportArtifacts } from "./export.js";
 import { formatInspectResult, inspectAgentMap } from "./inspect.js";
 import { cleanOutputDirectory, pruneRemovedSourceArtifacts } from "./lifecycle.js";
@@ -329,15 +330,33 @@ export function createProgram(): Command {
   program
     .command("build")
     .description("Build AgentDocs artifacts")
+    .option("--check", "Check whether built artifacts are fresh without writing files")
     .option("--clean", "Clean generated state before building")
     .option("--skip-crawl", "Build without crawling configured website sources")
     .action(
       async (
-        options: { clean?: boolean; skipCrawl?: boolean },
+        options: { check?: boolean; clean?: boolean; skipCrawl?: boolean },
         command: Command,
       ) => {
         const globals = command.optsWithGlobals<GlobalOptions>();
         const { config, configPath, cwd, out } = await resolveCommandContext(command, globals);
+        if (options.check) {
+          if (options.clean) {
+            throw new CommanderError(
+              2,
+              "agentdocs.checkCleanConflict",
+              'The "build --check" option cannot be combined with "--clean".',
+            );
+          }
+          const report = await runBuildCheck({ config, configPath, cwd, out });
+          if (globals.json) {
+            process.stdout.write(`${JSON.stringify(report)}\n`);
+          } else if (!globals.quiet) {
+            process.stdout.write(formatBuildCheckReport(report));
+          }
+          assertBuildCheckPassed(report);
+          return;
+        }
         if (options.clean) {
           await cleanOutputDirectory(cwd, out);
         } else {

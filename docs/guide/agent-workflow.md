@@ -69,6 +69,31 @@ making stale crawls visible.
 the normal build pipeline. It does not mutate source documentation and does not
 introduce an LLM dependency.
 
+## CI Drift Gate
+
+For maintained projects, the workflow layer should also run before an agent
+session starts in CI:
+
+```bash
+agentdocs build --check
+agentdocs doctor --min-score 75
+agentdocs verify-context --task "<goal>"
+```
+
+`build --check` is deliberately non-mutating. It reads the last build state,
+compares current configured sources and artifact hashes, and fails when the
+context is stale, missing, or unknown. The command does not crawl, collect,
+prune, rebuild, or write files. That makes it suitable for pull requests: CI
+can say "the context layer drifted" without hiding the drift by regenerating it
+mid-check.
+
+`doctor` answers a different question: whether the available docs are
+agent-ready enough for the configured threshold. `verify-context` narrows the
+gate to the actual implementation goal and catches stale, mixed-version,
+deprecated, weak-evidence, or missing-task context before an agent writes code.
+Keeping these checks separate makes CI output easier to act on: freshness,
+readiness, and task safety fail for different reasons and have different fixes.
+
 ## Handoff Over Search
 
 `agentdocs search` remains useful, but raw search is not the ideal first move

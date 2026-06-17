@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { parseConfig } from "@agentdocs/shared";
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createProgram } from "./cli.js";
 import { InitConfigError } from "./init.js";
@@ -38,6 +38,7 @@ describe("agentdocs CLI", () => {
     const search = createProgram().commands.find(
       (command) => command.name() === "search",
     );
+    const build = createProgram().commands.find((command) => command.name() === "build");
     const ingest = createProgram().commands.find((command) => command.name() === "ingest");
     const serveMcp = createProgram().commands.find(
       (command) => command.name() === "serve-mcp",
@@ -53,6 +54,7 @@ describe("agentdocs CLI", () => {
     expect(tryCommand?.helpInformation()).toContain("--goal <goal>");
     expect(tryCommand?.helpInformation()).toContain("--max-pages <n>");
     expect(crawl?.helpInformation()).toContain("--include <glob>");
+    expect(build?.helpInformation()).toContain("--check");
     expect(doctor?.helpInformation()).toContain("--min-score <n>");
     expect(search?.helpInformation()).toContain("--limit <n>");
     expect(ingest?.helpInformation()).toContain("--strict");
@@ -227,6 +229,68 @@ doctor:
     expect(await readFile(path.join(cwd, "docs", "one.md"), "utf8")).toBe(sourceBefore);
   });
 
+  it("passes build --check when generated context is fresh", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    const output = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "build", "--check",
+      ]);
+    });
+
+    expect(output).toContain("AgentDocs build check: PASS");
+    expect(output).toContain("No rebuild required.");
+  });
+
+  it("emits JSON for build --check", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+
+    const output = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "build", "--check",
+      ]);
+    });
+
+    expect(JSON.parse(output)).toMatchObject({ state: "fresh" });
+  });
+
+  it("fails build --check on source drift without rewriting artifacts", async () => {
+    const cwd = await createConfiguredDocsProject();
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    const agentMapBefore = await readFile(path.join(cwd, ".agentdocs", "agent-map.json"), "utf8");
+    await writeFile(
+      path.join(cwd, "docs", "one.md"),
+      "# One\n\n## Install\n\nInstall the changed package before use.\n",
+      "utf8",
+    );
+
+    const output = await captureStdout(async () => {
+      await expect(createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "build", "--check",
+      ])).rejects.toThrowError(/context is stale/i);
+    });
+
+    expect(output).toContain("AgentDocs build check: STALE");
+    expect(output).toContain("Source fingerprint changed since the last build.");
+    expect(await readFile(path.join(cwd, ".agentdocs", "agent-map.json"), "utf8")).toBe(agentMapBefore);
+  });
+
+  it("rejects build --check with --clean", async () => {
+    const cwd = await createConfiguredDocsProject();
+
+    await expect(createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build", "--check", "--clean",
+    ])).rejects.toMatchObject({ exitCode: 2 });
+  });
+
   it("refuses to clean unsafe output directories", async () => {
     const cwd = await createConfiguredDocsProject(".");
 
@@ -359,4 +423,18 @@ doctor:
   minScore: 0
 `, "utf8");
   return cwd;
+}
+
+async function captureStdout(action: () => Promise<void>): Promise<string> {
+  const writes: string[] = [];
+  const write = vi.spyOn(process.stdout, "write").mockImplementation((value) => {
+    writes.push(String(value));
+    return true;
+  });
+  try {
+    await action();
+  } finally {
+    write.mockRestore();
+  }
+  return writes.join("");
 }

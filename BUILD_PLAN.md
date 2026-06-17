@@ -683,6 +683,10 @@ agentdocs doctor --min-score 75
 agentdocs build --check
 ```
 
+`agentdocs build --check` is now implemented as a non-mutating drift gate over
+build-state source fingerprints and artifact hashes. Remaining Phase 12 work is
+focused on CI recipes, adoption documentation, and any reusable action/wrapper.
+
 Potential GitHub Action documentation:
 
 ```yaml

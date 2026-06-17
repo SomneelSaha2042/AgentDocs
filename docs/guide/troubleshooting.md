@@ -17,6 +17,23 @@ agentdocs build
 agentdocs search "your query"
 ```
 
+## Build check fails in CI
+
+`agentdocs build --check` does not rewrite generated context. It fails when the
+current config, configured source fingerprints, or generated artifact hashes no
+longer match `state/build-state.json`.
+
+For local or repository sources, refresh and review the generated diff:
+
+```bash
+agentdocs rebuild --changed
+agentdocs build --check
+```
+
+For website sources, the check can also fail when the configured freshness TTL
+has expired. Run a normal build or scheduled recrawl in the environment where
+network collection is allowed.
+
 ## MCP startup fails
 
 MCP validates `agent-map.json` at startup. Run a successful build in the same
@@ -49,7 +66,6 @@ agent-facing subset.
 
 - OpenAPI ingestion is planned. Repository sources reuse local ingestion and
   do not clone remote repositories.
-- `build --check` for CI drift detection is planned.
 - Broken-link checks do not validate heading fragments.
 - The crawler targets public, statically accessible documentation.
 - Crawling is guide-scoped by default. Pass repeatable `--include` patterns

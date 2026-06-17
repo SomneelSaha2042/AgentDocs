@@ -32,6 +32,7 @@ agentdocs handoff "implement authentication"
 agentdocs setup-agent --client codex
 agentdocs status
 agentdocs build --help
+agentdocs build --check
 agentdocs build --clean
 agentdocs export --format llms --to ./public --force
 ```
@@ -41,6 +42,12 @@ Additional inspect targets are planned.
 `build --clean` safely removes the configured AgentDocs output directory before
 collecting and rebuilding. It refuses to clean the project root, filesystem
 roots, or paths outside the working directory.
+
+`build --check` is a non-mutating CI drift gate. It reads
+`state/build-state.json`, compares configured source fingerprints and generated
+artifact hashes, and fails when context is stale, missing, or unknown. It does
+not crawl, collect, prune, rebuild, or write files. `--json` emits the same
+status report shape as `agentdocs status --json`.
 
 `export --format static` copies the complete built output directory.
 `export --format llms` copies the publishable agent-facing subset:

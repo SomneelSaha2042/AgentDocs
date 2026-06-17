@@ -258,6 +258,8 @@ Builds normalized docs, graph, index, and generated artifacts.
 agentdocs build
 agentdocs build --skip-crawl
 agentdocs build --clean
+agentdocs build --check
+agentdocs build --check --json
 ```
 
 Behavior:
@@ -266,6 +268,9 @@ Behavior:
 - prunes output from sources removed from the current config;
 - with `--clean`, safely removes the configured output directory before
   collecting and building;
+- with `--check`, performs a non-mutating drift check against
+  `state/build-state.json` and exits non-zero when context is stale, missing,
+  or unknown;
 - normalizes pages;
 - chunks pages;
 - extracts entities;
@@ -294,6 +299,11 @@ or publishing phase may place reviewed copies at the target project root.
 
 `--clean` refuses to remove the project root, filesystem roots, or paths outside
 the configured working directory.
+
+`--check` cannot be combined with `--clean`. It does not collect sources, crawl
+websites, prune files, regenerate artifacts, or write build state. Human output
+summarizes stale sources, stale/missing artifacts, and next actions. JSON output
+is the same status report shape as `agentdocs status --json`.
 
 ### 2.5 `agentdocs doctor`
 

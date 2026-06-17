@@ -34,6 +34,7 @@ if (context.goal !== smokeGoal || context.readFirst.length < 1) {
   throw new Error("Context workflow did not produce a usable handoff.");
 }
 await run(["--cwd", cwd, "build"]);
+await run(["--cwd", cwd, "build", "--check"]);
 await run(["--cwd", cwd, "doctor", "--min-score", "0"]);
 await run(["--cwd", cwd, "export", "--format", "llms", "--to", "public-agentdocs"]);
 await readFile(path.join(cwd, "public-agentdocs", "agent-map.json"), "utf8");

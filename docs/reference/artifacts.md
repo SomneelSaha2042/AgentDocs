@@ -22,3 +22,24 @@ manifests, and readiness reports and upgrade missing context facets in memory.
 `build-state.json` uses schema `1` and is local operational state. It is used by
 `agentdocs status`, `agentdocs rebuild --changed`, `agentdocs watch`, handoff
 freshness warnings, and MCP context verification.
+
+## Operational State Versus Publishable Context
+
+AgentDocs keeps two kinds of generated files in the same output directory:
+
+- publishable context, such as `llms.txt`, generated `AGENTS.md`,
+  `agent-brief.md`, `agent-map.json`, `chunks.jsonl`, task packs, and readiness
+  reports;
+- local operational state, such as source snapshots, crawl manifests, the search
+  index, and `state/build-state.json`.
+
+This distinction drives export behavior. `agentdocs export --format static`
+copies the complete built output for archival or local tooling. `agentdocs
+export --format llms` copies only the publishable agent-facing subset so teams
+can review and ship context without publishing raw crawl snapshots or local
+index state.
+
+`build-state.json` is intentionally not a source of product truth. It records
+what the last build observed so `agentdocs build --check` can compare current
+inputs and generated artifacts without rewriting them. If it is missing or
+invalid, check mode reports unknown freshness and asks for a normal build.

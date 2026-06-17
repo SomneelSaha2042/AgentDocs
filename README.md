@@ -177,9 +177,14 @@ when available. Use explicit `--include` patterns to override inferred scope.
 Use readiness scoring as a local or CI quality gate:
 
 ```bash
+agentdocs build --check
 agentdocs doctor --min-score 80
 agentdocs doctor --json
 ```
+
+`build --check` is non-mutating. It fails when the built context is missing,
+stale, or has changed source/artifact fingerprints, and supports `--json` for
+CI systems.
 
 Search built artifacts without network access:
 
@@ -248,6 +253,14 @@ Two tradeoffs are deliberate:
 - `setup-agent` prints copy-paste snippets instead of silently editing client
   config files, because agent clients change formats and developers should stay
   in control of their editor/assistant settings.
+- `build --check` reads build state rather than rebuilding into place. CI should
+  detect drift without changing the workspace it is judging.
+- `build --clean` and removed-source pruning are constrained to generated
+  AgentDocs output paths. Source documentation is never silently rewritten or
+  deleted.
+- `export --format llms` separates publishable agent context from raw collected
+  source snapshots. Teams can publish reviewed context without exposing every
+  local crawl artifact.
 
 ## Published Beta
 
@@ -315,7 +328,6 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 ## Current Limitations
 
 - OpenAPI ingestion is recognized but not implemented.
-- `build --check` for CI drift detection is planned.
 - Additional inspect targets beyond entities, links, and task-pack explanations
   are planned.
 - Broken-link checks do not validate heading fragments.
