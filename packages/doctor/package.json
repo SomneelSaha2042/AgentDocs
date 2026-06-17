@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/normalizer build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build",
-    "test": "vitest run",
+    "test": "vitest run src",
     "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/normalizer build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -25,6 +25,7 @@
   "devDependencies": {
     "@agentdocs/generator": "workspace:*",
     "@agentdocs/graph": "workspace:*",
-    "@agentdocs/normalizer": "workspace:*"
+    "@agentdocs/normalizer": "workspace:*",
+    "vitest": "4.1.9"
   }
 }

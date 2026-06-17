@@ -14,6 +14,7 @@ if (command === undefined) {
 
 const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-release-smoke-"));
 await cp(path.join(root, "fixtures", "basic-docs"), path.join(cwd, "docs"), { recursive: true });
+const smokeGoal = "install";
 
 const version = (await run(["--version"])).trim();
 if (version !== packageJson.version) {
@@ -21,15 +22,15 @@ if (version !== packageJson.version) {
 }
 await run(["--cwd", cwd, "init"]);
 const trial = JSON.parse(await run([
-  "--cwd", cwd, "--json", "try", "./docs", "--goal", "install the SDK",
+  "--cwd", cwd, "--json", "try", "./docs", "--goal", smokeGoal,
 ]));
-if (trial.context.goal !== "install the SDK" || trial.pageCount < 1) {
+if (trial.context.goal !== smokeGoal || trial.pageCount < 1) {
   throw new Error("Try workflow did not produce the expected context.");
 }
 const context = JSON.parse(await run([
-  "--cwd", cwd, "--json", "context", "install the SDK",
+  "--cwd", cwd, "--json", "context", smokeGoal,
 ]));
-if (context.goal !== "install the SDK" || context.readFirst.length < 1) {
+if (context.goal !== smokeGoal || context.readFirst.length < 1) {
   throw new Error("Context workflow did not produce a usable handoff.");
 }
 await run(["--cwd", cwd, "build"]);
@@ -60,9 +61,8 @@ process.stdout.write(
 );
 
 async function run(args) {
-  const child = spawn(command, [...commandPrefix, ...args], {
+  const child = spawnCommand([...commandPrefix, ...args], {
     cwd: root,
-    shell: process.platform === "win32" && command !== process.execPath && command !== "node",
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -104,9 +104,8 @@ async function listFiles(directory, relative = "") {
 }
 
 async function mcpSmoke(projectCwd) {
-  const child = spawn(command, [...commandPrefix, "--cwd", projectCwd, "serve-mcp"], {
+  const child = spawnCommand([...commandPrefix, "--cwd", projectCwd, "serve-mcp"], {
     cwd: root,
-    shell: process.platform === "win32" && command !== process.execPath && command !== "node",
     stdio: ["pipe", "pipe", "pipe"],
   });
   let buffer = "";
@@ -150,4 +149,19 @@ async function mcpSmoke(projectCwd) {
   } finally {
     child.kill();
   }
+}
+
+function spawnCommand(args, options) {
+  if (process.platform === "win32" && command !== process.execPath && command !== "node") {
+    return spawn("cmd.exe", ["/d", "/s", "/c", [command, ...args].map(quoteWindowsShellArg).join(" ")], options);
+  }
+  return spawn(command, args, options);
+}
+
+function quoteWindowsShellArg(value) {
+  const text = String(value);
+  if (!/[\s"&|<>^]/.test(text)) {
+    return text;
+  }
+  return `"${text.replaceAll('"', '\\"')}"`;
 }

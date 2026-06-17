@@ -8,7 +8,7 @@ through npm.
 Install Node.js from [nodejs.org](https://nodejs.org/), then run:
 
 ```powershell
-npm install --global agentdocs
+npm install --global @somneelsaha/agentdocs
 agentdocs --version
 ```
 
@@ -18,21 +18,21 @@ Install Node.js 20+ using your distribution package manager or a version
 manager, then run:
 
 ```bash
-npm install --global agentdocs
+npm install --global @somneelsaha/agentdocs
 agentdocs --version
 ```
 
 ## Run Without Installing
 
 ```bash
-npx agentdocs@beta --help
+npx @somneelsaha/agentdocs@beta --help
 ```
 
 ## Project-Local Install
 
 ```bash
 npm install --save-dev agentdocs
-npx agentdocs init
+npx @somneelsaha/agentdocs init
 ```
 
 Beta releases use the npm `beta` dist-tag. Pin `agentdocs@0.1.0-beta.1` when

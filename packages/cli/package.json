@@ -1,5 +1,5 @@
 {
-  "name": "agentdocs",
+  "name": "@somneelsaha/agentdocs",
   "version": "0.1.0-beta.1",
   "description": "Deterministic, local-first tooling that compiles technical documentation into an evidence-linked context layer for coding agents.",
   "license": "MIT",
@@ -24,7 +24,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true,
     "tag": "beta"
   },
   "type": "module",
@@ -40,7 +39,7 @@
     "build": "node scripts/build-package.mjs",
     "prepack": "node scripts/build-package.mjs",
     "pretest": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/mcp-server build",
-    "test": "vitest run",
+    "test": "vitest run src",
     "pretypecheck": "corepack pnpm --filter @agentdocs/crawler build && corepack pnpm --filter @agentdocs/graph build && corepack pnpm --filter @agentdocs/generator build && corepack pnpm --filter @agentdocs/doctor build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/mcp-server build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -54,6 +53,7 @@
     "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*",
     "commander": "^14.0.0",
-    "minimatch": "^10.0.3"
+    "minimatch": "^10.0.3",
+    "vitest": "4.1.9"
   }
 }

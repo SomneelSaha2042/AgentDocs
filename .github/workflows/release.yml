@@ -60,5 +60,3 @@ jobs:
           node -e "if ('v' + require('./packages/cli/package.json').version !== process.env.GITHUB_REF_NAME) process.exit(1)"
       - name: Publish beta with provenance
         run: npm publish .release/package --provenance --tag beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

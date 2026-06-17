@@ -24,14 +24,14 @@ source docs.
 AgentDocs requires Node.js 20 or later and supports Windows and Linux.
 
 ```bash
-npm install --global agentdocs
+npm install --global @somneelsaha/agentdocs
 agentdocs --version
 ```
 
 Run without installing:
 
 ```bash
-npx agentdocs@beta --help
+npx @somneelsaha/agentdocs@beta --help
 ```
 
 ## Quick Start

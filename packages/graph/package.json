@@ -15,12 +15,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "pretest": "corepack pnpm --filter @agentdocs/normalizer build",
-    "test": "vitest run",
+    "test": "vitest run src",
     "pretypecheck": "corepack pnpm --filter @agentdocs/normalizer build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.9"
   }
 }

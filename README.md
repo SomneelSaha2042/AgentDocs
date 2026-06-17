@@ -5,7 +5,7 @@
 # AgentDocs
 
 [![CI](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml/badge.svg)](https://github.com/SomneelSaha2042/AgentDocs/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/agentdocs/beta.svg)](https://www.npmjs.com/package/agentdocs)
+[![npm](https://img.shields.io/npm/v/@somneelsaha/agentdocs/beta.svg)](https://www.npmjs.com/package/@somneelsaha/agentdocs)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-6f42c1.svg)](https://somneelsaha2042.github.io/AgentDocs/)
@@ -25,27 +25,27 @@ AgentDocs turns Markdown, MDX, and public documentation websites into compact ta
 AgentDocs requires Node.js 20 or later and supports Windows and Linux.
 
 ```bash
-npm install --global agentdocs
+npm install --global @somneelsaha/agentdocs
 agentdocs --version
 ```
 
 Run without installing:
 
 ```bash
-npx agentdocs@beta --help
+npx @somneelsaha/agentdocs@beta --help
 ```
 
 Turn a docs URL or local Markdown path into a coding-agent handoff in one
 command:
 
 ```bash
-npx agentdocs@beta try https://docs.example.com --goal "implement authentication"
+npx @somneelsaha/agentdocs@beta try https://docs.example.com --goal "implement authentication"
 ```
 
 Or add it to a project:
 
 ```bash
-npm install --save-dev agentdocs
+npm install --save-dev @somneelsaha/agentdocs
 npx agentdocs init
 ```
 

@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "pretest": "corepack pnpm --filter @agentdocs/normalizer build",
-    "test": "vitest run",
+    "test": "vitest run src",
     "pretypecheck": "corepack pnpm --filter @agentdocs/normalizer build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -25,5 +25,8 @@
     "cheerio": "^1.1.0",
     "fast-xml-parser": "^5.2.5",
     "minimatch": "^10.0.3"
+  },
+  "devDependencies": {
+    "vitest": "4.1.9"
   }
 }

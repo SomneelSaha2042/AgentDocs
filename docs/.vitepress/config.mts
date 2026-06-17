@@ -7,6 +7,11 @@ export default defineConfig({
   // Explicit file URLs keep the deployed artifact portable and verifiable.
   cleanUrls: false,
   lastUpdated: true,
+  vite: {
+    build: {
+      target: "esnext",
+    },
+  },
   themeConfig: {
     logo: "/logo.svg",
     nav: [
