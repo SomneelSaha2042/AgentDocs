@@ -53,7 +53,7 @@
     "@agentdocs/mcp-server": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*",
-    "commander": "^14.0.0",
+    "commander": "^15.0.0",
     "minimatch": "^10.0.3"
   }
 }
