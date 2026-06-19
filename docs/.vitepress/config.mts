@@ -43,6 +43,7 @@ export default defineConfig({
           { text: "Real-World Results", link: "/results/" },
           { text: "Evaluation History", link: "/results/history" },
           { text: "Findings by Target", link: "/results/findings" },
+          { text: "Candidate Expansion Metrics", link: "/results/candidate-expansion" },
           { text: "Methodology", link: "/results/methodology" },
         ],
       },
