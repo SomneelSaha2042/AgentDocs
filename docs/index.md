@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: AgentDocs
-  text: Usable agent-readable docs, from your existing documentation
-  tagline: "Install the beta today: deterministic, local-first task packs, handoffs, freshness, audits, search, and MCP."
+  text: Make agent docs measurable before agents rely on them
+  tagline: "Fresh? Scoped? Evidence-backed? AgentDocs compiles existing docs into deterministic local context you can gate."
   image:
     src: /brand/hero-agentdocs.png
     alt: AgentDocs compiling documentation into structured agent context
@@ -21,10 +21,17 @@ hero:
 
 ---
 
-## What AgentDocs does
+## What AgentDocs checks
 
-Human documentation is optimized for navigation. AgentDocs adds a separate
-context layer optimized for task execution, without rewriting the source docs.
+Agents fail when they reuse stale docs, mix versions or frameworks, or start a
+task without source-backed evidence. AgentDocs adds a separate context layer
+optimized for task execution, without rewriting the source docs.
+
+It puts three questions in front of every agent handoff:
+
+- Is the compiled context fresh?
+- Is it scoped to the right version, framework, router, or runtime?
+- Does it contain evidence for the task I am about to ask an agent to do?
 
 ```txt
 docs -> collect -> normalize -> graph -> task packs -> status -> handoff -> MCP
@@ -41,17 +48,17 @@ Start with the [installation guide](/guide/installation), then complete the
 [five-minute quick start](/guide/quick-start). For the design behind
 multi-session agent use, read the [agent workflow guide](/guide/agent-workflow).
 
-## From docs to agent-ready context
+## From docs to gateable context
 
 <div class="feature-illustration-grid">
   <a class="feature-illustration-card" href="/AgentDocs/guide/quick-start.html">
     <img src="/brand/feature-build.png" alt="Compile documentation into structured outputs" />
     <h3>Compile existing docs</h3>
-    <p>Collect, normalize, graph, and generate deterministic agent-facing artifacts.</p>
+    <p>Collect, normalize, graph, and generate deterministic local context from existing docs.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
     <img src="/brand/feature-search.png" alt="Search indexed documentation" />
-    <h3>Search offline</h3>
+    <h3>Scope retrieval</h3>
     <p>Filter versions, frameworks, routers, and runtimes while retrieving evidence offline.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
@@ -62,7 +69,7 @@ multi-session agent use, read the [agent workflow guide](/guide/agent-workflow).
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
     <img src="/brand/feature-task-packs.png" alt="Task-specific context packs for coding agents" />
     <h3>Generate task packs</h3>
-    <p>Give coding agents compact evidence without silently combining conflicting context.</p>
+    <p>Give coding agents compact task context without silently combining conflicting evidence.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
     <img src="/brand/feature-mcp-tools.png" alt="Read-only MCP tools for coding agents" />

@@ -10,9 +10,20 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-6f42c1.svg)](https://somneelsaha2042.github.io/AgentDocs/)
 
-**Deterministic, local-first tooling that compiles existing technical documentation into an evidence-linked context layer for coding agents.**
+**Deterministic, local-first tooling that makes stale, mixed-version, and context-less documentation measurable before a coding agent relies on it.**
 
-AgentDocs turns Markdown, MDX, and public documentation websites into compact task packs, searchable artifacts, readiness findings, and read-only MCP tools. It does not require an LLM, execute commands found in documentation, or mutate source docs.
+Agents fail when they reuse stale docs, mix versions or frameworks, or start a
+task without source-backed evidence. AgentDocs turns Markdown, MDX, and public
+documentation websites into a local context layer that answers three operational
+questions:
+
+- Is the compiled context fresh?
+- Is it scoped to the right version, framework, router, or runtime?
+- Does it contain evidence for the task I am about to ask an agent to do?
+
+The output includes compact task packs, searchable artifacts, readiness
+findings, handoff bundles, freshness state, and read-only MCP tools. It does not
+require an LLM, execute commands found in documentation, or mutate source docs.
 
 > **Usable beta:** AgentDocs is published on npm as
 > `@somneelsaha/agentdocs` and can be installed today with Node.js 20 or later.
@@ -67,10 +78,11 @@ For a one-command trial, run:
 agentdocs try ./docs --goal "implement authentication"
 ```
 
-This collects the docs, builds and audits the context layer, finds evidence for
-the goal, and prints the exact MCP command and coding-agent prompt to use next.
-For large multi-product sites, AgentDocs infers the nearest product/version
-guide scope instead of attempting to mirror the entire documentation domain.
+This collects the docs, builds and audits the context layer, checks whether the
+goal has evidence, and prints the exact MCP command and coding-agent prompt to
+use next. For large multi-product sites, AgentDocs infers the nearest
+product/version guide scope instead of attempting to mirror the entire
+documentation domain.
 
 Reuse the built context without crawling again:
 
@@ -81,8 +93,10 @@ agentdocs handoff "implement authentication"
 
 `handoff` is the recommended multi-session command. It wraps the compact
 `context` bundle with freshness, selected task pack, source pages, gotchas,
-setup commands, and MCP tool/resource suggestions. The older
-`agentdocs context "<goal>"` command remains available for the smaller bundle.
+setup commands, and MCP tool/resource suggestions, so an agent can start from
+current, scoped, evidence-backed context instead of raw search results. The
+older `agentdocs context "<goal>"` command remains available for the smaller
+bundle.
 
 For a maintained project configuration, start from the repository whose docs
 you want to compile:
@@ -125,7 +139,8 @@ AgentDocs writes a separate `.agentdocs/` context layer:
   reports/agent-readiness.json
 ```
 
-The generated output is designed for task execution rather than document browsing:
+The generated output is designed for operational checks and task execution, not
+document browsing:
 
 - `llms.txt` provides a concise entry point.
 - Generated `AGENTS.md` captures setup, concepts, tasks, and common mistakes.
@@ -174,9 +189,11 @@ when available. Use explicit `--include` patterns to override inferred scope.
 
 ## Audit And Search
 
-Use readiness scoring as a local or CI quality gate:
+Use readiness scoring and freshness checks as local or CI quality gates:
 
 ```bash
+agentdocs status --json
+agentdocs verify-context --task "build Fastify v5 route" --facet version=v5 --json
 agentdocs build --check
 agentdocs doctor --min-score 80
 agentdocs doctor --json

@@ -45,18 +45,43 @@ an agent could receive plausible but unsafe guidance.
 
 ## Results at a glance
 
-| Target | Source | Pages | Chunks | Entities | Task packs | Readiness | Repeat build | Main finding |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| AgentDocs | Local docs | 13 | - | - | 3 | 90 | Stable | Self-dogfood implementation task remains passed |
-| Hono | Local repo | 85 | - | - | 7 | 93 | Stable | Quickstart task pack restored with source-backed setup evidence |
-| Hono | Website | 100 | 101 | 0 | 4 | 81 | Stable | Bounded crawl succeeded, but scope drift is visible |
-| Fastify | Local repo | 43 | - | - | 4 | 93 | Stable | v5-filtered migration and schema results contain only v5 evidence |
-| Fastify | Website | 100 | 2,526 | 2,158 | 5 | 85 | Stable | Current v5 material ranks well, but minor versions mix |
-| TanStack Query | Local repo | 411 | - | - | 7 | 90 | Stable | React-filtered retrieval excludes other frameworks |
-| Next.js | Website | 100 | 823 | 640 | 7 | 90 | Stable | Route handlers rank well; router families mix on other queries |
-| Octokit REST | Local docs | 14 | 25 | 61 | 4 | 95 | Stable | Small conventional docs compile cleanly |
-| Supabase | Local MDX | 737 | - | - | 9 | 94 | Stable | Completed with 731 usable, 6 degraded, and 45 failed-file diagnostics |
-| Prisma | Local monorepo | Blocked on Windows | - | - | - | - | Not reached | Upstream Windows-invalid filenames blocked preparation |
+How to read the table:
+
+- **Run status** is the regression outcome for the prepared target. `Passed`
+  means build, doctor, search capture, automated expectations, and repeated
+  hash comparison completed. `Blocked preparation` means the source corpus
+  could not be prepared, so AgentDocs did not run.
+- **Compiled pages** are normalized source pages accepted into the AgentDocs
+  model after crawl or ingest. For websites, this is bounded by crawl scope and
+  `--max-pages`; it is not a count of every page on the upstream site.
+- **Generated chunks** are heading-aware text units written to `chunks.jsonl`
+  for search and context assembly. `Not recorded` means the public summary kept
+  only the page, task-pack, and readiness counts for that historical run; it is
+  not a zero.
+- **Extracted entities** are deterministic graph items such as packages,
+  imports, environment variables, CLI commands, routes, versions, warnings,
+  concepts, and task candidates.
+- **Task packs** are compact, evidence-linked bundles for task families such as
+  quickstart, authentication, migration, errors, deployment, and configuration.
+- **Readiness score** is the deterministic `agentdocs doctor` score out of 100.
+  It summarizes discoverability, structure, task coverage, version safety,
+  agent safety, and runtime readiness. It is useful for gating, but it is not
+  the same as an agent-task pass.
+- **Repeat build** reports whether the second build produced the same generated
+  artifact hash as the first build.
+
+| Target | Source corpus | Run status | Compiled pages | Generated chunks | Extracted entities | Task packs | Readiness score | Repeat build | Main operational finding |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| AgentDocs | Local docs | Passed | 13 pages | Not recorded | Not recorded | 3 packs | 90/100 | Stable hash | Self-dogfood implementation task remains passed |
+| Hono | Local repo | Passed | 85 pages | Not recorded | Not recorded | 7 packs | 93/100 | Stable hash | Quickstart task pack restored with source-backed setup evidence |
+| Hono | Website | Passed | 100 pages | 101 chunks | 0 entities | 4 packs | 81/100 | Stable hash | Bounded crawl succeeded, but scope drift is visible |
+| Fastify | Local repo | Passed | 43 pages | Not recorded | Not recorded | 4 packs | 93/100 | Stable hash | v5-filtered migration and schema results contain only v5 evidence |
+| Fastify | Website | Passed | 100 pages | 2,526 chunks | 2,158 entities | 5 packs | 85/100 | Stable hash | Current v5 material ranks well, but minor versions mix |
+| TanStack Query | Local repo | Passed | 411 pages | Not recorded | Not recorded | 7 packs | 90/100 | Stable hash | React-filtered retrieval excludes other frameworks |
+| Next.js | Website | Passed | 100 pages | 823 chunks | 640 entities | 7 packs | 90/100 | Stable hash | Route handlers rank well; router families mix on other queries |
+| Octokit REST | Local docs | Passed | 14 pages | 25 chunks | 61 entities | 4 packs | 95/100 | Stable hash | Small conventional docs compile cleanly |
+| Supabase | Local MDX | Passed | 737 pages | Not recorded | Not recorded | 9 packs | 94/100 | Stable hash | Completed with 731 usable, 6 degraded, and 45 failed-file diagnostics |
+| Prisma | Local monorepo | Blocked preparation | Not reached | Not reached | Not reached | Not reached | Not reached | Not reached | Upstream Windows-invalid filenames blocked preparation |
 
 All completed regressions reported zero known broken internal links. Every
 successful target produced the same generated-artifact hash on its second
