@@ -4,6 +4,12 @@ export default defineConfig({
   title: "AgentDocs",
   description: "Deterministic, local-first, context-safe tooling for agent-readable documentation.",
   base: "/AgentDocs/",
+  head: [
+    ["link", { rel: "icon", href: "/AgentDocs/brand/favicon.ico" }],
+    ["link", { rel: "apple-touch-icon", href: "/AgentDocs/brand/app-icon-agentdocs-256.png" }],
+    ["meta", { property: "og:image", content: "https://somneelsaha2042.github.io/AgentDocs/brand/hero-agentdocs.png" }],
+    ["meta", { name: "twitter:image", content: "https://somneelsaha2042.github.io/AgentDocs/brand/hero-agentdocs.png" }],
+  ],
   // Explicit file URLs keep the deployed artifact portable and verifiable.
   cleanUrls: false,
   lastUpdated: true,
@@ -13,7 +19,10 @@ export default defineConfig({
     },
   },
   themeConfig: {
-    logo: "/logo.svg",
+    logo: {
+      src: "/brand/app-icon-agentdocs-64.png",
+      alt: "AgentDocs document detective mascot",
+    },
     nav: [
       { text: "Guide", link: "/guide/installation" },
       { text: "Results", link: "/results/" },

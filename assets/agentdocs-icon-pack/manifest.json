@@ -1,0 +1,169 @@
+{
+  "pack": "AgentDocs Pixel Detective Icon Pack",
+  "version": "1.0.0",
+  "canonical_palette": {
+    "background": "#111722",
+    "paper": "#F2F4F5",
+    "ink": "#161B24",
+    "cyan": "#16C8FF",
+    "green": "#55D629",
+    "red": "#EF3828",
+    "amber": "#F5B51B"
+  },
+  "assets": [
+    {
+      "name": "hero-agentdocs.png",
+      "category": "brand",
+      "title": "AgentDocs Hero Mascot",
+      "use": "Homepage hero, README header, launch post, and social-preview base. Keep it large; the wordmark and supporting props are not intended for favicons.",
+      "where": [
+        "Docs homepage hero",
+        "README top visual",
+        "GitHub social-preview composition",
+        "Release announcement artwork"
+      ],
+      "size": "Display at 420\u2013760 px wide; retain the square master for crops.",
+      "alt": "AgentDocs pixel detective mascot holding documentation and an audit checklist.",
+      "prompt": "Create a square retro pixel-art hero illustration for AgentDocs. Show a friendly document-bodied robot detective in a black suit and fedora with a red hatband, bright cyan scanner eyes, a green pen, an audit clipboard, and a stack of source documents. Use a charcoal-to-black background, crisp blocky pixels, subtle cyan and green glow, high contrast, centered composition, and enough negative space for a README or docs hero. Add a restrained pixel wordmark reading AgentDocs near the bottom. Avoid photorealism, gradients that blur the pixel edges, tiny illegible text, or unrelated AI symbols.",
+      "dimensions": "1024x1024",
+      "sha256": "aedf495740489d5f82d9577a0f1cb2764169eb175255a4937a329696a0f9013e"
+    },
+    {
+      "name": "app-icon-agentdocs.png",
+      "category": "brand",
+      "title": "Primary App and Package Icon",
+      "use": "Primary compact identity for the docs navbar, repository avatar, npm/package artwork, profile images, and favicons. This is the canonical small-format mascot.",
+      "where": [
+        "Docs navbar/logo",
+        "GitHub repository avatar or organization artwork",
+        "npm package artwork and release cards",
+        "Favicon source",
+        "CLI documentation callouts"
+      ],
+      "size": "Use 512 or 256 px for profile artwork, 64\u2013128 px in docs UI, and the supplied favicon files for browser tabs.",
+      "alt": "AgentDocs document detective mascot with cyan eyes, fedora, pen, and checklist.",
+      "prompt": "Create a compact square pixel-art app icon for AgentDocs. Center a friendly document-shaped detective mascot wearing a black fedora with a red band and black coat, with two bright cyan scanner eyes, holding a green pen and a small checklist. Place it on a near-black rounded-square tile with a subtle border and soft shadow. Use a limited palette of charcoal, paper white, cyan, signal green, and red. Keep the silhouette bold and readable at 64 pixels. No wordmark, no tiny text, no extra background objects, no photorealism.",
+      "dimensions": "1024x1024",
+      "sha256": "ee1e0ebc8ab4f81e5c7c236b3cf70dc3f7ec9867c3719fa407ca45acf5a207e6"
+    },
+    {
+      "name": "feature-build.png",
+      "category": "features",
+      "title": "Build and Compile",
+      "use": "Illustrates the deterministic collection-to-artifact build pipeline: loose source documents are compiled into ordered, usable context.",
+      "where": [
+        "Quick Start",
+        "Build command reference",
+        "Architecture pipeline",
+        "Homepage feature card: Compile existing docs"
+      ],
+      "size": "320\u2013480 px wide in feature cards; 640\u2013900 px on dedicated pages.",
+      "alt": "AgentDocs mascot compiling loose documentation into an organized stack.",
+      "prompt": "Create a square pixel-art feature illustration for AgentDocs build. Show the document detective mascot transforming scattered Markdown pages on the left into a clean ordered stack of normalized documents on the right, connected by a bright cyan compilation stream and arrow. Use the canonical black fedora with red band, white document body, cyan eyes, charcoal rounded-square background, and small cyan spark effects. The scene should communicate deterministic compilation and structured output. No labels or tiny text.",
+      "dimensions": "1024x1024",
+      "sha256": "76fdd714ab2b0fa2729dc87625bd0b33a7fbfb827373f4fe341dcb424d7c3c1e"
+    },
+    {
+      "name": "feature-search.png",
+      "category": "features",
+      "title": "Scoped Search and Retrieval",
+      "use": "Represents evidence retrieval with version, framework, router, and runtime filters rather than indiscriminate search.",
+      "where": [
+        "Search and MCP guide",
+        "Scope retrieval feature card",
+        "Configuration/facets documentation",
+        "Context-conflict explanations"
+      ],
+      "size": "320\u2013480 px wide in cards; pair with copy about filters and conflict warnings.",
+      "alt": "AgentDocs mascot inspecting and filtering documentation with a magnifying glass.",
+      "prompt": "Create a square pixel-art feature illustration for scoped documentation retrieval. Show the AgentDocs document detective holding a large cyan magnifying glass over one selected bright document while several dim documents with distinct facet symbols sit nearby. Add a small funnel filtering cyan data particles into the selected page. Use a dark rounded tile, paper white, cyan, charcoal, and signal green. Communicate version and framework filtering without readable text. Keep the composition simple and technical.",
+      "dimensions": "1024x1024",
+      "sha256": "271abd4692e6f46f9927ac37261d216a675721b1ccdd1436a7ea6590e1b2457a"
+    },
+    {
+      "name": "feature-audit-evidence.png",
+      "category": "features",
+      "title": "Evidence Trace and Audit Trail",
+      "use": "Shows source-to-claim traceability: documentation evidence is connected to generated context and a verified result.",
+      "where": [
+        "Generated Artifacts reference",
+        "Trace every claim feature card",
+        "Audit trail explanations",
+        "Evidence/source citation sections"
+      ],
+      "size": "320\u2013480 px wide; leave surrounding whitespace so the connection trail remains legible.",
+      "alt": "AgentDocs mascot tracing a glowing evidence path between a source document and generated code context.",
+      "prompt": "Create a square pixel-art illustration for evidence traceability. Show the AgentDocs document detective between a source document on the left and a dark code/context panel on the right. Connect them with a glowing green dotted evidence path that ends in a large verified check node. Use the canonical fedora, cyan eyes, paper body, dark rounded-square background, and restrained green highlights. The visual should clearly communicate provenance, source links, and auditability. No readable text.",
+      "dimensions": "1024x1024",
+      "sha256": "cab06a92a840b673336399ca8f290d36dd62c6d18c16e0c012d762e791648965"
+    },
+    {
+      "name": "feature-task-packs.png",
+      "category": "features",
+      "title": "Task Packs",
+      "use": "Represents compact, evidence-backed bundles assembled for a specific implementation goal or workflow.",
+      "where": [
+        "Task pack documentation",
+        "Agent workflow guide",
+        "Handoff command section",
+        "Homepage feature card: Generate task packs"
+      ],
+      "size": "320\u2013480 px wide; works well beside task-family examples such as authentication or migration.",
+      "alt": "AgentDocs mascot carrying a tied bundle of verified task documents.",
+      "prompt": "Create a square pixel-art feature illustration for AgentDocs task packs. Show the canonical document detective mascot carrying a neatly tied bundle of color-tabbed documents, with visible green check marks on the front pages. Use a black fedora with red band, cyan eyes, paper-white body, dark rounded tile, and limited accent colors for task categories. The bundle should feel compact, curated, and ready to hand to a coding agent. No labels or tiny text.",
+      "dimensions": "1024x1024",
+      "sha256": "2e42edd37bf59b932dd87c545767a94b3363f31dfaa5b643216e35cd735c87f6"
+    },
+    {
+      "name": "feature-mcp-tools.png",
+      "category": "features",
+      "title": "Read-only MCP Tools",
+      "use": "Visualizes the read-only interface between built AgentDocs artifacts and agent clients, terminals, tooling, or local indexes.",
+      "where": [
+        "Search and MCP guide",
+        "setup-agent documentation",
+        "MCP tools reference",
+        "Integration feature card"
+      ],
+      "size": "320\u2013480 px wide; place next to the list of MCP resources and tools.",
+      "alt": "AgentDocs mascot connecting verified documentation to a terminal, tool gear, and local database.",
+      "prompt": "Create a square pixel-art feature illustration for AgentDocs MCP integration. Show the document detective presenting one verified context file that connects through cyan dotted lines to a terminal window, a gear, and a local database cylinder. Use the canonical dark tile, black fedora with red band, white document body, cyan eyes, and green verification mark. Make the connections look read-only and local, not cloud-based. No readable labels.",
+      "dimensions": "1024x1024",
+      "sha256": "c4d75591c2ae9b08f7ada20333c509c53eb6f370e9dda4d1e2a5c4b0f1eae14d"
+    },
+    {
+      "name": "feature-doctor-readiness.png",
+      "category": "features",
+      "title": "Doctor and Readiness Gate",
+      "use": "Represents deterministic readiness scoring, diagnostics, pass/warn/fail status, and CI gating before an agent begins implementation.",
+      "where": [
+        "Readiness Doctor guide",
+        "Results pages",
+        "CI drift gate section",
+        "Homepage feature card: Verify context"
+      ],
+      "size": "320\u2013480 px wide; pair with score thresholds or pass/warn/fail copy.",
+      "alt": "AgentDocs mascot beside a readiness gauge, checklist, and verified shield.",
+      "prompt": "Create a square pixel-art feature illustration for AgentDocs readiness checks. Show the document detective beside a large red-amber-green gauge with the needle in the green zone, holding a verified clipboard and standing next to a dark shield with a bright green check. Use the canonical fedora, cyan eyes, paper body, and charcoal rounded-square background. The scene should communicate deterministic diagnostics, CI gating, and a safe pass state. Avoid medical imagery and readable text.",
+      "dimensions": "1024x1024",
+      "sha256": "09339e61c8b4c4ebef8b6520bfc99c4d7b0156315244ac9226019de189bf710a"
+    },
+    {
+      "name": "feature-local-first-safe.png",
+      "category": "features",
+      "title": "Local-first and Safe",
+      "use": "Communicates that source docs are treated as untrusted input, commands are never executed, and built artifacts remain within a protected local boundary.",
+      "where": [
+        "Architecture and Security guide",
+        "Security policy",
+        "Local-first feature card",
+        "Trust and privacy explanations"
+      ],
+      "size": "320\u2013480 px wide; use near security guarantees and local/offline architecture copy.",
+      "alt": "AgentDocs mascot protecting local documentation with a lock shield inside a secure boundary.",
+      "prompt": "Create a square pixel-art security illustration for AgentDocs. Show the canonical document detective inside a glowing cyan local boundary, holding a green shield with a white padlock while placing a verified document into a dark locked local box. Include a small crossed-out command document in the background to imply no command execution. Use a charcoal rounded tile, paper white, cyan, green, and a restrained red warning accent. No cloud icons, no readable text, no aggressive cybersecurity clich\u00e9s.",
+      "dimensions": "1024x1024",
+      "sha256": "733742fdde8eaf09dd274512b9b5c86650b1ce75777be0d985aca0417cd2549c"
+    }
+  ]
+}

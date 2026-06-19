@@ -7,7 +7,7 @@ hero:
   tagline: "Fresh? Scoped? Evidence-backed? AgentDocs compiles existing docs into deterministic local context you can gate."
   image:
     src: /brand/hero-agentdocs.png
-    alt: AgentDocs compiling documentation into structured agent context
+    alt: AgentDocs pixel detective mascot holding documentation and an audit checklist
   actions:
     - theme: brand
       text: Get Started
@@ -52,32 +52,37 @@ multi-session agent use, read the [agent workflow guide](/guide/agent-workflow).
 
 <div class="feature-illustration-grid">
   <a class="feature-illustration-card" href="/AgentDocs/guide/quick-start.html">
-    <img src="/brand/feature-build.png" alt="Compile documentation into structured outputs" />
+    <img src="/brand/feature-build.png" alt="AgentDocs mascot compiling loose documentation into an organized stack" />
     <h3>Compile existing docs</h3>
     <p>Collect, normalize, graph, and generate deterministic local context from existing docs.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
-    <img src="/brand/feature-search.png" alt="Search indexed documentation" />
+    <img src="/brand/feature-search.png" alt="AgentDocs mascot inspecting and filtering documentation with a magnifying glass" />
     <h3>Scope retrieval</h3>
     <p>Filter versions, frameworks, routers, and runtimes while retrieving evidence offline.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
-    <img src="/brand/feature-audit-evidence.png" alt="Trace generated outputs to source evidence" />
+    <img src="/brand/feature-audit-evidence.png" alt="AgentDocs mascot tracing a glowing evidence path between source documentation and generated context" />
     <h3>Trace every claim</h3>
     <p>Link task packs, entities, and findings back to source pages, headings, and code.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/reference/artifacts.html">
-    <img src="/brand/feature-task-packs.png" alt="Task-specific context packs for coding agents" />
+    <img src="/brand/feature-task-packs.png" alt="AgentDocs mascot carrying a tied bundle of verified task documents" />
     <h3>Generate task packs</h3>
     <p>Give coding agents compact task context without silently combining conflicting evidence.</p>
   </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/search-mcp.html">
-    <img src="/brand/feature-mcp-tools.png" alt="Read-only MCP tools for coding agents" />
+    <img src="/brand/feature-mcp-tools.png" alt="AgentDocs mascot connecting verified documentation to local tools" />
     <h3>Hand off to agents</h3>
     <p>Serve task context, freshness, verification, setup commands, and source evidence through read-only MCP.</p>
   </a>
+  <a class="feature-illustration-card" href="/AgentDocs/guide/doctor.html">
+    <img src="/brand/feature-doctor-readiness.png" alt="AgentDocs mascot beside a readiness gauge, checklist, and verified shield" />
+    <h3>Gate readiness</h3>
+    <p>Check freshness, coverage, evidence quality, and context conflicts before agents start work.</p>
+  </a>
   <a class="feature-illustration-card" href="/AgentDocs/guide/architecture.html">
-    <img src="/brand/feature-local-first-safe.png" alt="Local-first and safe documentation processing" />
+    <img src="/brand/feature-local-first-safe.png" alt="AgentDocs mascot protecting local documentation with a lock shield" />
     <h3>Run locally and safely</h3>
     <p>Keep the core offline, treat docs as untrusted input, and never execute crawled commands.</p>
   </a>

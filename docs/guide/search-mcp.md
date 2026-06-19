@@ -1,8 +1,8 @@
 # Search And MCP
 
 <div class="doc-illustration-pair">
-  <img src="/brand/feature-search.png" alt="Search indexed documentation" />
-  <img src="/brand/feature-mcp-tools.png" alt="Expose read-only MCP tools to coding agents" />
+  <img src="/brand/feature-search.png" alt="AgentDocs mascot inspecting and filtering documentation with a magnifying glass" />
+  <img src="/brand/feature-mcp-tools.png" alt="AgentDocs mascot connecting verified documentation to local tools" />
 </div>
 
 ## Offline Search

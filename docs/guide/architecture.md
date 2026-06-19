@@ -1,6 +1,6 @@
 # Architecture, Determinism, And Security
 
-<img class="doc-illustration" src="/brand/feature-local-first-safe.png" alt="Local-first and safe documentation processing" />
+<img class="doc-illustration" src="/brand/feature-local-first-safe.png" alt="AgentDocs mascot protecting local documentation with a lock shield" />
 
 AgentDocs is a compiler and auditor for agent-readable documentation:
 

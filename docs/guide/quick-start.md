@@ -1,6 +1,6 @@
 # Quick Start
 
-<img class="doc-illustration" src="/brand/feature-build.png" alt="Compile documentation into structured outputs" />
+<img class="doc-illustration" src="/brand/feature-build.png" alt="AgentDocs mascot compiling loose documentation into an organized stack" />
 
 Try AgentDocs on a public docs URL or local Markdown path with one command:
 

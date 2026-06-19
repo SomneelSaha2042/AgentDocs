@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/public/brand/hero-agentdocs.png" width="360" alt="AgentDocs compiling documentation into structured context for coding agents" />
+  <img src="./docs/public/brand/hero-agentdocs.png" width="560" alt="AgentDocs pixel detective mascot holding documentation and an audit checklist." />
 </p>
 
 # AgentDocs

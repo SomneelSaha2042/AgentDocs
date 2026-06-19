@@ -1,6 +1,6 @@
 # Readiness Doctor
 
-<img class="doc-illustration" src="/brand/feature-doctor-readiness.png" alt="Audit documentation readiness for coding agents" />
+<img class="doc-illustration" src="/brand/feature-doctor-readiness.png" alt="AgentDocs mascot beside a readiness gauge, checklist, and verified shield" />
 
 `agentdocs doctor` audits whether documentation gives coding agents enough
 evidence to perform common tasks safely.
