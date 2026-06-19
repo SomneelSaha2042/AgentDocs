@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/public/brand/hero-agentdocs.png" width="560" alt="AgentDocs pixel detective mascot holding documentation and an audit checklist." />
+  <img src="./assets/agentdocs-icon-pack/brand/hero-agentdocs.png" width="560" alt="AgentDocs pixel detective mascot holding documentation and an audit checklist." />
 </p>
 
 # AgentDocs
