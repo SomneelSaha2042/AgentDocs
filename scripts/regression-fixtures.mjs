@@ -43,11 +43,16 @@ await runNode(path.join(root, "scripts", "dogfood-regression.mjs"), [
   "--results", "dogfood-results",
   "--matrix", path.join(target, "dogfood-matrix.csv"),
   "--query", "migration=migration",
+  "--routing-goal", "quickstart=quickstart",
+  "--expect-route", "quickstart=quickstart",
   "--expect-warning", "migration=context_conflict",
   "--expect-task-pack", "quickstart",
 ]);
 const dogfood = JSON.parse(await readFile(path.join(target, "dogfood-results", "summary.json"), "utf8"));
 assert(dogfood.assertions.failed === 0, "dogfood assertion runner reported a failed expectation");
+assert(dogfood.routing.expected === 1, "dogfood routing benchmark did not record the expected route");
+assert(dogfood.routing.failed === 0, "dogfood routing benchmark reported a failed route");
+assert(dogfood.routing.results[0]?.selectedTaskPackId === "quickstart", "dogfood routing benchmark selected the wrong task pack");
 
 process.stdout.write("Offline hardening fixture regression passed.\n");
 

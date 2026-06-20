@@ -22,7 +22,10 @@ reference surfaces. The candidate targets are tracked in the
 [dogfood workflow matrix](/guide/workflow-matrix#expansion-candidates).
 The first expansion metric run is recorded in
 [Candidate Expansion Metrics](./candidate-expansion.md), including the
-remaining viability gaps and the next two product iterations.
+remaining viability gaps and the next two product iterations. See the
+[Evaluation Metrics Reference](./metrics-reference.md) for field definitions
+and the [Routing Benchmarks Phase 3](./routing-benchmarks-phase-3.md) note for
+the task-pack routing metric.
 
 ## What the runs proved
 
@@ -81,6 +84,8 @@ How to read the table:
   the same as an agent-task pass.
 - **Repeat build** reports whether the second build produced the same generated
   artifact hash as the first build.
+- **Routing accuracy** reports explicit task-pack routing expectations when a
+  run declares them. Historical rows may not have this metric.
 
 | Target | Source corpus | Run status | Compiled pages | Generated chunks | Extracted entities | Task packs | Readiness score | Repeat build | Main operational finding |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
@@ -110,6 +115,7 @@ findings with the latest summary.
 | June 12, 2026 | Post-hardening | Added context safety, tolerant MDX diagnostics, and regression assertions; Supabase completed and filtered Fastify/TanStack retrieval became safer. |
 | June 16, 2026 | Workflow layer | Reran all documented prepared targets after adding `status`, `handoff`, `verify-context`, setup snippets, build-state freshness, `agent-brief.md`, and richer MCP tools. All prepared targets passed regression; all reported fresh status. |
 | June 19, 2026 | Candidate expansion | Ran larger candidate metrics across Kubernetes, FastAPI, Rust, TypeScript, Airflow-site, Terraform, and a .NET docs shard; identified source-format, scale, scope, and retrieval gaps before broad-use polish. |
+| June 20, 2026 | Routing benchmark instrumentation | Added stable metric definitions and deterministic task-pack routing capture to dogfood summaries. |
 
 Read the [evaluation history](./history.md) for the run-by-run table and the
 workflow-layer findings.

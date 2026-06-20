@@ -54,6 +54,18 @@ Use `--expect-warning <label>=<warning-code>` when a deliberately broad query
 must report a context conflict. Failed expectations are preserved in
 `summary.json` and fail the regression.
 
+Task-pack routing is captured with deterministic workflow commands:
+
+```bash
+pnpm regression:dogfood -- .dogfood/fastify \
+  --routing-goal migration="migrate to Fastify v5" \
+  --expect-route migration=migration
+```
+
+`--routing-goal` records `agentdocs handoff` and `agentdocs verify-context`
+for the goal. `--expect-route` turns that routing goal into a regression
+assertion. Without `--expect-route`, routing is report-only.
+
 Workflow-layer reruns may also check:
 
 ```bash
@@ -84,6 +96,7 @@ Each target records:
 - broken links;
 - warnings and deprecations;
 - top five search results for standard and workflow-specific queries;
+- task-pack routing results when routing goals are declared;
 - first-build and repeated-build output hashes;
 - explicit search-quality judgments;
 - explicit `agent_task_passed` judgment;
@@ -100,6 +113,8 @@ results/
   search-auth.json
   search-quickstart.json
   search-errors.json
+  routing-<label>-handoff.json
+  routing-<label>-verify.json
   summary.json
   summary.csv
 ```
@@ -118,6 +133,7 @@ For that reason:
 
 - repeated-build hashes must match;
 - search quality is judged separately for standard queries;
+- task-pack routing expectations fail only when explicitly declared;
 - workflow-specific retrieval is inspected for version, framework, router, and
   runtime mixing;
 - failures must preserve actionable diagnostics;
@@ -156,5 +172,6 @@ This avoids turning a large page count or a high readiness score into a claim
 the evidence does not support.
 
 For the exact target commands and task-specific pass criteria, see the
-[Dogfood Workflow Matrix](/guide/workflow-matrix). For additional bounded live
-crawl examples, see [Live Dogfood Runs](/guide/live-dogfood).
+[Dogfood Workflow Matrix](/guide/workflow-matrix). For metric definitions, see
+the [Evaluation Metrics Reference](./metrics-reference.md). For additional
+bounded live crawl examples, see [Live Dogfood Runs](/guide/live-dogfood).

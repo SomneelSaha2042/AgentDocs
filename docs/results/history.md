@@ -18,6 +18,7 @@ a run explicitly says it was a live recrawl.
 | June 11, 2026 | Initial real-world baseline | Ran AgentDocs across self-docs, Hono, Fastify, Supabase, TanStack Query, Next.js, Octokit, and Prisma preparation. | Established baseline failures and risks: Supabase MDX stopped the build, Fastify local retrieval favored v3 migration evidence, TanStack broad retrieval mixed frameworks, Prisma preparation was blocked on Windows filenames. |
 | June 12, 2026 | Post-hardening rerun | Added context facets, tolerant MDX diagnostics, repo-source hardening, and regression assertions. | Successful prepared targets rebuilt deterministically. Supabase completed with diagnostics; Fastify and TanStack filtered retrieval became context-safe; broad mixed-context retrieval emitted warnings. |
 | June 16, 2026 | Agent workflow layer rerun | Added `status`, `handoff`, `verify-context`, `setup-agent`, `rebuild --changed`, `watch`, `agent-brief.md`, build-state freshness, and richer MCP tools. | All documented prepared targets passed dogfood regression again. `status` reported fresh across all 9 rerun targets. Workflow verification passed where a matching task pack existed and exposed missing exact-goal task packs elsewhere. |
+| June 20, 2026 | Metrics and routing instrumentation | Added a metrics reference and dogfood routing benchmark capture with explicit `--routing-goal` and `--expect-route` flags. | Offline fixtures now verify one expected task-pack route. Future dogfood rows can report routing accuracy without making all routing goals hard failures. |
 
 ## June 16, 2026 Workflow-Layer Rerun
 
@@ -51,3 +52,8 @@ passes. Most remain `unknown` until an agent actually completes the task using
 only AgentDocs context. The new verification failures are useful because they
 show where built-in task families should expand next: route handlers, schema
 validation, React mutation invalidation, and SDK request/auth workflows.
+
+Phase 3 adds deterministic measurement for those routing gaps. See
+[Routing Benchmarks Phase 3](./routing-benchmarks-phase-3.md) for the runner
+contract and [Evaluation Metrics Reference](./metrics-reference.md) for field
+definitions.

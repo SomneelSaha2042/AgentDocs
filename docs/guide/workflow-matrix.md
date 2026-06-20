@@ -15,7 +15,9 @@ pnpm regression:dogfood -- <target-directory>
 Workflow-specific searches are added with repeatable `--query <label=query>`
 options. The runner saves the top five results for every query, verifies a
 second build has the same generated-artifact hash, and keeps
-`agent_task_passed` as an explicit human judgment.
+`agent_task_passed` as an explicit human judgment. Task-pack routing goals are
+added with `--routing-goal <label=goal>` and can be made strict with
+`--expect-route <label=task-pack-id>`.
 
 Committed offline fixtures now gate the context boundaries exposed by this
 matrix. Run `pnpm regression:fixtures` to verify version, framework, router,
@@ -97,6 +99,11 @@ verification failures were mainly `missing_task_pack` for exact implementation
 goals such as Fastify schema routes, React mutation invalidation, and Next.js
 App Router POST routes. Those are now tracked as task-routing/product coverage
 gaps rather than hidden inside a successful build.
+
+Phase 3 adds a deterministic routing benchmark to the same dogfood runner. See
+[Routing Benchmarks Phase 3](/results/routing-benchmarks-phase-3) and the
+[Evaluation Metrics Reference](/results/metrics-reference) for the reporting
+contract.
 
 ## Workflow Commands
 

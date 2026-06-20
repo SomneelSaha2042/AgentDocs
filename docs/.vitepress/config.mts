@@ -53,6 +53,8 @@ export default defineConfig({
           { text: "Evaluation History", link: "/results/history" },
           { text: "Findings by Target", link: "/results/findings" },
           { text: "Candidate Expansion Metrics", link: "/results/candidate-expansion" },
+          { text: "Metrics Reference", link: "/results/metrics-reference" },
+          { text: "Routing Benchmarks", link: "/results/routing-benchmarks-phase-3" },
           { text: "Methodology", link: "/results/methodology" },
         ],
       },

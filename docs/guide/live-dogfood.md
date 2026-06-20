@@ -74,7 +74,7 @@ pnpm regression:dogfood -- .dogfood/hono-website \
 
 The runner builds twice, verifies stable generated-artifact hashes, runs the
 doctor and the standard `authentication`, `quickstart`, and `error handling`
-searches, and writes:
+searches, optionally captures task-pack routing goals, and writes:
 
 ```txt
 results/
@@ -84,15 +84,28 @@ results/
   search-auth.json
   search-quickstart.json
   search-errors.json
+  routing-<label>-handoff.json
+  routing-<label>-verify.json
   summary.json
   summary.csv
 ```
 
 `summary.json` records pages, chunks, entities, task packs, readiness, source
 coverage, broken links, warnings, deprecations, top-five search results, and
-repeated-build hashes. `summary.csv` includes compact source coverage ratio and
-gap columns. The cross-target table is updated at
+repeated-build hashes. When `--routing-goal` is supplied, it also records the
+selected task pack, verification status, routing classification, and any
+explicit `--expect-route` result. `summary.csv` includes compact source
+coverage and routing columns. The cross-target table is updated at
 `.dogfood/regression-summary.csv`.
+
+Use routing goals to measure whether a task-shaped request selects the
+expected task pack:
+
+```bash
+pnpm regression:dogfood -- .dogfood/hono-website \
+  --routing-goal deploy-worker="deploy to Cloudflare Workers" \
+  --expect-route deploy-worker=deployment
+```
 
 Do not use unexplained `N/A` for missing confidence. Label every missing or
 partial metric with one of:

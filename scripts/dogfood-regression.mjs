@@ -29,6 +29,7 @@ const customSearches = Object.fromEntries(await Promise.all(options.queries.map(
   JSON.parse(await run([...globals, "search", query, "--limit", "5"])),
 ])));
 const searches = { ...standardSearches, ...customSearches };
+const routing = await evaluateRouting(options);
 
 await writeJson(path.join(resultsDirectory, "build.json"), firstBuild);
 await writeJson(path.join(resultsDirectory, "doctor.json"), doctor);
@@ -57,7 +58,7 @@ const brokenLinks = agentMap.pages.flatMap((page) =>
 const deprecated = agentMap.entities.filter(
   (entity) => entity.type === "concept" && /deprecated/i.test(entity.name),
 );
-const assertions = evaluateAssertions(options, searches, agentMap);
+const assertions = evaluateAssertions(options, searches, agentMap, routing);
 const warnings = doctor.checks.filter((check) => check.status === "warn");
 const summary = {
   target: options.name ?? path.basename(target),
@@ -111,6 +112,7 @@ const summary = {
     agentTaskPassed: options.agentTaskPassed,
     notes: options.notes,
   },
+  routing,
   assertions,
 };
 
@@ -138,6 +140,8 @@ function parseOptions(args) {
     searchAuthGood: "unknown",
     searchQuickstartGood: "unknown",
     expectations: [],
+    routingGoals: [],
+    routeExpectations: new Map(),
   };
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
@@ -156,6 +160,11 @@ function parseOptions(args) {
     else if (key === "out") parsed.out = next;
     else if (key === "query") parsed.queries.push(parseQuery(next));
     else if (key === "results") parsed.results = next;
+    else if (key === "routing-goal") parsed.routingGoals.push(parseQuery(next));
+    else if (key === "expect-route") {
+      const expectation = parseRouteExpectation(next);
+      parsed.routeExpectations.set(expectation.label, expectation.expectedTaskPackIds);
+    }
     else if (key === "search-auth-good") parsed.searchAuthGood = judgment(next);
     else if (key === "search-quickstart-good") parsed.searchQuickstartGood = judgment(next);
     else if (["expect-top", "expect-task-pack", "expect-no-mixed", "expect-warning"].includes(key)) {
@@ -166,11 +175,68 @@ function parseOptions(args) {
   if (parsed.target === undefined) {
     throw new Error("Usage: pnpm regression:dogfood -- <target> [--out <path>] [--agent-task-passed true|false|unknown]");
   }
+  for (const label of parsed.routeExpectations.keys()) {
+    if (!parsed.routingGoals.some((goal) => goal.label === label)) {
+      throw new Error(`--expect-route ${label}=... requires a matching --routing-goal ${label}=...`);
+    }
+  }
   return parsed;
 }
 
-function evaluateAssertions(options, searches, agentMap) {
-  const results = options.expectations.map((expectation) => {
+async function evaluateRouting(options) {
+  const results = [];
+  for (const goal of options.routingGoals) {
+    const expectedTaskPackIds = options.routeExpectations.get(goal.label);
+    const handoff = JSON.parse(await run([...globals, "handoff", goal.query]));
+    const verification = JSON.parse(await run([...globals, "verify-context", "--task", goal.query]));
+    await writeJson(path.join(resultsDirectory, `routing-${goal.label}-handoff.json`), handoff);
+    await writeJson(path.join(resultsDirectory, `routing-${goal.label}-verify.json`), verification);
+    const selectedTaskPackId = handoff.selectedTaskPack?.id;
+    const issueCodes = verification.issues?.map((issue) => issue.code) ?? [];
+    const unsafe = issueCodes.some((code) => code === "mixed_context" || code === "mixed_search_context");
+    const classification = unsafe
+      ? "unsafe_mixed_context"
+      : selectedTaskPackId === undefined
+        ? "fallback"
+        : expectedTaskPackIds?.includes(selectedTaskPackId) === true
+          ? "matched_exact"
+          : "matched_related";
+    const passed = expectedTaskPackIds === undefined
+      ? null
+      : classification === "matched_exact";
+    results.push({
+      label: goal.label,
+      goal: goal.query,
+      selectedTaskPackId,
+      selectedTaskPackTitle: handoff.selectedTaskPack?.title,
+      verificationStatus: verification.status,
+      warnings: handoff.warnings ?? [],
+      issueCodes,
+      classification,
+      expectedTaskPackIds,
+      passed,
+      handoff,
+      verification,
+    });
+  }
+  const expected = results.filter((item) => item.expectedTaskPackIds !== undefined);
+  const passed = expected.filter((item) => item.passed === true);
+  const failed = expected.filter((item) => item.passed === false);
+  return {
+    total: results.length,
+    expected: expected.length,
+    passed: passed.length,
+    failed: failed.length,
+    fallback: results.filter((item) => item.classification === "fallback").length,
+    matchedRelated: results.filter((item) => item.classification === "matched_related").length,
+    unsafeMixedContext: results.filter((item) => item.classification === "unsafe_mixed_context").length,
+    accuracy: expected.length === 0 ? null : roundRatio(passed.length / expected.length),
+    results: results.map(({ handoff, verification, ...item }) => item),
+  };
+}
+
+function evaluateAssertions(options, searches, agentMap, routing) {
+  const searchResults = options.expectations.map((expectation) => {
     if (expectation.kind === "expect-task-pack") {
       const passed = agentMap.taskPacks.some((pack) => pack.id === expectation.value);
       return { ...expectation, passed, message: passed ? "Task pack found." : "Task pack missing." };
@@ -191,11 +257,36 @@ function evaluateAssertions(options, searches, agentMap) {
     const passed = response.results.length > 0 && values.size === 1;
     return { ...expectation, passed, message: `${query} values: ${[...values].join(", ") || "none"}.` };
   });
+  const routeResults = routing.results
+    .filter((item) => item.expectedTaskPackIds !== undefined)
+    .map((item) => ({
+      kind: "expect-route",
+      value: `${item.label}=${item.expectedTaskPackIds.join(",")}`,
+      passed: item.passed === true,
+      message: item.selectedTaskPackId === undefined
+        ? "No task pack selected."
+        : `Selected task pack: ${item.selectedTaskPackId}; classification: ${item.classification}.`,
+    }));
+  const results = [...searchResults, ...routeResults];
   return {
     passed: results.filter((result) => result.passed).length,
     failed: results.filter((result) => !result.passed).length,
     results,
   };
+}
+
+function parseRouteExpectation(value) {
+  const { label, query } = parseQuery(value);
+  const expectedTaskPackIds = query.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
+  if (expectedTaskPackIds.length === 0) {
+    throw new Error(`Expected at least one task-pack ID for --expect-route ${label}=...`);
+  }
+  for (const id of expectedTaskPackIds) {
+    if (!/^[a-z0-9_-]+$/.test(id)) {
+      throw new Error(`Expected task-pack ID "${id}" to contain only lowercase letters, numbers, hyphens, or underscores.`);
+    }
+  }
+  return { label, expectedTaskPackIds };
 }
 
 function parseQuery(value) {
@@ -277,6 +368,10 @@ function aggregateHash(hashes) {
   return createHash("sha256").update(JSON.stringify(hashes)).digest("hex");
 }
 
+function roundRatio(value) {
+  return Math.round(value * 10_000) / 10_000;
+}
+
 async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -284,7 +379,7 @@ async function writeJson(filePath, value) {
 async function updateMatrix(filePath, summary) {
   let rows = [];
   try {
-    rows = (await readFile(filePath, "utf8")).trim().split(/\r?\n/).slice(1);
+    rows = normalizeCsvRows(await readFile(filePath, "utf8"));
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   }
@@ -296,7 +391,7 @@ async function updateMatrix(filePath, summary) {
 }
 
 function csvHeader() {
-  return "target,pages,task_packs,readiness,source_coverage_ratio,source_coverage_gap,search_auth_good,search_quickstart_good,agent_task_passed,notes";
+  return "target,pages,task_packs,readiness,source_coverage_ratio,source_coverage_gap,routing_goals,routing_expected,routing_passed,routing_failed,routing_accuracy,search_auth_good,search_quickstart_good,agent_task_passed,notes";
 }
 
 function csvRow(summary) {
@@ -307,11 +402,56 @@ function csvRow(summary) {
     summary.readinessScore,
     summary.sourceCoverage.coverageRatio ?? "",
     summary.sourceCoverage.gapReason ?? summary.sourceCoverage.gapSeverity ?? "",
+    summary.routing.total,
+    summary.routing.expected,
+    summary.routing.passed,
+    summary.routing.failed,
+    summary.routing.accuracy ?? "",
     summary.judgments.searchAuthGood,
     summary.judgments.searchQuickstartGood,
     summary.judgments.agentTaskPassed,
     summary.judgments.notes,
   ].map(csv).join(",");
+}
+
+function normalizeCsvRows(contents) {
+  const lines = contents.trim().length === 0 ? [] : contents.trim().split(/\r?\n/);
+  if (lines.length <= 1) return [];
+  const sourceHeader = parseCsvLine(lines[0]);
+  const targetHeader = csvHeader().split(",");
+  return lines.slice(1).map((line) => {
+    const sourceValues = parseCsvLine(line);
+    const row = Object.fromEntries(sourceHeader.map((key, index) => [key, sourceValues[index] ?? ""]));
+    return targetHeader.map((key) => csv(row[key] ?? "")).join(",");
+  });
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (quoted) {
+      if (char === '"' && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ",") {
+      values.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  values.push(current);
+  return values;
 }
 
 function csv(value) {
