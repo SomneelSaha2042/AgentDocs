@@ -19,6 +19,22 @@ a run explicitly says it was a live recrawl.
 | June 12, 2026 | Post-hardening rerun | Added context facets, tolerant MDX diagnostics, repo-source hardening, and regression assertions. | Successful prepared targets rebuilt deterministically. Supabase completed with diagnostics; Fastify and TanStack filtered retrieval became context-safe; broad mixed-context retrieval emitted warnings. |
 | June 16, 2026 | Agent workflow layer rerun | Added `status`, `handoff`, `verify-context`, `setup-agent`, `rebuild --changed`, `watch`, `agent-brief.md`, build-state freshness, and richer MCP tools. | All documented prepared targets passed dogfood regression again. `status` reported fresh across all 9 rerun targets. Workflow verification passed where a matching task pack existed and exposed missing exact-goal task packs elsewhere. |
 | June 20, 2026 | Metrics and routing instrumentation | Added a metrics reference and dogfood routing benchmark capture with explicit `--routing-goal` and `--expect-route` flags. | Offline fixtures now verify one expected task-pack route. Future dogfood rows can report routing accuracy without making all routing goals hard failures. |
+| June 20, 2026 | Routing improvements | Added built-in route-handler, query-invalidation, and schema-validation task families, then expanded the offline routing fixture. | Offline fixtures now verify four expected task-pack routes and keep routing accuracy separate from readiness score. |
+| June 20, 2026 | Full Phase 5 dogfood rerun | Reran the nine documented prepared targets and populated routing metrics in `.dogfood/regression-summary.csv`. | Stable repeated builds across all targets. Fastify local, TanStack local, Next.js prepared crawl, Supabase, and AgentDocs exact routing passed. Hono quickstart routing failed on local and prepared-crawl targets. |
+
+## June 20, 2026 Phase 5 Full Dogfood Rerun
+
+| Target | Pages | Task packs | Readiness | Routing | Result |
+| --- | ---: | ---: | ---: | --- | --- |
+| AgentDocs self-docs | 13 | 4 | 79 | 1/1 | Passed; setup goal routes to installation. |
+| Hono local docs | 85 | 7 | 93 | 1/2 | Build passed; Cloudflare Workers routes to deployment, but quickstart selects installation. |
+| Fastify local docs | 43 | 5 | 91 | 2/2 | Passed; schema validation and migration route exactly. |
+| Supabase local MDX | 737 | 11 | 79 | 1/1 | Passed; auth/RLS routes to authentication, with MDX coverage gap reported. |
+| TanStack Query local docs | 411 | 9 | 79 | 1/1 | Passed; React mutation invalidation routes to query-invalidation. |
+| Octokit local docs | 14 | 4 | 93 | report-only | Passed; auth request handoff selected authentication without a strict expectation. |
+| Next.js prepared crawl | 100 | 8 | 88 | 1/1 | Passed; App Router POST route routes to route-handlers. |
+| Hono prepared crawl | 100 | 4 | 79 | 0/1 | Build passed; quickstart selects authentication and remains a routing gap. |
+| Fastify prepared crawl | 100 | 6 | 83 | 1/1 strict | Passed; migration routes exactly and schema-validation was captured report-only. |
 
 ## June 16, 2026 Workflow-Layer Rerun
 
@@ -56,4 +72,6 @@ validation, React mutation invalidation, and SDK request/auth workflows.
 Phase 3 adds deterministic measurement for those routing gaps. See
 [Routing Benchmarks Phase 3](./routing-benchmarks-phase-3.md) for the runner
 contract and [Evaluation Metrics Reference](./metrics-reference.md) for field
-definitions.
+definitions. Phase 4-5 begins closing the measured gaps with conservative
+built-in task families; see
+[Routing Improvements Phase 4-5](./routing-improvements-phase-4-5.md).

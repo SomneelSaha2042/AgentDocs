@@ -116,7 +116,7 @@ export class ArtifactService {
       .map((pack) => ({
         pack,
         score: scoreTerms(
-          `${pack.id} ${pack.title} ${pack.description}`.toLowerCase(),
+          taskPackSearchText(pack),
           normalized,
         ),
       }))
@@ -646,6 +646,15 @@ function headingPathFor(page: DocPage, headingId?: string): string[] {
     }
   }
   return [...path, target.text];
+}
+
+function taskPackSearchText(pack: TaskPack): string {
+  return [
+    pack.id,
+    pack.title,
+    pack.description,
+    ...pack.steps.flatMap((step) => [step.title, step.description]),
+  ].join(" ").toLowerCase();
 }
 
 function scoreTerms(value: string, query: string): number {

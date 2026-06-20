@@ -219,6 +219,42 @@ pnpm add @example/sdk
     expect(generated.taskPacks.some((pack) => pack.id === "pagination")).toBe(true);
   });
 
+  it("generates a route-handlers pack from route handler evidence", () => {
+    const markdown = "# Route Handlers\n\nCreate a POST route handler in the App Router.";
+    const generated = generateStaticArtifacts({
+      project: { name: "Next Fixture", slug: "next-fixture" },
+      agentMap: singlePageMap("Route Handlers", markdown),
+      preferredFacets: { router: "app" },
+      exclusiveKeys: ["router"],
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "route-handlers")).toBe(true);
+  });
+
+  it("generates a query-invalidation pack from mutation invalidation evidence", () => {
+    const markdown = "# React query invalidation\n\nInvalidate a React query after a mutation.";
+    const generated = generateStaticArtifacts({
+      project: { name: "Query Fixture", slug: "query-fixture" },
+      agentMap: singlePageMap("React query invalidation", markdown),
+      preferredFacets: { framework: "react" },
+      exclusiveKeys: ["framework"],
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "query-invalidation")).toBe(true);
+  });
+
+  it("generates a schema-validation pack from schema validation evidence", () => {
+    const markdown = "# Schema validation\n\nBuild a Fastify v5 route with JSON schema validation.";
+    const generated = generateStaticArtifacts({
+      project: { name: "Fastify Fixture", slug: "fastify-fixture" },
+      agentMap: singlePageMap("Schema validation", markdown),
+      preferredFacets: { version: "v5" },
+      exclusiveKeys: ["version"],
+    });
+
+    expect(generated.taskPacks.some((pack) => pack.id === "schema-validation")).toBe(true);
+  });
+
   it("does not advertise task-pack files when links are disabled", () => {
     const markdown = "# Setup\n\nInstall the SDK.\n";
     const pageId = "page_setup";

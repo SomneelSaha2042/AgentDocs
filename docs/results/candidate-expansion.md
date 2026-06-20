@@ -2,6 +2,11 @@
 
 Run date: June 19, 2026.
 
+> Historical snapshot: June 19, 2026. Some gaps identified here have since
+> been partially addressed, including source coverage reporting in build,
+> manifest, doctor, and dogfood summaries. Keep this page as historical
+> evidence, and use the current results pages for present capability claims.
+
 These metrics expand the dogfood suite toward larger and more varied
 documentation estates. They are not final pass/fail judgments for agent tasks.
 They show what AgentDocs can compile today, where retrieval looks useful, and

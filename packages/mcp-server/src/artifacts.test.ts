@@ -21,6 +21,8 @@ describe("ArtifactService", () => {
       .toContain("# Task: Authentication");
     const context = await service.getAgentStartContext("configure authentication");
     expect(context.readFirst[0]).toBe("agentdocs://task-packs/authentication.md");
+    const stepMatchedContext = await service.getAgentStartContext("implement React mutation invalidation");
+    expect(stepMatchedContext.readFirst[0]).toBe("agentdocs://task-packs/query-invalidation.md");
     expect(context.goalBundle.steps[0]).toMatchObject({
       pageId: "page_auth",
       role: "prerequisite",

@@ -70,6 +70,24 @@ const TASK_FAMILIES: TaskFamily[] = [
     keywords: ["config", "configuration", "option", "environment", "env var", "api_key"],
   },
   {
+    id: "route-handlers",
+    title: "Route handlers",
+    description: "Implement documented route handlers using router and runtime evidence.",
+    keywords: ["route handler", "route handlers", "app router", "api route", "post route", "get route"],
+  },
+  {
+    id: "query-invalidation",
+    title: "Query invalidation",
+    description: "Invalidate queries after mutations using framework-specific evidence.",
+    keywords: ["query invalidation", "invalidate query", "invalidate queries", "mutation invalidation"],
+  },
+  {
+    id: "schema-validation",
+    title: "Schema validation",
+    description: "Implement documented schema validation using version-specific evidence.",
+    keywords: ["schema validation", "json schema", "validate schema", "schema route"],
+  },
+  {
     id: "webhooks",
     title: "Webhooks",
     description: "Implement webhooks using available source evidence.",

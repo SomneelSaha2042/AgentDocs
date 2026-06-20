@@ -49,12 +49,15 @@ export default defineConfig({
       {
         text: "Results",
         items: [
+          { text: "Benchmark Summary", link: "/results/benchmark-summary" },
           { text: "Real-World Results", link: "/results/" },
           { text: "Evaluation History", link: "/results/history" },
           { text: "Findings by Target", link: "/results/findings" },
           { text: "Candidate Expansion Metrics", link: "/results/candidate-expansion" },
           { text: "Metrics Reference", link: "/results/metrics-reference" },
           { text: "Routing Benchmarks", link: "/results/routing-benchmarks-phase-3" },
+          { text: "Routing Improvements", link: "/results/routing-improvements-phase-4-5" },
+          { text: "Full Dogfood Rerun", link: "/results/full-dogfood-rerun-phase-5" },
           { text: "Methodology", link: "/results/methodology" },
         ],
       },

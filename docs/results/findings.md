@@ -62,6 +62,28 @@ is fresh, but this exact task does or does not have safe task-shaped evidence."
 That is more actionable than treating every successful build as an agent-task
 success.
 
+## Phase 5 full dogfood rerun
+
+On June 20, 2026, the documented prepared targets were rerun after adding
+route-handler, query-invalidation, and schema-validation task families. All
+targets rebuilt deterministically with stable repeated-build hashes.
+
+| Target | Result | Routing finding |
+| --- | --- | --- |
+| AgentDocs self-docs | 13 pages, 4 packs, 79 | Setup goal routes to `installation`. |
+| Hono local | 85 pages, 7 packs, 93 | Cloudflare Workers routes to `deployment`; quickstart still selects `installation`. |
+| Fastify local | 43 pages, 5 packs, 91 | Fastify v5 schema validation routes to `schema-validation`; migration routes to `migration`. |
+| Supabase local MDX | 737 pages, 11 packs, 79 | Auth/RLS routes to `authentication`; MDX coverage gap remains visible. |
+| TanStack Query local | 411 pages, 9 packs, 79 | React mutation invalidation routes to `query-invalidation`. |
+| Octokit local | 14 pages, 4 packs, 93 | Auth request routing is captured report-only and selects `authentication`. |
+| Next.js prepared crawl | 100 pages, 8 packs, 88 | App Router POST route routes to `route-handlers`. |
+| Hono prepared crawl | 100 pages, 4 packs, 79 | Quickstart still selects `authentication`, so this remains a routing precision gap. |
+| Fastify prepared crawl | 100 pages, 6 packs, 83 | Migration routes to `migration`; schema validation is captured report-only and selects `schema-validation`. |
+
+This confirms the targeted routing improvements on Fastify, TanStack Query,
+and Next.js while exposing Hono quickstart as the next selector issue. See
+[Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) for the metrics.
+
 ## AgentDocs self-dogfood
 
 **Result:** 13 pages, 42 chunks, 83 entities, 2 task packs, readiness 88,

@@ -17,13 +17,18 @@ export async function writeFixtureArtifacts(): Promise<string> {
     project: { name: "Fixture", slug: "fixture" },
     generatedAt: "1970-01-01T00:00:00.000Z",
     sources: [{ type: "local_markdown", value: "docs/auth.md" }],
-    counts: { pages: 2, chunks: 2, entities: 0, edges: 1, taskPacks: 1 },
+    counts: { pages: 2, chunks: 2, entities: 0, edges: 1, taskPacks: 2 },
   }))}\n`, "utf8");
   await writeFile(path.join(out, "llms.txt"), "# Fixture\n", "utf8");
   await writeFile(path.join(out, "AGENTS.md"), "# Agent instructions\n", "utf8");
   await writeFile(
     path.join(out, "task-packs", "authentication.md"),
     "# Task: Authentication\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(out, "task-packs", "query-invalidation.md"),
+    "# Task: Query invalidation\n",
     "utf8",
   );
   await buildSearchIndex({ agentMap: map, cwd: out, out: "." });
@@ -86,6 +91,21 @@ function fixtureMap(): AgentMap {
       gotchas: [{ text: "Do not expose API keys.", severity: "critical", evidence: [{ source: "page", pageId: "page_auth", repoPath: "docs/auth.md" }] }],
       codeExamples: ["const client = createClient();"],
       evidence: [{ source: "page", pageId: "page_auth", repoPath: "docs/auth.md" }],
+    }, {
+      id: "query-invalidation",
+      title: "Query invalidation",
+      description: "Invalidate queries.",
+      confidence: "low",
+      requiredPages: ["page_setup"],
+      relatedEntities: [],
+      steps: [{
+        title: "React mutation invalidation",
+        description: "Invalidate a React query after a mutation.",
+        evidence: [{ source: "page", pageId: "page_setup", repoPath: "docs/setup.md" }],
+      }],
+      gotchas: [],
+      codeExamples: [],
+      evidence: [{ source: "page", pageId: "page_setup", repoPath: "docs/setup.md" }],
     }],
   });
 }

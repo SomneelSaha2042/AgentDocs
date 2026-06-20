@@ -24,22 +24,25 @@ matrix. Run `pnpm regression:fixtures` to verify version, framework, router,
 locale, and content-type filters; mixed-context warnings; tolerant MDX
 ingestion; and quickstart generation. The June 16, 2026 workflow-layer rerun rebuilt all documented
 prepared targets and then checked `status`, `handoff`, and `verify-context`.
-Live website recrawls remain opt-in.
+The June 20, 2026 Phase 5 rerun rebuilt all documented prepared targets again
+and populated strict routing metrics. Live website recrawls remain opt-in.
 
 ## Current Status
 
 | Workflow | Prepared locally | Regression | Agent task | Current finding |
 | --- | --- | --- | --- | --- |
-| AgentDocs self-dogfood | Yes, docs-only source | Passed: 13 pages, 3 packs, readiness 90 | Passed | Workflow rerun fresh; `inspect task-pack <id>` remains the completed implementation task |
-| Hono dependency-user flow | Yes, local repo and prepared website crawl | Local: 85 pages, 7 packs, 93; prepared crawl: 100 pages, 4 packs, 81 | Pending | Workflow rerun fresh; local handoff selected deployment and verification passed for Cloudflare Worker deployment |
-| Fastify versioning flow | Yes, local repo and prepared website crawl | Local: 43 pages, 4 packs, 93; prepared crawl: 100 pages, 5 packs, 85 | Pending | Workflow rerun fresh; unfiltered migration warns about mixed versions; prepared crawl migration still ranks V5 first |
+| AgentDocs self-dogfood | Yes, docs-only source | Passed: 13 pages, 4 packs, readiness 79 | Passed | Phase 5 rerun stable; setup goal routes to `installation`. |
+| Hono dependency-user flow | Yes, local repo and prepared website crawl | Local: 85 pages, 7 packs, 93; prepared crawl: 100 pages, 4 packs, 79 | Pending | Phase 5 rerun stable; Cloudflare Workers routes to `deployment`, but quickstart routing still misses on local and prepared-crawl targets. |
+| Fastify versioning flow | Yes, local repo and prepared website crawl | Local: 43 pages, 5 packs, 91; prepared crawl: 100 pages, 6 packs, 83 | Pending | Phase 5 rerun stable; local schema validation and migration route exactly; prepared crawl migration routes exactly. |
 | Prisma local-docs monorepo | Blocked | Not run | Pending | Upstream repository contains Windows-invalid filenames; sparse checkout did not materialize the intended docs subtree |
-| Supabase large-MDX stress test | Yes | Passed: 737 pages, 9 packs, readiness 94 | Pending | Workflow rerun fresh; authentication handoff and auth/RLS verification passed |
-| TanStack Query multi-framework test | Yes | Passed: 411 pages, 7 packs, readiness 90 | Pending | Workflow rerun fresh; broad framework queries warn about mixed context; exact React invalidation task needs stronger task routing |
-| Next.js large-site crawl | Yes, prepared crawl | Passed: 100 pages, 7 packs, readiness 90 | Pending | Workflow rerun fresh from prepared crawl; a live recrawl and App Router agent task remain unjudged |
+| Supabase large-MDX stress test | Yes | Passed: 737 pages, 11 packs, readiness 79 | Pending | Phase 5 rerun stable; auth/RLS routes to `authentication`, with source coverage gaps explicit. |
+| TanStack Query multi-framework test | Yes | Passed: 411 pages, 9 packs, readiness 79 | Pending | Phase 5 rerun stable; React mutation invalidation routes to `query-invalidation`. |
+| Next.js large-site crawl | Yes, prepared crawl | Passed: 100 pages, 8 packs, readiness 88 | Pending | Phase 5 rerun stable; App Router POST route routes to `route-handlers`. |
 
-Octokit REST is an additional prepared local-docs target. Its regression passed
-with 14 pages, 4 packs, readiness 95, and a stable repeated build.
+Octokit REST is an additional prepared local-docs target. Its Phase 5
+regression passed with 14 pages, 4 packs, readiness 93, and a stable repeated
+build. The auth request routing goal is captured report-only and selects
+`authentication`.
 
 All completed post-hardening and workflow-layer regressions produced stable
 repeated-build hashes.

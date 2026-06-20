@@ -1,5 +1,9 @@
 # Real-World Results
 
+For the executive view, start with the
+[Benchmark Summary](./benchmark-summary.md). This page keeps the detailed
+target table and historical context.
+
 AgentDocs was tested on real documentation systems with different failure
 modes: local repositories, bounded website crawls, large MDX trees,
 versioned docs, multi-framework docs, and its own documentation.
@@ -7,11 +11,14 @@ versioned docs, multi-framework docs, and its own documentation.
 > Results baseline: June 11, 2026. Post-hardening rerun: June 12, 2026.
 > Agent workflow layer rerun: June 16, 2026. Prepared website crawl artifacts
 > were rebuilt without a live recrawl unless explicitly noted. Candidate
-> expansion metrics were captured on June 19, 2026.
+> expansion metrics were captured on June 19, 2026. A full Phase 5 dogfood
+> rerun populated routing metrics on June 20, 2026.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
-and clearly expose the cases where it cannot.
+and clearly expose the cases where it cannot. These results validate
+deterministic compilation and context-risk detection; end-to-end
+agent-implementation benchmarks are still in progress.
 
 These results are a useful beta baseline, not the final confidence bar. Before
 AgentDocs should be considered polished for broad use, the workflow matrix
@@ -25,7 +32,11 @@ The first expansion metric run is recorded in
 remaining viability gaps and the next two product iterations. See the
 [Evaluation Metrics Reference](./metrics-reference.md) for field definitions
 and the [Routing Benchmarks Phase 3](./routing-benchmarks-phase-3.md) note for
-the task-pack routing metric.
+the task-pack routing metric. The
+[Routing Improvements Phase 4-5](./routing-improvements-phase-4-5.md) note
+records the first expanded exact-route checks. The
+[Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) note records
+the latest prepared-target results.
 
 ## What the runs proved
 
@@ -62,10 +73,16 @@ an agent could receive plausible but unsafe guidance.
 
 How to read the table:
 
-- **Run status** is the regression outcome for the prepared target. `Passed`
+- **Pipeline regression** is the automated outcome for the prepared target. `Passed`
   means build, doctor, search capture, automated expectations, and repeated
-  hash comparison completed. `Blocked preparation` means the source corpus
-  could not be prepared, so AgentDocs did not run.
+  hash comparison completed. `Passed with routing failure` means the pipeline
+  completed but one or more strict task-context expectations failed. `Blocked
+  preparation` means the source corpus could not be prepared, so AgentDocs did
+  not run.
+- **Task-context verification** reports strict routing expectations when
+  declared. It is separate from pipeline success.
+- **Agent implementation** remains `Not evaluated` unless a coding agent
+  completed the task using only generated AgentDocs context.
 - **Compiled pages** are normalized source pages accepted into the AgentDocs
   model after crawl or ingest. For websites, this is bounded by crawl scope and
   `--max-pages`; it is not a count of every page on the upstream site.
@@ -87,18 +104,22 @@ How to read the table:
 - **Routing accuracy** reports explicit task-pack routing expectations when a
   run declares them. Historical rows may not have this metric.
 
-| Target | Source corpus | Run status | Compiled pages | Generated chunks | Extracted entities | Task packs | Readiness score | Repeat build | Main operational finding |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| AgentDocs | Local docs | Passed | 13 pages | Historical metric not captured | Historical metric not captured | 3 packs | 90/100 | Stable hash | Self-dogfood implementation task remains passed |
-| Hono | Local repo | Passed | 85 pages | Historical metric not captured | Historical metric not captured | 7 packs | 93/100 | Stable hash | Quickstart task pack restored with source-backed setup evidence |
-| Hono | Website | Passed | 100 pages | 101 chunks | 0 entities | 4 packs | 81/100 | Stable hash | Bounded crawl succeeded, but scope drift is visible |
-| Fastify | Local repo | Passed | 43 pages | Historical metric not captured | Historical metric not captured | 4 packs | 93/100 | Stable hash | v5-filtered migration and schema results contain only v5 evidence |
-| Fastify | Website | Passed | 100 pages | 2,526 chunks | 2,158 entities | 5 packs | 85/100 | Stable hash | Current v5 material ranks well, but minor versions mix |
-| TanStack Query | Local repo | Passed | 411 pages | Historical metric not captured | Historical metric not captured | 7 packs | 90/100 | Stable hash | React-filtered retrieval excludes other frameworks |
-| Next.js | Website | Passed | 100 pages | 823 chunks | 640 entities | 7 packs | 90/100 | Stable hash | Route handlers rank well; router families mix on other queries |
-| Octokit REST | Local docs | Passed | 14 pages | 25 chunks | 61 entities | 4 packs | 95/100 | Stable hash | Small conventional docs compile cleanly |
-| Supabase | Local MDX | Passed | 737 pages | Historical metric not captured | Historical metric not captured | 9 packs | 94/100 | Stable hash | Completed with 731 usable, 6 degraded, and 45 failed-file diagnostics |
-| Prisma | Local monorepo | Blocked preparation | Preparation blocked | Preparation blocked | Preparation blocked | Preparation blocked | Preparation blocked | Preparation blocked | Upstream Windows-invalid filenames blocked preparation |
+| Target | Source corpus | Pipeline regression | Task-context verification | Agent implementation | Readiness audit | Repeat build | Main operational finding |
+| --- | --- | --- | --- | --- | ---: | --- | --- |
+| AgentDocs | Local docs | Passed | 1/1 | Passed | 79/100 conditional | Stable hash | Setup routing now selects installation; self-dogfood task remains passed |
+| Hono | Local repo | Passed with routing failure | 1/2 | Not evaluated | 93/100 conditional | Stable hash | Cloudflare Workers routes to deployment; quickstart goal still selects installation |
+| Hono | Website | Passed with routing failure | 0/1 | Not evaluated | 79/100 conditional | Stable hash | Prepared crawl still builds, but quickstart handoff selects authentication |
+| Fastify | Local repo | Passed | 2/2 | Not evaluated | 91/100 conditional | Stable hash | v5 schema-validation and migration goals route exactly |
+| Fastify | Website | Passed | 1/1 strict, 1 report-only | Not evaluated | 83/100 conditional | Stable hash | Migration routes exactly; schema-validation is captured report-only |
+| TanStack Query | Local repo | Passed | 1/1 | Not evaluated | 79/100 conditional | Stable hash | React mutation invalidation now routes to query-invalidation |
+| Next.js | Website | Passed | 1/1 | Not evaluated | 88/100 conditional | Stable hash | App Router POST route now routes to route-handlers |
+| Octokit REST | Local docs | Passed | report-only | Not evaluated | 93/100 conditional | Stable hash | Auth request handoff selects authentication in report-only routing |
+| Supabase | Local MDX | Passed | 1/1 | Not evaluated | 79/100 conditional | Stable hash | Auth/RLS routes exactly; MDX coverage gap remains explicit |
+| Prisma | Local monorepo | Blocked preparation | Not evaluated | Not evaluated | Not evaluated | Not evaluated | Upstream Windows-invalid filenames blocked preparation |
+
+Compile counts remain available in the
+[Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) and historical
+tables. They are useful diagnostics, but they are not adoption outcomes.
 
 All completed regressions reported zero known broken internal links. Every
 successful target produced the same generated-artifact hash on its second
@@ -116,6 +137,8 @@ findings with the latest summary.
 | June 16, 2026 | Workflow layer | Reran all documented prepared targets after adding `status`, `handoff`, `verify-context`, setup snippets, build-state freshness, `agent-brief.md`, and richer MCP tools. All prepared targets passed regression; all reported fresh status. |
 | June 19, 2026 | Candidate expansion | Ran larger candidate metrics across Kubernetes, FastAPI, Rust, TypeScript, Airflow-site, Terraform, and a .NET docs shard; identified source-format, scale, scope, and retrieval gaps before broad-use polish. |
 | June 20, 2026 | Routing benchmark instrumentation | Added stable metric definitions and deterministic task-pack routing capture to dogfood summaries. |
+| June 20, 2026 | Routing improvements | Added deterministic route-handler, query-invalidation, and schema-validation task families with offline exact-route fixture checks. |
+| June 20, 2026 | Full Phase 5 dogfood rerun | Reran nine documented prepared targets and populated routing metrics. Fastify schema validation, TanStack React invalidation, and Next.js App Router routing passed; Hono quickstart routing remains open. |
 
 Read the [evaluation history](./history.md) for the run-by-run table and the
 workflow-layer findings.

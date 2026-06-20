@@ -10,12 +10,15 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-6f42c1.svg)](https://somneelsaha2042.github.io/AgentDocs/)
 
-**Deterministic, local-first tooling that makes stale, mixed-version, and context-less documentation measurable before a coding agent relies on it.**
+**Prevent coding agents from using stale, wrong-version, or incomplete documentation.**
+
+AgentDocs is a local context compiler and CI gate. It turns existing Markdown,
+MDX, and public documentation websites into task-specific, source-linked
+evidence for coding agents.
 
 Agents fail when they reuse stale docs, mix versions or frameworks, or start a
-task without source-backed evidence. AgentDocs turns Markdown, MDX, and public
-documentation websites into a local context layer that answers three operational
-questions:
+task without source-backed evidence. AgentDocs answers four operational
+questions before an agent relies on the docs:
 
 - Is the compiled context fresh?
 - Is it scoped to the right version, framework, router, runtime, or locale?
@@ -25,6 +28,12 @@ questions:
 The output includes compact task packs, searchable artifacts, readiness
 findings, handoff bundles, freshness state, and read-only MCP tools. It does not
 require an LLM, execute commands found in documentation, or mutate source docs.
+
+Use AgentDocs when:
+
+- you maintain docs and want an agent-readiness gate;
+- you use coding agents and need safer context for third-party dependencies;
+- you operate agent infrastructure and want reusable local context through MCP.
 
 > **Usable beta:** AgentDocs is published on npm as
 > `@somneelsaha/agentdocs` and can be installed today with Node.js 20 or later.
@@ -72,6 +81,14 @@ version such as `@somneelsaha/agentdocs@0.1.0-beta.4` when you need a
 reproducible install.
 
 See the [installation guide](https://somneelsaha2042.github.io/AgentDocs/guide/installation) for PowerShell and Linux setup details.
+
+## Choose A Workflow
+
+| I want to... | Start with | Success signal |
+| --- | --- | --- |
+| Maintain documentation | `agentdocs build && agentdocs doctor` | CI can fail on stale, incomplete, or unsafe context. |
+| Use a coding agent on an app | `agentdocs try <url-or-path> --goal "<task>"` | The agent receives a task handoff with source evidence. |
+| Operate agent infrastructure | `agentdocs serve-mcp` | Agents can read task packs and verified context from local artifacts. |
 
 ## Five-Minute Walkthrough
 
@@ -316,6 +333,7 @@ Release gates cover:
 
 - deterministic fixture-based unit, snapshot, integration, and CLI tests;
 - an offline hardening regression for mixed context, tolerant MDX, and task-pack routing;
+- full prepared-target dogfood reruns with preserved historical metrics;
 - schema validation for generated JSON and JSONL artifacts;
 - repeated-build artifact hash checks;
 - SQLite/FTS5 search on Node 22 and deterministic lexical fallback on Node 20;
@@ -323,6 +341,9 @@ Release gates cover:
 - npm tarball contents and clean global-install verification;
 - real CLI workflow and MCP stdio smoke tests;
 - path traversal, invalid artifacts, broken links, and untrusted-input behavior.
+
+Latest dogfood metrics are published in the
+[Phase 5 full dogfood rerun](https://somneelsaha2042.github.io/AgentDocs/results/full-dogfood-rerun-phase-5).
 
 ## Configuration
 

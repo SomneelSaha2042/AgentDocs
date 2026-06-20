@@ -44,15 +44,24 @@ await runNode(path.join(root, "scripts", "dogfood-regression.mjs"), [
   "--matrix", path.join(target, "dogfood-matrix.csv"),
   "--query", "migration=migration",
   "--routing-goal", "quickstart=quickstart",
+  "--routing-goal", "route-handler=build App Router POST route handler",
+  "--routing-goal", "query-invalidation=implement React mutation invalidation",
+  "--routing-goal", "schema-validation=build Fastify v5 schema route",
   "--expect-route", "quickstart=quickstart",
+  "--expect-route", "route-handler=route-handlers",
+  "--expect-route", "query-invalidation=query-invalidation",
+  "--expect-route", "schema-validation=schema-validation",
   "--expect-warning", "migration=context_conflict",
   "--expect-task-pack", "quickstart",
 ]);
 const dogfood = JSON.parse(await readFile(path.join(target, "dogfood-results", "summary.json"), "utf8"));
 assert(dogfood.assertions.failed === 0, "dogfood assertion runner reported a failed expectation");
-assert(dogfood.routing.expected === 1, "dogfood routing benchmark did not record the expected route");
+assert(dogfood.routing.expected === 4, "dogfood routing benchmark did not record the expected routes");
 assert(dogfood.routing.failed === 0, "dogfood routing benchmark reported a failed route");
-assert(dogfood.routing.results[0]?.selectedTaskPackId === "quickstart", "dogfood routing benchmark selected the wrong task pack");
+assert(
+  dogfood.routing.results.every((result) => result.passed === true),
+  "dogfood routing benchmark selected a wrong task pack",
+);
 
 process.stdout.write("Offline hardening fixture regression passed.\n");
 

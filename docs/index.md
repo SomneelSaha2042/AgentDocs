@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: AgentDocs
-  text: Make agent docs measurable before agents rely on them
-  tagline: "Fresh? Scoped? Evidence-backed? AgentDocs compiles existing docs into deterministic local context you can gate."
+  text: Prevent coding agents from using stale, wrong-version, or incomplete documentation
+  tagline: "A local context compiler and CI gate that gives coding agents task-specific, source-linked evidence."
   image:
     src: /brand/hero-agentdocs.png
     alt: AgentDocs pixel detective mascot holding documentation and an audit checklist
@@ -21,21 +21,18 @@ hero:
 
 ---
 
-## What AgentDocs checks
+## What AgentDocs Is
 
 Agents fail when they reuse stale docs, mix versions or frameworks, or start a
-task without source-backed evidence. AgentDocs adds a separate context layer
-optimized for task execution, without rewriting the source docs.
+task without source-backed evidence. AgentDocs compiles existing documentation
+into a separate local context layer optimized for task execution, without
+rewriting the source docs.
 
 It puts three questions in front of every agent handoff:
 
 - Is the compiled context fresh?
 - Is it scoped to the right version, framework, router, runtime, or locale?
 - Does it contain evidence for the task I am about to ask an agent to do?
-
-```txt
-docs -> collect -> normalize -> graph -> task packs -> status -> handoff -> MCP
-```
 
 Install the published beta from npm:
 
@@ -47,6 +44,29 @@ agentdocs try ./docs --goal "implement authentication"
 Start with the [installation guide](/guide/installation), then complete the
 [five-minute quick start](/guide/quick-start). For the design behind
 multi-session agent use, read the [agent workflow guide](/guide/agent-workflow).
+
+## Choose Your Entry Point
+
+| If you... | Start here | Success metric |
+| --- | --- | --- |
+| Maintain documentation | `agentdocs build && agentdocs doctor` | CI can catch missing task evidence, stale context, source coverage gaps, and unsafe mixed context. |
+| Use coding agents on an application | `agentdocs try <url-or-path> --goal "<task>"` | The agent gets a scoped handoff with source pages, task packs, warnings, and setup commands. |
+| Operate agent infrastructure | `agentdocs serve-mcp` | Agents can reuse read-only local task context through MCP without arbitrary filesystem access. |
+
+## What It Looks Like
+
+```bash
+$ agentdocs verify-context --task "migrate this service to Fastify v5"
+WARN: Context needs review.
+  Issue: deprecated_evidence
+  Selected task pack: migration
+  Recommended action: inspect the migration task pack and apply version facets when searching.
+
+$ agentdocs verify-context --task "migrate this service to Fastify v5" --facet version=v5
+PASS: Context is safe to use for this task.
+  Version boundary: v5
+  Task evidence: source-linked migration sections
+```
 
 ## From docs to gateable context
 
@@ -101,12 +121,14 @@ crawls by TTL, emits `agent-brief.md`, and exposes `handoff` and
 status checks are deterministic and local, while live recrawling remains an
 explicit build action.
 
-## Proven on real documentation
+## Validated Against Real Documentation
 
 AgentDocs was tested against its own docs and documentation from Hono, Fastify,
 Supabase, TanStack Query, Next.js, and Octokit. The post-hardening regression
 suite compiled successful targets twice, audited readiness, and checked
 version, framework, router, locale, content-type, MDX, and task-pack behavior.
+Deterministic compilation and context-risk detection are proven. End-to-end
+agent-task benchmarks are still in progress.
 
 | Result | Evidence |
 | --- | --- |
@@ -120,5 +142,6 @@ The important result is not that every target passed. It is that AgentDocs
 makes useful context, unsafe context, and degraded normalization measurable
 before a coding agent relies on them.
 
-[Explore the real-world findings](/results/) or read the
+[Read the benchmark summary](/results/benchmark-summary), explore the
+[real-world findings](/results/), or read the
 [reproducible methodology](/results/methodology).
