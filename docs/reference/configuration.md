@@ -23,11 +23,15 @@ context:
   preferred:
     version: v5
     framework: react
-  exclusiveKeys: [version, framework, router, runtime]
+    locale: en
+  exclusiveKeys: [version, framework, router, runtime, locale]
   rules:
     - match: "**/react/**"
       facets:
         framework: react
+    - match: "**/blog/**"
+      facets:
+        content_type: blog
 
 normalization:
   mdx: tolerant
@@ -60,8 +64,12 @@ Repository sources reuse local ingestion and do not clone. Prepare repositories
 containing Windows-invalid filenames on Linux or WSL. OpenAPI declarations are
 recognized but fail explicitly until implemented.
 Fixed source facets, matching path rules, recognized frontmatter, and
-deterministic version extraction add evidence-linked context facets to pages,
-chunks, and search results.
+deterministic path/title extraction add evidence-linked context facets to
+pages, chunks, and search results. Automatic facets include
+`content_type=docs|blog|news|release|reference|tutorial|example`,
+`locale=<language>`, `source_format=markdown|mdx|html`, and existing
+version/framework/router/runtime values. Add `context.rules` for content type
+or locale when project paths are ambiguous.
 Tolerant MDX normalization is the default. It records diagnostics and uses a
 line-preserving sanitizer only after strict MDX parsing fails. Set
 `normalization.mdx: strict` to fail on unsupported MDX.

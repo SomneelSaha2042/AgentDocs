@@ -18,7 +18,7 @@ documentation websites into a local context layer that answers three operational
 questions:
 
 - Is the compiled context fresh?
-- Is it scoped to the right version, framework, router, or runtime?
+- Is it scoped to the right version, framework, router, runtime, or locale?
 - Does it contain evidence for the task I am about to ask an agent to do?
 - Did it compile the intended docs corpus, or only a tiny supported slice?
 
@@ -116,12 +116,13 @@ agentdocs doctor
 agentdocs search "authentication"
 ```
 
-Keep version, framework, router, or runtime-specific results inside an explicit
-context boundary:
+Keep version, framework, router, runtime, or locale-specific results inside an
+explicit context boundary:
 
 ```bash
 agentdocs search "migration" --facet version=v5
 agentdocs search "query invalidation" --facet framework=react
+agentdocs search "quickstart" --facet locale=en
 agentdocs verify-context --task "build Fastify v5 route" --facet version=v5
 ```
 
@@ -272,7 +273,10 @@ The workflow layer follows the same rule. Freshness is computed from local
 source hashes, website TTLs, config hashes, and build-owned artifact hashes.
 Context verification is deterministic: it checks stale artifacts, mixed
 exclusive facets, deprecated evidence, weak task packs, missing canonical
-sources, and requested facet mismatches. No LLM decides whether context is safe.
+sources, and requested facet mismatches. Search also uses deterministic
+content-type and locale facets so implementation tasks prefer docs, tutorials,
+and reference material over blog, news, and release pages when implementation
+evidence exists. No LLM decides whether context is safe.
 
 Two tradeoffs are deliberate:
 
@@ -337,7 +341,12 @@ context:
   preferred:
     version: v5
     framework: react
-  exclusiveKeys: [version, framework, router, runtime]
+    locale: en
+  exclusiveKeys: [version, framework, router, runtime, locale]
+  rules:
+    - match: "**/blog/**"
+      facets:
+        content_type: blog
 
 normalization:
   mdx: tolerant

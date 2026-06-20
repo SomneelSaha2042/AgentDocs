@@ -16,9 +16,46 @@ export type ContextRule = {
 export type ApplyContextFacetsOptions = {
   fixed?: Record<string, string>;
   rules?: ContextRule[];
+  sourceFormat?: "markdown" | "mdx" | "html";
 };
 
-const FRONTMATTER_KEYS = ["framework", "router", "runtime", "version"] as const;
+const FRONTMATTER_KEYS = [
+  "content_type",
+  "framework",
+  "locale",
+  "router",
+  "runtime",
+  "source_format",
+  "version",
+] as const;
+
+const COMMON_LOCALE_BASES = new Set([
+  "ar",
+  "da",
+  "de",
+  "en",
+  "es",
+  "fi",
+  "fr",
+  "he",
+  "hi",
+  "id",
+  "it",
+  "ja",
+  "ko",
+  "nb",
+  "nl",
+  "no",
+  "pl",
+  "pt",
+  "ru",
+  "sv",
+  "th",
+  "tr",
+  "uk",
+  "vi",
+  "zh",
+]);
 
 export function applyContextFacets(
   page: DocPage,
@@ -44,11 +81,22 @@ export function applyContextFacets(
       }));
     }
   }
+  if (options.sourceFormat !== undefined) {
+    facets.push(facet("source_format", options.sourceFormat, pageEvidence(page, `source format: ${options.sourceFormat}`)));
+  }
   for (const key of FRONTMATTER_KEYS) {
     const value = page.frontmatter?.[key];
     if (typeof value === "string" && value.trim().length > 0) {
       facets.push(facet(key, value.trim(), pageEvidence(page, `frontmatter ${key}: ${value.trim()}`)));
     }
+  }
+  const inferredContentType = inferContentType(source, page.title, page.frontmatter);
+  if (inferredContentType !== undefined) {
+    facets.push(facet("content_type", inferredContentType, pageEvidence(page, `inferred content_type: ${inferredContentType}`)));
+  }
+  const inferredLocale = inferLocale(source, page.frontmatter);
+  if (inferredLocale !== undefined) {
+    facets.push(facet("locale", inferredLocale, pageEvidence(page, `inferred locale: ${inferredLocale}`)));
   }
   for (const version of extractVersionHints(`${source}\n${page.title}`)) {
     facets.push(facet("version", version, pageEvidence(page, `version evidence: ${version}`)));
@@ -88,6 +136,73 @@ function stableFacets(facets: ContextFacet[]): ContextFacet[] {
     .map((item) => ({ ...item, evidence: stableEvidence(item.evidence) }))
     .sort((left, right) =>
       compareStrings(left.key, right.key) || compareStrings(left.value, right.value));
+}
+
+function inferContentType(
+  source: string,
+  title: string,
+  frontmatter?: Record<string, unknown>,
+): "docs" | "blog" | "news" | "release" | "reference" | "tutorial" | "example" | undefined {
+  const explicit = stringFrontmatter(frontmatter, ["content_type", "contentType", "type"]);
+  if (explicit !== undefined && isContentType(explicit)) {
+    return explicit;
+  }
+  const value = `${source} ${title}`.toLowerCase();
+  if (/(?:^|[/\s_-])(?:changelog|changes|release-notes?|releases?|whats-new)(?:$|[/\s_-])/.test(value)) return "release";
+  if (/(?:^|[/\s_-])(?:news|announcements?)(?:$|[/\s_-])/.test(value)) return "news";
+  if (/(?:^|[/\s_-])(?:blog|posts?|articles?)(?:$|[/\s_-])/.test(value)) return "blog";
+  if (/(?:^|[/\s_-])(?:examples?|samples?|demo)(?:$|[/\s_-])/.test(value)) return "example";
+  if (/(?:^|[/\s_-])(?:tutorials?|quickstart|getting-started|how-to|guides?)(?:$|[/\s_-])/.test(value)) return "tutorial";
+  if (/(?:^|[/\s_-])(?:reference|api-reference|api|spec|schema)(?:$|[/\s_-])/.test(value)) return "reference";
+  if (/(?:^|[/\s_-])(?:docs?|documentation|manual|handbook)(?:$|[/\s_-])/.test(value)) return "docs";
+  return undefined;
+}
+
+function inferLocale(
+  source: string,
+  frontmatter?: Record<string, unknown>,
+): string | undefined {
+  const explicit = stringFrontmatter(frontmatter, ["locale", "lang", "language"]);
+  if (explicit !== undefined && isLocale(explicit)) {
+    return normalizeLocale(explicit);
+  }
+  const segments = (source.split(/[?#]/, 1)[0] ?? "").split("/").filter((segment) => segment.length > 0);
+  for (const segment of segments) {
+    if (isLocale(segment)) {
+      return normalizeLocale(segment);
+    }
+  }
+  return undefined;
+}
+
+function stringFrontmatter(
+  frontmatter: Record<string, unknown> | undefined,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = frontmatter?.[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim().toLowerCase();
+    }
+  }
+  return undefined;
+}
+
+function isContentType(value: string): value is "docs" | "blog" | "news" | "release" | "reference" | "tutorial" | "example" {
+  return ["docs", "blog", "news", "release", "reference", "tutorial", "example"].includes(value);
+}
+
+function isLocale(value: string): boolean {
+  const normalized = normalizeLocale(value);
+  const [language, region, extra] = normalized.split("-");
+  if (language === undefined || extra !== undefined || !COMMON_LOCALE_BASES.has(language)) {
+    return false;
+  }
+  return region === undefined || /^(?:[a-z]{2}|\d{3})$/.test(region);
+}
+
+function normalizeLocale(value: string): string {
+  return value.toLowerCase().replace("_", "-");
 }
 
 function stableEvidence(evidence: Evidence[]): Evidence[] {

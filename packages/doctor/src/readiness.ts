@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   ReadinessReportSchema,
   type AgentMap,
+  type Chunk,
   type DocPage,
   type Evidence,
   type ReadinessCategory,
@@ -185,6 +186,7 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
     : sourceCoverage?.gapSeverity === "warn"
       ? "warn"
       : "pass";
+  const taskSearchSkew = findTaskSearchSkew(pages, map?.chunks ?? [], packs);
 
   return [
     check("has_config", "discoverability", 5, options.artifacts.hasConfig ? "pass" : "warn",
@@ -225,12 +227,12 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
       pages.some((page) => page.facets.length > 0) ? "pass" : "warn",
       pages.some((page) => page.facets.length > 0) ? "Context facets found." : "No context facets found.",
       pages.filter((page) => page.facets.length > 0).slice(0, 3).map(pageEvidence),
-      "Add version, framework, router, or runtime evidence."),
+      "Add version, framework, router, runtime, locale, or content_type evidence."),
     check("has_context_consistency", "version_safety", 0,
       contextConflicts.length === 0 ? "pass" : "fail",
       contextConflicts.length === 0 ? "No exclusive context conflicts found." : `${contextConflicts.length} exclusive context conflict(s) found.`,
       contextConflicts.flatMap((conflict) => conflict.evidence),
-      "Split task evidence by exclusive version, framework, router, or runtime context."),
+      "Split task evidence by exclusive version, framework, router, runtime, or locale context."),
     check("matches_preferred_context", "version_safety", 0,
       preferredMismatches.length === 0 ? "pass" : "warn",
       preferredMismatches.length === 0 ? "Generated context matches configured preferences." : `${preferredMismatches.length} preferred context value(s) are not matched.`,
@@ -243,6 +245,13 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
       missingExpectedTasks.length === 0 ? "pass" : "fail",
       missingExpectedTasks.length === 0 ? "All configured tasks are covered." : `Missing configured task packs: ${missingExpectedTasks.join(", ")}.`,
       [], "Add source evidence matching each configured task query."),
+    check("has_task_search_scope", "task_coverage", 0,
+      taskSearchSkew.length === 0 ? "pass" : "warn",
+      taskSearchSkew.length === 0
+        ? "Task-query result scope does not appear dominated by news, blog, or release pages."
+        : `${taskSearchSkew.length} task quer${taskSearchSkew.length === 1 ? "y is" : "ies are"} dominated by news, blog, or release pages despite implementation docs evidence.`,
+      taskSearchSkew.flatMap((item) => item.evidence),
+      "Add content_type or locale context rules, or narrow source scope so implementation queries prefer docs, tutorials, and reference pages."),
     check("has_entity_extraction", "structure", 0,
       !hasPages || entities.length > 0 ? "pass" : "warn",
       entities.length > 0 ? `${entities.length} entities extracted.` : "No entities extracted from the corpus.",
@@ -391,6 +400,93 @@ function findUncollectedInternalLinks(pages: DocPage[]) {
   );
 }
 
+function findTaskSearchSkew(
+  pages: DocPage[],
+  chunks: Chunk[],
+  packs: AgentMap["taskPacks"],
+): Array<{ evidence: Evidence[]; query: string }> {
+  const pageById = new Map(pages.map((page) => [page.id, page]));
+  const queries = stableUnique([
+    "quickstart",
+    "authentication",
+    "configuration",
+    "deployment",
+    "workflow",
+    ...packs.flatMap((pack) => [pack.id, pack.title]),
+  ].filter((query) => query.trim().length > 0));
+  const findings = [];
+  for (const query of queries) {
+    const ranked = chunks
+      .map((chunk) => ({ chunk, score: taskQueryScore(chunk, pageById.get(chunk.pageId), query) }))
+      .filter(({ score }) => score > 0)
+      .sort((left, right) =>
+        right.score - left.score
+        || compareStrings(left.chunk.pageId, right.chunk.pageId)
+        || compareStrings(left.chunk.id, right.chunk.id));
+    const top = diversifyChunks(ranked.map(({ chunk }) => chunk), 5);
+    if (top.length < 3) {
+      continue;
+    }
+    const noisy = top.filter((chunk) => hasAnyContentType(chunk, ["blog", "news", "release"]));
+    const implementationEvidenceExists = ranked.some(({ chunk }) =>
+      hasAnyContentType(chunk, ["docs", "tutorial", "reference"]));
+    if (noisy.length >= 3 && implementationEvidenceExists) {
+      findings.push({
+        query,
+        evidence: noisy
+          .map((chunk) => pageById.get(chunk.pageId))
+          .filter((page): page is DocPage => page !== undefined)
+          .map((page) => pageEvidence(page)),
+      });
+    }
+  }
+  return findings;
+}
+
+function taskQueryScore(chunk: Chunk, page: DocPage | undefined, query: string): number {
+  const terms = tokenize(query);
+  const title = page?.title.toLowerCase() ?? "";
+  const heading = chunk.headingPath.join(" ").toLowerCase();
+  const text = chunk.text.toLowerCase();
+  return terms.reduce((score, term) =>
+    score
+      + countPrefixMatches(tokenize(title), term) * 6
+      + countPrefixMatches(tokenize(heading), term) * 3
+      + Math.min(countPrefixMatches(tokenize(text), term), 2),
+  0);
+}
+
+function diversifyChunks(chunks: Chunk[], limit: number): Chunk[] {
+  const selected: Chunk[] = [];
+  const pages = new Set<string>();
+  for (const chunk of chunks) {
+    if (selected.length >= limit) break;
+    if (!pages.has(chunk.pageId)) {
+      selected.push(chunk);
+      pages.add(chunk.pageId);
+    }
+  }
+  for (const chunk of chunks) {
+    if (selected.length >= limit) break;
+    if (!selected.some((candidate) => candidate.id === chunk.id)) {
+      selected.push(chunk);
+    }
+  }
+  return selected;
+}
+
+function hasAnyContentType(chunk: Chunk, values: string[]): boolean {
+  return chunk.facets.some((facet) => facet.key === "content_type" && values.includes(facet.value));
+}
+
+function tokenize(value: string): string[] {
+  return value.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) ?? [];
+}
+
+function countPrefixMatches(values: string[], term: string): number {
+  return values.filter((value) => value.startsWith(term)).length;
+}
+
 function normalizeReference(value: string): string {
   const withoutHash = value.split("#", 1)[0] ?? value;
   const normalized = withoutHash.includes("://") ? withoutHash : path.posix.normalize(withoutHash);
@@ -526,6 +622,10 @@ function renderChecks(checks: ReadinessCheckResult[], fallback: string): string 
 function stableEvidence(evidence: Evidence[]): Evidence[] {
   const unique = new Map(evidence.map((item) => [JSON.stringify(item), item]));
   return [...unique.values()].sort((left, right) => compareStrings(JSON.stringify(left), JSON.stringify(right)));
+}
+
+function stableUnique(values: string[]): string[] {
+  return [...new Set(values)].sort(compareStrings);
 }
 
 function compareStrings(left: string, right: string): number {

@@ -205,6 +205,7 @@ describe("ingestLocalMarkdown", () => {
     expect(result.pages[0]?.facets.map(({ key, value }) => `${key}=${value}`)).toEqual([
       "framework=react",
       "runtime=node",
+      "source_format=markdown",
       "version=v5",
     ]);
   });

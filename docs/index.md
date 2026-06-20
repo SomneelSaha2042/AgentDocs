@@ -30,7 +30,7 @@ optimized for task execution, without rewriting the source docs.
 It puts three questions in front of every agent handoff:
 
 - Is the compiled context fresh?
-- Is it scoped to the right version, framework, router, or runtime?
+- Is it scoped to the right version, framework, router, runtime, or locale?
 - Does it contain evidence for the task I am about to ask an agent to do?
 
 ```txt
@@ -106,7 +106,7 @@ explicit build action.
 AgentDocs was tested against its own docs and documentation from Hono, Fastify,
 Supabase, TanStack Query, Next.js, and Octokit. The post-hardening regression
 suite compiled successful targets twice, audited readiness, and checked
-version, framework, router, MDX, and task-pack behavior.
+version, framework, router, locale, content-type, MDX, and task-pack behavior.
 
 | Result | Evidence |
 | --- | --- |

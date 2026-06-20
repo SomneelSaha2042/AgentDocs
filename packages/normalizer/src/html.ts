@@ -51,6 +51,7 @@ export function normalizeHtml(options: NormalizeHtmlOptions): DocPage {
 
   const page = normalizeMarkdown({
     markdown,
+    sourceFormat: "html",
     sourceType: "website",
     sourceUrl: options.sourceUrl,
     canonicalUrl: options.canonicalUrl,

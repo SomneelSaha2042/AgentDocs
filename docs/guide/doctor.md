@@ -24,4 +24,9 @@ build compiled only a small supported slice of a larger docs corpus, so the
 readiness score should not be treated as representative until the scope is
 narrowed or parser support is added.
 
+Doctor also reports `has_task_search_scope` when common task-query top results
+are dominated by blog, news, or release pages even though docs, tutorial, or
+reference evidence exists. Use `content_type` and `locale` context rules or a
+narrower source scope to make implementation evidence rank first.
+
 Use `--min-score` in CI. A score below the threshold exits with code `5`.

@@ -18,9 +18,9 @@ second build has the same generated-artifact hash, and keeps
 `agent_task_passed` as an explicit human judgment.
 
 Committed offline fixtures now gate the context boundaries exposed by this
-matrix. Run `pnpm regression:fixtures` to verify version, framework, and router
-filters; mixed-context warnings; tolerant MDX ingestion; and quickstart
-generation. The June 16, 2026 workflow-layer rerun rebuilt all documented
+matrix. Run `pnpm regression:fixtures` to verify version, framework, router,
+locale, and content-type filters; mixed-context warnings; tolerant MDX
+ingestion; and quickstart generation. The June 16, 2026 workflow-layer rerun rebuilt all documented
 prepared targets and then checked `status`, `handoff`, and `verify-context`.
 Live website recrawls remain opt-in.
 

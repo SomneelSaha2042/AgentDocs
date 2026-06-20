@@ -301,6 +301,47 @@ describe("scanReadiness", () => {
     expect(report.score).toBeLessThanOrEqual(49);
   });
 
+  it("warns when task-query results are dominated by news and release pages", () => {
+    const pages = [
+      normalizeMarkdown({
+        markdown: "# Workflow release notes\n\nWorkflow workflow workflow update.\n",
+        repoPath: "releases/workflow.md",
+      }),
+      normalizeMarkdown({
+        markdown: "# Workflow news\n\nWorkflow workflow announcement.\n",
+        repoPath: "news/workflow.md",
+      }),
+      normalizeMarkdown({
+        markdown: "# Workflow blog\n\nWorkflow workflow story.\n",
+        repoPath: "blog/workflow.md",
+      }),
+      normalizeMarkdown({
+        markdown: "# Workflow tutorial\n\nCreate and configure a workflow.\n",
+        repoPath: "docs/tutorials/workflow.md",
+      }),
+    ];
+    const report = scanReadiness({
+      agentMap: buildAgentMap({
+        pages,
+        chunks: pages.flatMap((page) => chunkMarkdownByHeading(page)),
+      }),
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: true,
+        hasConfig: true,
+        hasLlmsTxt: true,
+        hasSitemap: false,
+        taskPackFileIds: [],
+      },
+    });
+
+    expect(report.checks.find((check) => check.id === "has_task_search_scope"))
+      .toMatchObject({
+        status: "warn",
+        message: "1 task query is dominated by news, blog, or release pages despite implementation docs evidence.",
+      });
+  });
+
   it("caps unavoidable mixed exclusive task context and fails missing configured tasks", () => {
     const v3 = normalizeMarkdown({
       markdown: "---\nversion: v3\n---\n# Migration\n\nUpgrade the schema.\n\n```js\nmigrate()\n```\n",

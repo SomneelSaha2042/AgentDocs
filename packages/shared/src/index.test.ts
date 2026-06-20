@@ -34,7 +34,7 @@ sources:
 
     expect(config.output.dir).toBe(".agentdocs");
     expect(config.doctor.minScore).toBe(70);
-    expect(config.context.exclusiveKeys).toEqual(["version", "framework", "router", "runtime"]);
+    expect(config.context.exclusiveKeys).toEqual(["version", "framework", "router", "runtime", "locale"]);
     expect(config.normalization.mdx).toBe("tolerant");
   });
 

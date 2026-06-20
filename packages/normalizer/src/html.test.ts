@@ -14,6 +14,7 @@ describe("normalizeHtml", () => {
     expect(page.sourceType).toBe("website");
     expect(page.title).toBe("Guide");
     expect(page.description).toBe("A guide");
+    expect(page.facets.map(({ key, value }) => `${key}=${value}`)).toContain("source_format=html");
     expect(page.links[0]).toMatchObject({
       kind: "internal",
       resolvedHref: "https://docs.example.com/next",

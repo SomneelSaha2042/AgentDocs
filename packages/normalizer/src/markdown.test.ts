@@ -92,9 +92,11 @@ router: app
     });
 
     expect(page.facets.map(({ key, value }) => `${key}=${value}`)).toEqual([
+      "content_type=docs",
       "framework=react",
       "router=app",
       "runtime=node",
+      "source_format=markdown",
       "version=v5",
     ]);
     expect(page.facets.every((facet) => facet.evidence.length > 0)).toBe(true);
@@ -114,7 +116,42 @@ router: app
       repoPath: "docs/setup.md",
     });
 
-    expect(page.facets).toEqual([]);
+    expect(page.facets.map(({ key, value }) => `${key}=${value}`)).toEqual([
+      "content_type=docs",
+      "source_format=markdown",
+    ]);
+    expect(page.facets.some((facet) => facet.key === "version")).toBe(false);
+  });
+
+  it("infers content type, locale, and source format facets deterministically", () => {
+    const localizedTutorial = normalizeMarkdown({
+      markdown: "# Quickstart\n",
+      repoPath: "docs/es/tutorials/quickstart.mdx",
+    });
+    const release = normalizeMarkdown({
+      markdown: "---\ncontent_type: release\nlocale: en-US\n---\n# Release notes\n",
+      repoPath: "blog/releases/v2.md",
+    });
+
+    expect(localizedTutorial.facets.map(({ key, value }) => `${key}=${value}`)).toContain("content_type=tutorial");
+    expect(localizedTutorial.facets.map(({ key, value }) => `${key}=${value}`)).toContain("locale=es");
+    expect(localizedTutorial.facets.map(({ key, value }) => `${key}=${value}`)).toContain("source_format=mdx");
+    expect(release.facets.map(({ key, value }) => `${key}=${value}`)).toContain("content_type=release");
+    expect(release.facets.map(({ key, value }) => `${key}=${value}`)).toContain("locale=en-us");
+  });
+
+  it("does not infer locale from common programming language path segments", () => {
+    const pages = ["docs/go/install.md", "docs/js/client.md", "docs/ts/types.md", "docs/py/sdk.md"]
+      .map((repoPath) => normalizeMarkdown({
+        markdown: "# SDK guide\n",
+        repoPath,
+      }));
+
+    expect(pages.flatMap((page) => page.facets.filter((facet) => facet.key === "locale"))).toEqual([]);
+    expect(normalizeMarkdown({
+      markdown: "# Guide\n",
+      repoPath: "docs/en-us/guide.md",
+    }).facets.map(({ key, value }) => `${key}=${value}`)).toContain("locale=en-us");
   });
 
   it("falls back deterministically for malformed MDX without touching fenced code", () => {

@@ -290,6 +290,30 @@ describe("search index", () => {
     const task = await searchIndex({ cwd: out, out: ".", query: "quickstart" });
     expect(task.results[0]?.pageId).toBe("page_auth");
   });
+
+  it("prefers implementation docs over news and release pages for task queries", async () => {
+    const out = await temporaryDirectory();
+    const evidence = [{ source: "page" as const, pageId: "page_docs", quote: "content type fixture" }];
+    const facet = (value: string) => [{ key: "content_type", value, evidence }];
+    const map = fixtureMap();
+    map.pages = [
+      { ...map.pages[0]!, id: "page_release", repoPath: "release/workflows.md", title: "Workflow release notes", facets: facet("release") },
+      { ...map.pages[0]!, id: "page_news", repoPath: "news/workflows.md", title: "Workflow news", facets: facet("news") },
+      { ...map.pages[0]!, id: "page_docs", repoPath: "docs/workflows.md", title: "Workflow tutorial", facets: facet("tutorial") },
+    ];
+    map.chunks = [
+      { ...map.chunks[0]!, id: "chunk_release", pageId: "page_release", headingPath: ["Workflow release notes"], text: "Workflow workflow workflow release notes.", facets: facet("release") },
+      { ...map.chunks[0]!, id: "chunk_news", pageId: "page_news", headingPath: ["Workflow news"], text: "Workflow workflow news update.", facets: facet("news") },
+      { ...map.chunks[0]!, id: "chunk_docs", pageId: "page_docs", headingPath: ["Create a workflow"], text: "Create and configure a workflow with documented steps.", facets: facet("tutorial") },
+    ];
+    await buildSearchIndex({ agentMap: AgentMapSchema.parse(map), cwd: out, out: "." });
+
+    const implementation = await searchIndex({ cwd: out, out: ".", query: "configure workflow" });
+    const historical = await searchIndex({ cwd: out, out: ".", query: "workflow release notes" });
+
+    expect(implementation.results[0]?.pageId).toBe("page_docs");
+    expect(historical.results[0]?.pageId).toBe("page_release");
+  });
 });
 
 function fixtureMap(): AgentMap {

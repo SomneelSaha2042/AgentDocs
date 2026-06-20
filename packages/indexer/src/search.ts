@@ -382,6 +382,7 @@ function rankDocuments(
       score += containsTokenSequence(headingTerms, queryTerms) ? 10 : 0;
       score += containsTokenSequence(textTerms, queryTerms) ? 3 : 0;
       score += document.taskPackIds.includes(compactQuery) ? 40 : 0;
+      score += contentTypeScore(document, compactQuery);
       score += facetPreferenceScore(document, preferredFacets, 3);
       score += facetPreferenceScore(document, namedFacets, 30);
       return SearchResultSchema.parse({
@@ -476,6 +477,34 @@ function facetPreferenceScore(
     const values = document.facets.filter((facet) => facet.key === key).map((facet) => facet.value);
     return values.length === 0 ? score : score + (values.includes(value) ? weight : -weight);
   }, 0);
+}
+
+function contentTypeScore(document: SearchDocument, query: string): number {
+  const values = document.facets
+    .filter((facet) => facet.key === "content_type")
+    .map((facet) => facet.value);
+  if (values.length === 0) {
+    return 0;
+  }
+  const implementationGoal = isImplementationGoal(query);
+  const explicitHistoricalGoal = /\b(?:blog|news|release|releases|changelog|change\s+log|what'?s new)\b/i.test(query);
+  return values.reduce((score, value) => {
+    if (explicitHistoricalGoal && ["blog", "news", "release"].includes(value)) {
+      return score + 10;
+    }
+    if (!implementationGoal) {
+      return score;
+    }
+    if (["docs", "tutorial", "reference"].includes(value)) return score + 8;
+    if (value === "example") return score + 3;
+    if (["blog", "news", "release"].includes(value)) return score - 18;
+    return score;
+  }, 0);
+}
+
+function isImplementationGoal(query: string): boolean {
+  return /\b(?:api|auth|authenticate|authentication|build|configure|configuration|create|debug|deploy|deployment|error|errors|example|implement|install|installation|migration|pagination|quickstart|route|setup|test|tutorial|use|using|webhook|workflow)\b/i
+    .test(query);
 }
 
 function contextWarnings(results: SearchResult[], exclusiveKeys: string[]) {

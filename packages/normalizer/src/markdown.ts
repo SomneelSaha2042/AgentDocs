@@ -35,6 +35,7 @@ export type NormalizeMarkdownOptions = {
   markdown: string;
   format?: "markdown" | "mdx";
   repoPath?: string;
+  sourceFormat?: "markdown" | "mdx" | "html";
   sourceType?: "local_markdown" | "repo" | "website";
   sourceUrl?: string;
   canonicalUrl?: string;
@@ -160,7 +161,10 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     versionHints: [],
     facets: [],
     normalization,
-  }), options.context);
+  }), {
+    ...options.context,
+    sourceFormat: options.sourceFormat ?? (format === "mdx" ? "mdx" : "markdown"),
+  });
 }
 
 function parseMarkdown(markdown: string, format: "markdown" | "mdx"): MarkdownNode {

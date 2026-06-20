@@ -86,6 +86,7 @@ export const AgentDocsConfigSchema = z
           "framework",
           "router",
           "runtime",
+          "locale",
         ]),
         rules: z
           .array(

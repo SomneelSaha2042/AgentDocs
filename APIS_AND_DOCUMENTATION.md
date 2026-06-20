@@ -492,11 +492,15 @@ context:
   preferred:
     version: v5
     framework: react
-  exclusiveKeys: [version, framework, router, runtime]
+    locale: en
+  exclusiveKeys: [version, framework, router, runtime, locale]
   rules:
     - match: "**/react/**"
       facets:
         framework: react
+    - match: "**/blog/**"
+      facets:
+        content_type: blog
 
 normalization:
   mdx: tolerant
@@ -684,6 +688,25 @@ type ContextFacet = {
   evidence: Evidence[];
 };
 ```
+
+AgentDocs deterministically extracts these common facet keys when evidence is
+available:
+
+```txt
+content_type=docs|blog|news|release|reference|tutorial|example
+locale=en|en-us|es|fr|...
+source_format=markdown|mdx|html
+version=...
+framework=...
+router=...
+runtime=...
+```
+
+Source `facets` and `context.rules` may set `content_type` and `locale` when
+path/title/frontmatter inference is too weak. Search and handoff prefer
+`docs`, `tutorial`, and `reference` over `blog`, `news`, and `release` for
+implementation goals, while explicit release/news queries can still rank
+historical pages. `locale` is an exclusive context key by default.
 
 ### 4.7 Entity
 
@@ -1342,6 +1365,7 @@ has_config
 has_pages
 has_sitemap_or_nav
 has_source_coverage
+has_task_search_scope
 has_titles
 has_headings
 has_code_blocks

@@ -53,11 +53,17 @@ agent:
 
 context:
   preferred: {}
-  exclusiveKeys: [version, framework, router, runtime]
+  exclusiveKeys: [version, framework, router, runtime, locale]
   rules:
     # - match: "**/react/**"
     #   facets:
     #     framework: react
+    # - match: "**/blog/**"
+    #   facets:
+    #     content_type: blog
+    # - match: "**/en/**"
+    #   facets:
+    #     locale: en
     []
 
 normalization:
