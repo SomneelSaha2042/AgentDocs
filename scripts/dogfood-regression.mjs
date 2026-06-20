@@ -78,6 +78,11 @@ const summary = {
     count: warnings.length,
     findings: warnings.map((check) => ({ id: check.id, message: check.message })),
   },
+  sourceCoverage: firstBuild.sourceCoverage ?? {
+    gapReason: "historical_metric_not_captured",
+    gapSeverity: "warn",
+    message: "Source coverage was not captured for this build.",
+  },
   deprecations: {
     count: deprecated.length,
     findings: deprecated.map((entity) => ({ id: entity.id, name: entity.name })),
@@ -291,7 +296,7 @@ async function updateMatrix(filePath, summary) {
 }
 
 function csvHeader() {
-  return "target,pages,task_packs,readiness,search_auth_good,search_quickstart_good,agent_task_passed,notes";
+  return "target,pages,task_packs,readiness,source_coverage_ratio,source_coverage_gap,search_auth_good,search_quickstart_good,agent_task_passed,notes";
 }
 
 function csvRow(summary) {
@@ -300,6 +305,8 @@ function csvRow(summary) {
     summary.counts.pages,
     summary.counts.taskPacks,
     summary.readinessScore,
+    summary.sourceCoverage.coverageRatio ?? "",
+    summary.sourceCoverage.gapReason ?? summary.sourceCoverage.gapSeverity ?? "",
     summary.judgments.searchAuthGood,
     summary.judgments.searchQuickstartGood,
     summary.judgments.agentTaskPassed,

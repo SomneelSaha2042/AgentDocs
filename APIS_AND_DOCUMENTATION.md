@@ -243,6 +243,14 @@ Supported inputs:
 .mdx
 ```
 
+Local and repo ingestion also records source coverage for docs-like files in
+the configured scope. Supported files are `.md` and `.mdx`. Unsupported
+docs-like files are counted, not parsed: `.rst`, likely Sphinx/reST `.txt`,
+`.adoc`, and `.asciidoc`. The ingest manifest reports compiled, degraded,
+skipped, failed, supported, unsupported, and coverage-ratio counts so a tiny
+Markdown subset in a larger reST or AsciiDoc corpus is not treated as full
+coverage.
+
 MDX ingestion is tolerant by default. Strict parsing is attempted first. On
 failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
@@ -292,6 +300,10 @@ Outputs:
 .agentdocs/index.sqlite
 .agentdocs/state/build-state.json
 ```
+
+`build --json` includes `sourceCoverage` when local or repo ingest manifests are
+available. Generated `manifest.json` includes the same aggregate coverage
+summary.
 
 Local builds keep generated `llms.txt` and `AGENTS.md` inside `--out` so the
 source project's existing files are never overwritten silently. A later export
@@ -539,6 +551,49 @@ type RepoSource = {
 };
 ```
 
+### 4.1.1 Missing metric reason
+
+```ts
+type MissingMetricReason =
+  | "unsupported_format"
+  | "scale_limited"
+  | "scope_mismatch"
+  | "retrieval_mismatch"
+  | "historical_metric_not_captured"
+  | "preparation_blocked";
+```
+
+### 4.1.2 Source coverage
+
+```ts
+type SourceCoverage = {
+  supportedFiles: number;
+  unsupportedFiles: number;
+  intendedFiles: number;
+  compiledFiles: number;
+  degradedFiles: number;
+  skippedFiles: number;
+  failedFiles: number;
+  coverageRatio: number;
+  supportedByFormat: { markdown: number; mdx: number };
+  unsupportedByFormat: {
+    rst: number;
+    restText: number;
+    adoc: number;
+    asciidoc: number;
+  };
+  gapSeverity: "none" | "warn" | "fail";
+  gapReason?: MissingMetricReason;
+  message: string;
+};
+```
+
+`coverageRatio` is `compiledFiles / intendedFiles`, where intended files are
+supported Markdown/MDX plus unsupported docs-like files in the configured
+source scope. Unsupported source-format gaps use `gapReason:
+"unsupported_format"`. Older manifests without this metric are upgraded with
+`historical_metric_not_captured`.
+
 ### 4.2 Page
 
 ```ts
@@ -747,6 +802,25 @@ Purpose: build metadata.
     "entities": 0,
     "edges": 0,
     "taskPacks": 0
+  },
+  "sourceCoverage": {
+    "supportedFiles": 0,
+    "unsupportedFiles": 0,
+    "intendedFiles": 0,
+    "compiledFiles": 0,
+    "degradedFiles": 0,
+    "skippedFiles": 0,
+    "failedFiles": 0,
+    "coverageRatio": 0,
+    "supportedByFormat": { "markdown": 0, "mdx": 0 },
+    "unsupportedByFormat": {
+      "rst": 0,
+      "restText": 0,
+      "adoc": 0,
+      "asciidoc": 0
+    },
+    "gapSeverity": "none",
+    "message": "0 of 0 supported Markdown/MDX file(s) compiled."
   }
 }
 ```
@@ -1267,6 +1341,7 @@ Initial checks:
 has_config
 has_pages
 has_sitemap_or_nav
+has_source_coverage
 has_titles
 has_headings
 has_code_blocks

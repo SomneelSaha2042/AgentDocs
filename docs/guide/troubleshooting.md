@@ -66,7 +66,8 @@ agent-facing subset.
 
 - OpenAPI ingestion is planned. Repository sources reuse local ingestion and
   do not clone remote repositories.
-- Broken-link checks do not validate heading fragments.
+- Broken-link checks validate generated heading fragments for collected pages.
+  Custom HTML or framework-specific manual anchors may still require review.
 - The crawler targets public, statically accessible documentation.
 - Crawling is guide-scoped by default. Pass repeatable `--include` patterns
   when the inferred product/version scope is too narrow.

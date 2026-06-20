@@ -317,12 +317,13 @@ export function createProgram(): Command {
             manifestPath: result.manifestPath,
             pageCount: result.pages.length,
             counts: result.manifest.counts,
+            sourceCoverage: result.manifest.sourceCoverage,
             diagnostics: result.manifest.diagnostics,
           })}\n`,
         );
       } else if (!globals.quiet) {
         process.stdout.write(
-          `Ingested ${result.pages.length} page(s) to ${result.manifestPath} (${result.manifest.counts.degraded} degraded, ${result.manifest.counts.skipped} skipped, ${result.manifest.counts.failed} failed)\n${result.manifest.diagnostics.filter((item) => item.status !== "usable").map((item) => `- ${item.repoPath}: ${item.status}${item.message === undefined ? "" : `: ${item.message}`}${item.warnings.length === 0 ? "" : ` (${item.warnings.join(" ")})`}`).join("\n")}${result.manifest.diagnostics.some((item) => item.status !== "usable") ? "\n" : ""}`,
+          `Ingested ${result.pages.length} page(s) to ${result.manifestPath} (${result.manifest.counts.degraded} degraded, ${result.manifest.counts.skipped} skipped, ${result.manifest.counts.failed} failed; source coverage ${Math.round(result.manifest.sourceCoverage.coverageRatio * 100)}%, ${result.manifest.sourceCoverage.gapSeverity})\n${result.manifest.diagnostics.filter((item) => item.status !== "usable").map((item) => `- ${item.repoPath}: ${item.status}${item.message === undefined ? "" : `: ${item.message}`}${item.warnings.length === 0 ? "" : ` (${item.warnings.join(" ")})`}`).join("\n")}${result.manifest.diagnostics.some((item) => item.status !== "usable") ? "\n" : ""}`,
         );
       }
     });
@@ -382,7 +383,7 @@ export function createProgram(): Command {
           process.stdout.write(`${JSON.stringify(result)}\n`);
         } else if (!globals.quiet) {
           process.stdout.write(
-            `Built ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}\n`,
+            `Built ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}${result.sourceCoverage === undefined ? "" : `\nSource coverage: ${Math.round(result.sourceCoverage.coverageRatio * 100)}% (${result.sourceCoverage.gapSeverity}${result.sourceCoverage.gapReason === undefined ? "" : `, ${result.sourceCoverage.gapReason}`})`}\n`,
           );
         }
       },
@@ -432,7 +433,7 @@ export function createProgram(): Command {
         process.stdout.write(`${JSON.stringify(result)}\n`);
       } else if (!globals.quiet) {
         process.stdout.write(
-          `Rebuilt ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}\n`,
+          `Rebuilt ${result.chunkCount} chunk(s), ${result.entityCount} entities, ${result.edgeCount} edges, and ${result.taskPackCount} task pack(s) from ${result.pageCount} page(s) to ${result.agentMapPath}${result.sourceCoverage === undefined ? "" : `\nSource coverage: ${Math.round(result.sourceCoverage.coverageRatio * 100)}% (${result.sourceCoverage.gapSeverity}${result.sourceCoverage.gapReason === undefined ? "" : `, ${result.sourceCoverage.gapReason}`})`}\n`,
         );
       }
     });

@@ -8,6 +8,7 @@ import {
   IngestManifestSchema,
   type DocPage,
   type IngestManifest,
+  type SourceCoverage,
 } from "@agentdocs/shared";
 import { minimatch } from "minimatch";
 
@@ -34,6 +35,14 @@ export class IngestError extends Error {
   override readonly name = "IngestError";
 }
 
+type SourceFileFormat = "markdown" | "mdx" | "rst" | "restText" | "adoc" | "asciidoc";
+
+type SourceFile = {
+  filePath: string;
+  format: SourceFileFormat;
+  supported: boolean;
+};
+
 export async function ingestLocalMarkdown(
   options: IngestOptions,
 ): Promise<IngestResult> {
@@ -51,17 +60,37 @@ export async function ingestLocalMarkdown(
     `ingest-${hash(sourceIdentity)}.json`,
   );
   const sourceStats = await statSource(sourcePath);
-  const files = (await discoverMarkdownFiles(sourcePath, outputRoot)).filter((filePath) => {
-    const relative = toPosixPath(path.relative(
-      sourceStats.isDirectory() ? sourcePath : path.dirname(sourcePath),
-      filePath,
-    ));
-    return matchesFilters(relative, options.include, options.exclude);
-  });
+  const sourceRoot = sourceStats.isDirectory() ? sourcePath : path.dirname(sourcePath);
+  const scopedSourceFiles = await discoverSourceFiles(
+    sourcePath,
+    outputRoot,
+    sourceRoot,
+    options.include,
+    options.exclude,
+  );
+  const files = scopedSourceFiles
+    .filter((file) => file.supported)
+    .map((file) => file.filePath);
 
   if (files.length === 0) {
+    const manifest = await writeEmptyIngestManifest({
+      counts: { usable: 0, degraded: 0, skipped: 0, failed: 0 },
+      manifestPath,
+      outputRoot,
+      sourceCoverage: createSourceCoverage(scopedSourceFiles, {
+        usable: 0,
+        degraded: 0,
+        skipped: 0,
+        failed: 0,
+      }),
+      sourceIdentity,
+      sourceType: options.sourceType ?? "local_markdown",
+      stateManifestPath,
+    });
     throw new IngestError(
-      `No Markdown or MDX files found at ${options.source}.`,
+      manifest.sourceCoverage.unsupportedFiles > 0
+        ? `No supported Markdown or MDX files found at ${options.source}. Found ${manifest.sourceCoverage.unsupportedFiles} unsupported docs-like file(s); coverage diagnostics were written to ${manifestPath}.`
+        : `No Markdown or MDX files found at ${options.source}.`,
     );
   }
 
@@ -146,6 +175,12 @@ export async function ingestLocalMarkdown(
       skipped: diagnostics.filter((item) => item.status === "skipped").length,
       failed: diagnostics.filter((item) => item.status === "failed").length,
     },
+    sourceCoverage: createSourceCoverage(scopedSourceFiles, {
+      usable: diagnostics.filter((item) => item.status === "usable").length,
+      degraded: diagnostics.filter((item) => item.status === "degraded").length,
+      skipped: diagnostics.filter((item) => item.status === "skipped").length,
+      failed: diagnostics.filter((item) => item.status === "failed").length,
+    }),
     diagnostics,
     pages: manifestPages,
   });
@@ -205,10 +240,92 @@ function matchesFilters(
   return included && !excluded;
 }
 
-async function discoverMarkdownFiles(
+async function writeEmptyIngestManifest(options: {
+  counts: IngestManifest["counts"];
+  manifestPath: string;
+  outputRoot: string;
+  sourceCoverage: SourceCoverage;
+  sourceIdentity: string;
+  sourceType: IngestManifest["sourceType"];
+  stateManifestPath: string;
+}): Promise<IngestManifest> {
+  const manifest = IngestManifestSchema.parse({
+    schemaVersion: 1,
+    sourceType: options.sourceType,
+    sourcePath: options.sourceIdentity,
+    pageCount: 0,
+    counts: options.counts,
+    sourceCoverage: options.sourceCoverage,
+    diagnostics: [],
+    pages: [],
+  });
+  await mkdir(path.dirname(options.manifestPath), { recursive: true });
+  await mkdir(path.dirname(options.stateManifestPath), { recursive: true });
+  await removeStaleIngestPages(options.stateManifestPath, options.outputRoot, new Set());
+  await writeJson(options.manifestPath, manifest);
+  await writeJson(options.stateManifestPath, manifest);
+  return manifest;
+}
+
+function createSourceCoverage(
+  files: SourceFile[],
+  counts: IngestManifest["counts"],
+): SourceCoverage {
+  const supportedByFormat = {
+    markdown: files.filter((file) => file.format === "markdown").length,
+    mdx: files.filter((file) => file.format === "mdx").length,
+  };
+  const unsupportedByFormat = {
+    rst: files.filter((file) => file.format === "rst").length,
+    restText: files.filter((file) => file.format === "restText").length,
+    adoc: files.filter((file) => file.format === "adoc").length,
+    asciidoc: files.filter((file) => file.format === "asciidoc").length,
+  };
+  const supportedFiles = supportedByFormat.markdown + supportedByFormat.mdx;
+  const unsupportedFiles = unsupportedByFormat.rst
+    + unsupportedByFormat.restText
+    + unsupportedByFormat.adoc
+    + unsupportedByFormat.asciidoc;
+  const intendedFiles = supportedFiles + unsupportedFiles;
+  const compiledFiles = counts.usable + counts.degraded;
+  const coverageRatio = intendedFiles === 0 ? 0 : roundRatio(compiledFiles / intendedFiles);
+  const hasUnsupportedGap = unsupportedFiles > 0;
+  const gapSeverity = hasUnsupportedGap && coverageRatio < 0.5
+    ? "fail"
+    : hasUnsupportedGap
+      ? "warn"
+      : compiledFiles < supportedFiles
+        ? "warn"
+        : "none";
+  const gapReason = hasUnsupportedGap ? "unsupported_format" as const : undefined;
+  const message = hasUnsupportedGap
+    ? `${compiledFiles} of ${intendedFiles} docs-like file(s) compiled; ${unsupportedFiles} unsupported reST/AsciiDoc file(s) were in scope.`
+    : `${compiledFiles} of ${intendedFiles} supported Markdown/MDX file(s) compiled.`;
+
+  return {
+    supportedFiles,
+    unsupportedFiles,
+    intendedFiles,
+    compiledFiles,
+    degradedFiles: counts.degraded,
+    skippedFiles: counts.skipped,
+    failedFiles: counts.failed,
+    coverageRatio,
+    supportedByFormat,
+    unsupportedByFormat,
+    gapSeverity,
+    gapReason,
+    message,
+  };
+}
+
+async function discoverSourceFiles(
   sourcePath: string,
   excludedDirectory?: string,
-): Promise<string[]> {
+  sourceRoot?: string,
+  include?: string[],
+  exclude?: string[],
+): Promise<SourceFile[]> {
   if (excludedDirectory !== undefined && isWithin(excludedDirectory, sourcePath)) {
     return [];
   }
@@ -227,26 +344,72 @@ async function discoverMarkdownFiles(
   }
 
   if (sourceStats.isFile()) {
-    if (!isMarkdownFile(sourcePath)) {
+    const relative = toPosixPath(path.relative(sourceRoot ?? path.dirname(sourcePath), sourcePath));
+    if (!matchesFilters(relative, include, exclude)) {
+      return [];
+    }
+    const classified = await classifySourceFile(sourcePath, sourceRoot ?? path.dirname(sourcePath));
+    if (classified === undefined) {
       throw new IngestError(`Unsupported input file: ${sourcePath}`);
     }
-    return [sourcePath];
+    return [classified];
   }
 
   if (!sourceStats.isDirectory()) {
     throw new IngestError(`Source path is not a file or directory: ${sourcePath}`);
   }
 
-  const files: string[] = [];
+  const files: SourceFile[] = [];
   for (const entry of await readdir(sourcePath, { withFileTypes: true })) {
     const entryPath = path.join(sourcePath, entry.name);
     if (entry.isDirectory()) {
-      files.push(...(await discoverMarkdownFiles(entryPath, excludedDirectory)));
-    } else if (entry.isFile() && isMarkdownFile(entryPath)) {
-      files.push(entryPath);
+      const relativeDirectory = toPosixPath(path.relative(sourceRoot ?? sourcePath, entryPath));
+      if (!couldContainIncludedPath(relativeDirectory, include)
+        || isExcludedDirectory(relativeDirectory, exclude)) {
+        continue;
+      }
+      files.push(...(await discoverSourceFiles(entryPath, excludedDirectory, sourceRoot ?? sourcePath, include, exclude)));
+    } else if (entry.isFile()) {
+      const relative = toPosixPath(path.relative(sourceRoot ?? sourcePath, entryPath));
+      if (!matchesFilters(relative, include, exclude)) {
+        continue;
+      }
+      const classified = await classifySourceFile(entryPath, sourceRoot ?? sourcePath);
+      if (classified !== undefined) {
+        files.push(classified);
+      }
     }
   }
-  return files.sort(compareStrings);
+  return files.sort((left, right) => compareStrings(left.filePath, right.filePath));
+}
+
+function couldContainIncludedPath(relativeDirectory: string, include?: string[]): boolean {
+  if (include === undefined || include.length === 0) {
+    return true;
+  }
+  const normalizedDirectory = relativeDirectory === "" ? "" : `${relativeDirectory.replace(/\/+$/, "")}/`;
+  return include.some((pattern) => {
+    const prefix = literalGlobPrefix(pattern);
+    return prefix === ""
+      || prefix.startsWith(normalizedDirectory)
+      || normalizedDirectory.startsWith(prefix);
+  });
+}
+
+function literalGlobPrefix(pattern: string): string {
+  const normalized = pattern.replaceAll("\\", "/").replace(/^\.\//, "");
+  const wildcardIndex = normalized.search(/[*?[{]/);
+  const literal = wildcardIndex === -1 ? normalized : normalized.slice(0, wildcardIndex);
+  const slashIndex = literal.lastIndexOf("/");
+  return slashIndex === -1 ? "" : literal.slice(0, slashIndex + 1);
+}
+
+function isExcludedDirectory(relativeDirectory: string, exclude?: string[]): boolean {
+  if (exclude === undefined || exclude.length === 0) {
+    return false;
+  }
+  const directory = `${relativeDirectory.replace(/\/+$/, "")}/`;
+  return exclude.some((pattern) => minimatch(directory, pattern) || minimatch(relativeDirectory, pattern));
 }
 
 async function removeStaleIngestPages(
@@ -290,8 +453,37 @@ function isWithin(parent: string, candidate: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function isMarkdownFile(filePath: string): boolean {
-  return [".md", ".mdx"].includes(path.extname(filePath).toLowerCase());
+async function classifySourceFile(
+  filePath: string,
+  sourceRoot: string,
+): Promise<SourceFile | undefined> {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === ".md") return { filePath, format: "markdown", supported: true };
+  if (extension === ".mdx") return { filePath, format: "mdx", supported: true };
+  if (extension === ".rst") return { filePath, format: "rst", supported: false };
+  if (extension === ".adoc") return { filePath, format: "adoc", supported: false };
+  if (extension === ".asciidoc") return { filePath, format: "asciidoc", supported: false };
+  if (extension === ".txt" && await isLikelyRestTextFile(filePath, sourceRoot)) {
+    return { filePath, format: "restText", supported: false };
+  }
+  return undefined;
+}
+
+async function isLikelyRestTextFile(filePath: string, sourceRoot: string): Promise<boolean> {
+  const relative = toPosixPath(path.relative(sourceRoot, filePath)).toLowerCase();
+  const pathLooksLikeDocs = relative.split("/").some((part) =>
+    ["doc", "docs", "documentation", "sphinx"].includes(part));
+  if (pathLooksLikeDocs) {
+    return true;
+  }
+  const text = (await readFile(filePath, "utf8")).slice(0, 16_384);
+  return /(?:^|\n)\.\. (?:toctree|note|warning|code-block|versionadded|versionchanged|deprecated)::/m.test(text)
+    || /(?:^|\n)[^\n]+\n[=\-~`^#*]{3,}\n/m.test(text)
+    || /:[a-z][a-z0-9_-]+:`[^`]+`/i.test(text);
+}
+
+function roundRatio(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
 }
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {

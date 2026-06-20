@@ -9,9 +9,11 @@ import {
   parseConfig,
   ReadinessCategorySchema,
   ReadinessReportSchema,
+  SourceCoverageSchema,
   type AgentMap,
   type ReadinessCategory,
   type ReadinessReport,
+  type SourceCoverage,
 } from "@agentdocs/shared";
 
 export type DoctorOptions = {
@@ -48,9 +50,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
   const crawlQuality = await readCrawlQuality(
     path.join(outputRoot, "sources", "crawl-manifest.json"),
   );
-  const ingestQuality = await readIngestQuality(
-    path.join(outputRoot, "sources", "ingest-manifest.json"),
-  );
+  const ingestQuality = await readIngestQuality(outputRoot);
   const config = await readOptionalConfig(path.resolve(options.cwd, options.config));
   const report = ReadinessReportSchema.parse(scanReadiness({
     agentMap,
@@ -68,6 +68,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
       unusablePages: crawlQuality?.unusable,
       degradedPages: ingestQuality?.degraded,
       skippedPages: ingestQuality?.skipped,
+      sourceCoverage: ingestQuality?.sourceCoverage,
       expectedTaskIds: config?.tasks.map((task) => task.id),
       preferredFacets: config?.context.preferred,
     },
@@ -81,15 +82,45 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
 }
 
 async function readIngestQuality(
-  filePath: string,
-): Promise<{ degraded: number; skipped: number } | undefined> {
+  outputRoot: string,
+): Promise<{
+  degraded: number;
+  skipped: number;
+  sourceCoverage: SourceCoverage;
+} | undefined> {
+  const stateDirectory = path.join(outputRoot, "sources", "state");
+  let manifestPaths: string[] = [];
   try {
-    const manifest = IngestManifestSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
-    return { degraded: manifest.counts.degraded, skipped: manifest.counts.skipped };
+    manifestPaths = (await readdir(stateDirectory))
+      .filter((file) => /^ingest-[a-f0-9]{16}\.json$/.test(file))
+      .sort(compareStrings)
+      .map((file) => path.join(stateDirectory, file));
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-    throw new DoctorError(`Invalid ingest manifest at ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
   }
+  if (manifestPaths.length === 0) {
+    manifestPaths = [path.join(outputRoot, "sources", "ingest-manifest.json")];
+  }
+
+  const manifests = [];
+  for (const manifestPath of manifestPaths) {
+    try {
+      manifests.push(IngestManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8"))));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      throw new DoctorError(`Invalid ingest manifest at ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (manifests.length === 0) {
+    return undefined;
+  }
+  return {
+    degraded: manifests.reduce((total, manifest) => total + manifest.counts.degraded, 0),
+    skipped: manifests.reduce((total, manifest) => total + manifest.counts.skipped, 0),
+    sourceCoverage: aggregateSourceCoverage(manifests.map((manifest) => manifest.sourceCoverage)),
+  };
 }
 
 async function readOptionalConfig(filePath: string) {
@@ -99,6 +130,55 @@ async function readOptionalConfig(filePath: string) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
+}
+
+function aggregateSourceCoverage(coverages: SourceCoverage[]): SourceCoverage {
+  const totals = coverages.reduce((summary, coverage) => ({
+    supportedFiles: summary.supportedFiles + coverage.supportedFiles,
+    unsupportedFiles: summary.unsupportedFiles + coverage.unsupportedFiles,
+    intendedFiles: summary.intendedFiles + coverage.intendedFiles,
+    compiledFiles: summary.compiledFiles + coverage.compiledFiles,
+    degradedFiles: summary.degradedFiles + coverage.degradedFiles,
+    skippedFiles: summary.skippedFiles + coverage.skippedFiles,
+    failedFiles: summary.failedFiles + coverage.failedFiles,
+    supportedByFormat: {
+      markdown: summary.supportedByFormat.markdown + coverage.supportedByFormat.markdown,
+      mdx: summary.supportedByFormat.mdx + coverage.supportedByFormat.mdx,
+    },
+    unsupportedByFormat: {
+      rst: summary.unsupportedByFormat.rst + coverage.unsupportedByFormat.rst,
+      restText: summary.unsupportedByFormat.restText + coverage.unsupportedByFormat.restText,
+      adoc: summary.unsupportedByFormat.adoc + coverage.unsupportedByFormat.adoc,
+      asciidoc: summary.unsupportedByFormat.asciidoc + coverage.unsupportedByFormat.asciidoc,
+    },
+  }), {
+    supportedFiles: 0,
+    unsupportedFiles: 0,
+    intendedFiles: 0,
+    compiledFiles: 0,
+    degradedFiles: 0,
+    skippedFiles: 0,
+    failedFiles: 0,
+    supportedByFormat: { markdown: 0, mdx: 0 },
+    unsupportedByFormat: { rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
+  });
+  const coverageRatio = totals.intendedFiles === 0
+    ? 0
+    : Math.round((totals.compiledFiles / totals.intendedFiles) * 10_000) / 10_000;
+  const gapSeverity = coverages.some((coverage) => coverage.gapSeverity === "fail")
+    ? "fail"
+    : coverages.some((coverage) => coverage.gapSeverity === "warn")
+      ? "warn"
+      : "none";
+  return SourceCoverageSchema.parse({
+    ...totals,
+    coverageRatio,
+    gapSeverity,
+    gapReason: totals.unsupportedFiles > 0 ? "unsupported_format" : undefined,
+    message: totals.unsupportedFiles > 0
+      ? `${totals.compiledFiles} of ${totals.intendedFiles} docs-like file(s) compiled; ${totals.unsupportedFiles} unsupported reST/AsciiDoc file(s) were in scope.`
+      : `${totals.compiledFiles} of ${totals.intendedFiles} supported Markdown/MDX file(s) compiled.`,
+  });
 }
 
 async function readCrawlQuality(

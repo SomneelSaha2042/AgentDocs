@@ -243,6 +243,7 @@ const ManifestV2Schema = z
         taskPacks: z.number().int().nonnegative(),
       })
       .strict(),
+    sourceCoverage: z.lazy(() => SourceCoverageSchema).optional(),
   })
   .strict();
 
@@ -289,6 +290,61 @@ export const ReadinessReportSchema = z.preprocess(
   (value) => upgradeSchemaVersion(value),
   ReadinessReportV2Schema,
 );
+
+export const MissingMetricReasonSchema = z.enum([
+  "unsupported_format",
+  "scale_limited",
+  "scope_mismatch",
+  "retrieval_mismatch",
+  "historical_metric_not_captured",
+  "preparation_blocked",
+]);
+
+const HistoricalSourceCoverageDefault = {
+  supportedFiles: 0,
+  unsupportedFiles: 0,
+  intendedFiles: 0,
+  compiledFiles: 0,
+  degradedFiles: 0,
+  skippedFiles: 0,
+  failedFiles: 0,
+  coverageRatio: 0,
+  supportedByFormat: { markdown: 0, mdx: 0 },
+  unsupportedByFormat: { rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
+  gapSeverity: "warn" as const,
+  gapReason: "historical_metric_not_captured" as const,
+  message: "Historical source coverage metrics were not captured.",
+};
+
+export const SourceCoverageSchema = z
+  .object({
+    supportedFiles: z.number().int().nonnegative(),
+    unsupportedFiles: z.number().int().nonnegative(),
+    intendedFiles: z.number().int().nonnegative(),
+    compiledFiles: z.number().int().nonnegative(),
+    degradedFiles: z.number().int().nonnegative(),
+    skippedFiles: z.number().int().nonnegative(),
+    failedFiles: z.number().int().nonnegative(),
+    coverageRatio: z.number().min(0).max(1),
+    supportedByFormat: z
+      .object({
+        markdown: z.number().int().nonnegative(),
+        mdx: z.number().int().nonnegative(),
+      })
+      .strict(),
+    unsupportedByFormat: z
+      .object({
+        rst: z.number().int().nonnegative(),
+        restText: z.number().int().nonnegative(),
+        adoc: z.number().int().nonnegative(),
+        asciidoc: z.number().int().nonnegative(),
+      })
+      .strict(),
+    gapSeverity: z.enum(["none", "warn", "fail"]),
+    gapReason: MissingMetricReasonSchema.optional(),
+    message: z.string().min(1),
+  })
+  .strict();
 
 export const SearchDocumentSchema = z
   .object({
@@ -577,6 +633,7 @@ export const IngestManifestSchema = z
       })
       .strict()
       .default({ usable: 0, degraded: 0, skipped: 0, failed: 0 }),
+    sourceCoverage: SourceCoverageSchema.default(HistoricalSourceCoverageDefault),
     diagnostics: z
       .array(
         z
@@ -706,6 +763,8 @@ export type Gotcha = z.infer<typeof GotchaSchema>;
 export type TaskPack = z.infer<typeof TaskPackSchema>;
 export type AgentMap = z.infer<typeof AgentMapSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
+export type MissingMetricReason = z.infer<typeof MissingMetricReasonSchema>;
+export type SourceCoverage = z.infer<typeof SourceCoverageSchema>;
 export type ReadinessCategory = z.infer<typeof ReadinessCategorySchema>;
 export type ReadinessCheckResult = z.infer<typeof ReadinessCheckResultSchema>;
 export type ReadinessReport = z.infer<typeof ReadinessReportSchema>;

@@ -1,0 +1,6 @@
+Tutorial
+========
+
+.. note::
+
+   Django historically stores Sphinx reST in .txt files.

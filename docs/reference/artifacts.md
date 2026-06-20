@@ -19,6 +19,13 @@ Task packs are emitted only when the source provides sufficient task evidence.
 New build artifacts use schema `0.2.0`. Readers accept `0.1.0` agent maps,
 manifests, and readiness reports and upgrade missing context facets in memory.
 
+`manifest.json` includes `sourceCoverage` when local or repo ingest manifests
+are available. The coverage object counts supported `.md` and `.mdx` files,
+unsupported docs-like `.rst`, likely reST `.txt`, `.adoc`, and `.asciidoc`
+files, compiled files, degraded files, skipped files, failed files, and the
+coverage ratio for the intended source scope. Older ingest manifests that did
+not capture this metric are labeled `historical_metric_not_captured`.
+
 `build-state.json` uses schema `1` and is local operational state. It is used by
 `agentdocs status`, `agentdocs rebuild --changed`, `agentdocs watch`, handoff
 freshness warnings, and MCP context verification.

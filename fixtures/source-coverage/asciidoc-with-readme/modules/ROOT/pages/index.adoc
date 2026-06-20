@@ -1,0 +1,3 @@
+= Reference
+
+AsciiDoc content is counted as unsupported before parser expansion.

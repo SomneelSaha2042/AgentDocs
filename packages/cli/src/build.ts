@@ -17,8 +17,11 @@ import {
   AgentMapSchema,
   ChunkSchema,
   DocPageSchema,
+  IngestManifestSchema,
+  SourceCoverageSchema,
   type Chunk,
   type DocPage,
+  type SourceCoverage,
 } from "@agentdocs/shared";
 
 export type BuildOptions = {
@@ -50,6 +53,7 @@ export type BuildResult = {
   indexBackend: "sqlite-fts5" | "lexical";
   indexPath: string;
   pageCount: number;
+  sourceCoverage?: SourceCoverage;
   taskPackCount: number;
   taskPackPaths: string[];
 };
@@ -72,6 +76,7 @@ export async function buildFromSources(
   const agentMapPath = path.join(outputRoot, "agent-map.json");
   const taskPacksDirectory = path.join(outputRoot, "task-packs");
   const pages = await readPages(pagesDirectory);
+  const sourceCoverage = await readSourceCoverage(outputRoot);
   if (pages.length === 0) {
     throw new BuildError(
       `No normalized pages found at ${pagesDirectory}. Run "agentdocs ingest" or "agentdocs crawl" first.`,
@@ -103,6 +108,7 @@ export async function buildFromSources(
     rules: options.rules,
     preferredFacets: options.context?.preferred,
     exclusiveKeys: options.context?.exclusiveKeys,
+    sourceCoverage,
     tasks: options.tasks,
   });
   const agentMap = generated.agentMap;
@@ -169,6 +175,7 @@ export async function buildFromSources(
     indexBackend: index.backend,
     indexPath: index.indexPath,
     pageCount: enrichedPages.length,
+    sourceCoverage,
     taskPackCount: generated.taskPacks.length,
     taskPackPaths,
   };
@@ -241,6 +248,92 @@ async function readPages(pagesDirectory: string): Promise<PageFile[]> {
     }
   }
   return pages.sort((left, right) => comparePages(left.page, right.page));
+}
+
+async function readSourceCoverage(outputRoot: string): Promise<SourceCoverage | undefined> {
+  const stateDirectory = path.join(outputRoot, "sources", "state");
+  let files: string[] = [];
+  try {
+    files = (await readdir(stateDirectory))
+      .filter((file) => /^ingest-[a-f0-9]{16}\.json$/.test(file))
+      .sort(compareStrings);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+
+  const manifestPaths = files.length > 0
+    ? files.map((file) => path.join(stateDirectory, file))
+    : [path.join(outputRoot, "sources", "ingest-manifest.json")];
+  const coverages: SourceCoverage[] = [];
+  for (const manifestPath of manifestPaths) {
+    try {
+      const manifest = IngestManifestSchema.parse(
+        JSON.parse(await readFile(manifestPath, "utf8")),
+      );
+      coverages.push(manifest.sourceCoverage);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BuildError(`Invalid ingest manifest at ${manifestPath}: ${message}`);
+    }
+  }
+  if (coverages.length === 0) {
+    return undefined;
+  }
+  return aggregateSourceCoverage(coverages);
+}
+
+function aggregateSourceCoverage(coverages: SourceCoverage[]): SourceCoverage {
+  const totals = coverages.reduce((summary, coverage) => ({
+    supportedFiles: summary.supportedFiles + coverage.supportedFiles,
+    unsupportedFiles: summary.unsupportedFiles + coverage.unsupportedFiles,
+    intendedFiles: summary.intendedFiles + coverage.intendedFiles,
+    compiledFiles: summary.compiledFiles + coverage.compiledFiles,
+    degradedFiles: summary.degradedFiles + coverage.degradedFiles,
+    skippedFiles: summary.skippedFiles + coverage.skippedFiles,
+    failedFiles: summary.failedFiles + coverage.failedFiles,
+    supportedByFormat: {
+      markdown: summary.supportedByFormat.markdown + coverage.supportedByFormat.markdown,
+      mdx: summary.supportedByFormat.mdx + coverage.supportedByFormat.mdx,
+    },
+    unsupportedByFormat: {
+      rst: summary.unsupportedByFormat.rst + coverage.unsupportedByFormat.rst,
+      restText: summary.unsupportedByFormat.restText + coverage.unsupportedByFormat.restText,
+      adoc: summary.unsupportedByFormat.adoc + coverage.unsupportedByFormat.adoc,
+      asciidoc: summary.unsupportedByFormat.asciidoc + coverage.unsupportedByFormat.asciidoc,
+    },
+  }), {
+    supportedFiles: 0,
+    unsupportedFiles: 0,
+    intendedFiles: 0,
+    compiledFiles: 0,
+    degradedFiles: 0,
+    skippedFiles: 0,
+    failedFiles: 0,
+    supportedByFormat: { markdown: 0, mdx: 0 },
+    unsupportedByFormat: { rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
+  });
+  const coverageRatio = totals.intendedFiles === 0
+    ? 0
+    : Math.round((totals.compiledFiles / totals.intendedFiles) * 10_000) / 10_000;
+  const gapSeverity = coverages.some((coverage) => coverage.gapSeverity === "fail")
+    ? "fail"
+    : coverages.some((coverage) => coverage.gapSeverity === "warn")
+      ? "warn"
+      : "none";
+  return SourceCoverageSchema.parse({
+    ...totals,
+    coverageRatio,
+    gapSeverity,
+    gapReason: totals.unsupportedFiles > 0 ? "unsupported_format" : undefined,
+    message: totals.unsupportedFiles > 0
+      ? `${totals.compiledFiles} of ${totals.intendedFiles} docs-like file(s) compiled; ${totals.unsupportedFiles} unsupported reST/AsciiDoc file(s) were in scope.`
+      : `${totals.compiledFiles} of ${totals.intendedFiles} supported Markdown/MDX file(s) compiled.`,
+  });
 }
 
 function enrichPage(

@@ -88,10 +88,29 @@ results/
   summary.csv
 ```
 
-`summary.json` records pages, chunks, entities, task packs, readiness, broken
-links, warnings, deprecations, top-five search results, and repeated-build
-hashes. The cross-target table is updated at
+`summary.json` records pages, chunks, entities, task packs, readiness, source
+coverage, broken links, warnings, deprecations, top-five search results, and
+repeated-build hashes. `summary.csv` includes compact source coverage ratio and
+gap columns. The cross-target table is updated at
 `.dogfood/regression-summary.csv`.
+
+Do not use unexplained `N/A` for missing confidence. Label every missing or
+partial metric with one of:
+
+```txt
+unsupported_format
+scale_limited
+scope_mismatch
+retrieval_mismatch
+historical_metric_not_captured
+preparation_blocked
+```
+
+For large repositories, prefer explicit scoped local sources until large-repo
+budgets and progress controls are implemented. For example, test a docs shard
+with config `include` rules such as `docs/ai/**/*.md` instead of treating a
+timeout from a whole-repo run as a readiness result. Record whole-repo timeouts
+as `scale_limited` and include the scoped source path in the regression notes.
 
 See the [dogfood workflow matrix](./workflow-matrix.md) for the requested repo
 preparation, workflow-specific queries, pass criteria, and agent tasks.

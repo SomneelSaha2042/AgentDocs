@@ -1,0 +1,3 @@
+= Setup
+
+Another unsupported AsciiDoc source file.

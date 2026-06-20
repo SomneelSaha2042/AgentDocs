@@ -7,3 +7,8 @@ Fixtures are deterministic, local inputs used by AgentDocs tests.
 `invalid-config.yaml` provides a deterministic invalid configuration for CLI error and exit-code checks.
 
 `basic-site/server.mjs` serves a deterministic local HTML website and sitemap for crawler gate checks. It must only be launched by explicit test or gate commands; crawled content is never executed.
+
+`source-coverage` covers Phase 1 coverage honesty fixtures: mostly reST with a
+Markdown sliver, Django-style `.txt` reST, AsciiDoc/Antora with a README, and a
+fully supported Markdown/MDX corpus. These fixtures count unsupported formats;
+they do not imply parser support for reST or AsciiDoc.

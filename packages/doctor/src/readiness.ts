@@ -8,6 +8,7 @@ import {
   type ReadinessCategory,
   type ReadinessCheckResult,
   type ReadinessReport,
+  type SourceCoverage,
 } from "@agentdocs/shared";
 
 export type ReadinessArtifacts = {
@@ -21,6 +22,7 @@ export type ReadinessArtifacts = {
   unusablePages?: number;
   degradedPages?: number;
   skippedPages?: number;
+  sourceCoverage?: SourceCoverage;
   expectedTaskIds?: string[];
   preferredFacets?: Record<string, string>;
 };
@@ -177,6 +179,12 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
     .filter((id) => !packs.some((pack) => pack.id === id));
   const degradedOrSkipped = (options.artifacts.degradedPages ?? 0)
     + (options.artifacts.skippedPages ?? 0);
+  const sourceCoverage = options.artifacts.sourceCoverage;
+  const sourceCoverageStatus = sourceCoverage?.gapSeverity === "fail"
+    ? "fail"
+    : sourceCoverage?.gapSeverity === "warn"
+      ? "warn"
+      : "pass";
 
   return [
     check("has_config", "discoverability", 5, options.artifacts.hasConfig ? "pass" : "warn",
@@ -203,6 +211,16 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
           : `${usablePages} useful normalized page(s) are available.`,
       evidence(pages[0]),
       "Inspect raw crawl snapshots and improve extraction before trusting generated context."),
+    check("has_source_coverage", "structure", 0,
+      sourceCoverageStatus,
+      sourceCoverage === undefined
+        ? "No local source coverage manifest found for this build."
+        : sourceCoverage.message,
+      sourceCoverage === undefined ? [] : [{
+        source: "config",
+        quote: `coverage_ratio=${sourceCoverage.coverageRatio}; supported=${sourceCoverage.supportedFiles}; unsupported=${sourceCoverage.unsupportedFiles}`,
+      }],
+      "Narrow the configured source scope or add parser support before treating readiness as representative."),
     check("has_context_facets", "structure", 0,
       pages.some((page) => page.facets.length > 0) ? "pass" : "warn",
       pages.some((page) => page.facets.length > 0) ? "Context facets found." : "No context facets found.",
@@ -350,10 +368,11 @@ function awardedPoints(status: ReadinessCheckResult["status"], weight: number): 
 }
 
 function findBrokenInternalLinks(pages: DocPage[]) {
+  const pageReferences = pageReferenceMap(pages);
   return pages.flatMap((page) =>
     page.links
-      .filter((link) => link.kind === "internal")
-      .filter((link) => link.isBroken === true)
+      .filter((link) => link.kind === "internal" || link.kind === "anchor")
+      .filter((link) => link.isBroken === true || hasBrokenHeadingFragment(page, link, pageReferences))
       .map((link) => ({ page, link })),
   );
 }
@@ -386,6 +405,78 @@ function referenceAliases(value: string): string[] {
   return [...new Set([normalized, withoutMarkdownExtension, withoutIndex])];
 }
 
+function pageReferenceMap(pages: DocPage[]): Map<string, DocPage> {
+  const references = new Map<string, DocPage>();
+  for (const page of pages) {
+    for (const value of [page.canonicalUrl, page.sourceUrl, page.repoPath]) {
+      if (value === undefined) continue;
+      for (const alias of referenceAliases(value)) {
+        references.set(alias, page);
+      }
+    }
+  }
+  return references;
+}
+
+function hasBrokenHeadingFragment(
+  sourcePage: DocPage,
+  link: DocPage["links"][number],
+  pageReferences: Map<string, DocPage>,
+): boolean {
+  const fragment = linkFragment(link.resolvedHref ?? link.href);
+  if (fragment === undefined) return false;
+  const targetPage = link.kind === "anchor"
+    ? sourcePage
+    : pageReferences.get(normalizeReference(link.resolvedHref ?? link.href));
+  if (targetPage === undefined) return false;
+  return !headingFragmentAliases(targetPage).has(normalizeFragment(fragment));
+}
+
+function linkFragment(value: string): string | undefined {
+  const hashIndex = value.indexOf("#");
+  if (hashIndex === -1) return undefined;
+  const fragment = value.slice(hashIndex + 1);
+  return fragment.length === 0 ? undefined : fragment;
+}
+
+function headingFragmentAliases(page: DocPage): Set<string> {
+  const counts = new Map<string, number>();
+  const aliases = new Set<string>();
+  for (const heading of page.headings) {
+    for (const slug of slugAliases(heading.text, heading.slug)) {
+      const normalized = normalizeFragment(slug);
+      aliases.add(normalized);
+      const count = counts.get(normalized) ?? 0;
+      if (count > 0) aliases.add(`${normalized}-${count}`);
+      counts.set(normalized, count + 1);
+    }
+  }
+  return aliases;
+}
+
+function slugAliases(text: string, storedSlug: string): string[] {
+  const trimmed = text.toLowerCase().trim();
+  const markdownSlug = trimmed
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+  const vitePressSlug = trimmed.replace(/\s+/g, "-");
+  return [...new Set([storedSlug, markdownSlug, vitePressSlug])].filter((value) => value.length > 0);
+}
+
+function normalizeFragment(value: string): string {
+  const decoded = safeDecodeURIComponent(value);
+  return decoded.toLowerCase().trim();
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function readinessQualityCap(options: ScanReadinessOptions): number {
   const usable = options.artifacts.usablePages ?? options.agentMap?.pages.length ?? 0;
   const unusable = options.artifacts.unusablePages ?? 0;
@@ -405,6 +496,8 @@ function readinessQualityCap(options: ScanReadinessOptions): number {
   if (normalizedTotal > 0 && degraded / normalizedTotal > 0.5) cap = Math.min(cap, 59);
   else if (normalizedTotal > 0 && degraded / normalizedTotal > 0.2) cap = Math.min(cap, 79);
   if (unusable > usable) cap = Math.min(cap, 59);
+  if (options.artifacts.sourceCoverage?.gapSeverity === "fail") cap = Math.min(cap, 49);
+  else if (options.artifacts.sourceCoverage?.gapSeverity === "warn") cap = Math.min(cap, 79);
   return cap;
 }
 

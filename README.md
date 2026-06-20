@@ -20,6 +20,7 @@ questions:
 - Is the compiled context fresh?
 - Is it scoped to the right version, framework, router, or runtime?
 - Does it contain evidence for the task I am about to ask an agent to do?
+- Did it compile the intended docs corpus, or only a tiny supported slice?
 
 The output includes compact task packs, searchable artifacts, readiness
 findings, handoff bundles, freshness state, and read-only MCP tools. It does not
@@ -31,7 +32,9 @@ require an LLM, execute commands found in documentation, or mutate source docs.
 > are implemented for real-repository testing.
 >
 > It is still beta software: OpenAPI ingestion is not implemented, and large or
-> unusual docs sites may need scoped crawl settings. The core
+> unusual docs sites may need scoped crawl settings. Local and repo ingestion
+> currently compiles Markdown/MDX while counting unsupported reST and AsciiDoc
+> docs-like files as explicit source coverage gaps. The core
 > compile, audit, search, handoff, freshness, and MCP workflows are usable.
 
 ## Install
@@ -147,10 +150,11 @@ document browsing:
 - `agent-brief.md` is the first persistent file to show a coding agent.
 - Task packs bundle evidence-backed instructions for detected task families.
 - `agent-map.json` exposes pages, chunks, entities, edges, context facets, and evidence.
+- `manifest.json` records build counts and source coverage for local/repo sources.
 - `index.sqlite` provides ranked offline search.
 - `state/build-state.json` powers freshness checks and changed-source rebuilds.
 - The readiness report identifies actionable gaps and caps scores when critical
-  task context conflicts remain.
+  task context conflicts or source coverage failures remain.
 
 Refresh generated state from scratch when you intentionally want to discard old
 context:
@@ -257,6 +261,13 @@ AgentDocs uses stable IDs, deterministic ordering, explicit schemas, and
 evidence-linked outputs. When evidence is weak or missing, generated artifacts
 say so rather than inventing instructions.
 
+For local and repo sources, AgentDocs also measures source coverage before it
+claims confidence. Supported `.md` and `.mdx` files are compiled; unsupported
+docs-like `.rst`, likely Sphinx/reST `.txt`, `.adoc`, and `.asciidoc` files are
+counted and reported in ingest manifests, `manifest.json`, dogfood summaries,
+and doctor checks. A tiny Markdown pass inside a larger reST or AsciiDoc corpus
+is reported as an `unsupported_format` gap, not a clean readiness signal.
+
 The workflow layer follows the same rule. Freshness is computed from local
 source hashes, website TTLs, config hashes, and build-owned artifact hashes.
 Context verification is deterministic: it checks stale artifacts, mixed
@@ -345,9 +356,11 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 ## Current Limitations
 
 - OpenAPI ingestion is recognized but not implemented.
+- reST and AsciiDoc sources are counted for coverage but not parsed yet.
 - Additional inspect targets beyond entities, links, and task-pack explanations
   are planned.
-- Broken-link checks do not validate heading fragments.
+- Broken-link checks validate generated heading fragments for collected pages;
+  custom framework anchors may still require review.
 - The crawler is intended for public, statically accessible documentation.
 - Full-origin archival crawls and JavaScript-rendered-only documentation are not
   targets of the current scoped crawler.

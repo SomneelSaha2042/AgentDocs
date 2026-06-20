@@ -101,6 +101,71 @@ describe("scanReadiness", () => {
     expect(brokenLinks?.evidence[0]?.quote).toBe("missing.md");
   });
 
+  it("fails internal links with unresolved heading fragments", () => {
+    const guide = normalizeMarkdown({
+      markdown: "# Guide\n\nRead [setup auth](setup.md#missing-auth) and [local details](#missing-local).\n",
+      repoPath: "guide.md",
+    });
+    const setup = normalizeMarkdown({
+      markdown: "# Setup\n\n## Configure auth\n",
+      repoPath: "setup.md",
+    });
+    const report = scanReadiness({
+      agentMap: buildAgentMap({
+        pages: [guide, setup],
+        chunks: [...chunkMarkdownByHeading(guide), ...chunkMarkdownByHeading(setup)],
+      }),
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: false,
+        hasConfig: false,
+        hasLlmsTxt: false,
+        hasSitemap: false,
+        taskPackFileIds: [],
+      },
+    });
+    const brokenLinks = report.checks.find((check) => check.id === "has_broken_internal_links");
+
+    expect(brokenLinks?.status).toBe("fail");
+    expect(brokenLinks?.message).toBe("2 broken internal link(s) found.");
+    expect(brokenLinks?.evidence.map((item) => item.quote)).toEqual([
+      "#missing-local",
+      "setup.md#missing-auth",
+    ]);
+  });
+
+  it("accepts generated heading fragments for duplicate and punctuation-heavy headings", () => {
+    const page = normalizeMarkdown({
+      markdown: [
+        "# Guide",
+        "",
+        "See [first](#configure-auth), [second](#configure-auth-1), and [punctuation](#does-it-work).",
+        "",
+        "## Configure auth",
+        "",
+        "## Configure auth",
+        "",
+        "## Does it work?",
+        "",
+      ].join("\n"),
+      repoPath: "guide.md",
+    });
+    const report = scanReadiness({
+      agentMap: buildAgentMap({ pages: [page], chunks: chunkMarkdownByHeading(page) }),
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: false,
+        hasConfig: false,
+        hasLlmsTxt: false,
+        hasSitemap: false,
+        taskPackFileIds: [],
+      },
+    });
+
+    expect(report.checks.find((check) => check.id === "has_broken_internal_links")?.status)
+      .toBe("pass");
+  });
+
   it("does not award vacuous passes when no pages can be inspected", () => {
     const report = scanReadiness({
       artifacts: {
@@ -193,6 +258,47 @@ describe("scanReadiness", () => {
     expect(report.checks.find((check) => check.id === "has_extraction_quality")?.status)
       .toBe("warn");
     expect(report.score).toBeLessThanOrEqual(60);
+  });
+
+  it("fails source coverage when unsupported docs formats dominate the intended scope", () => {
+    const page = normalizeMarkdown({
+      markdown: "# Tiny Markdown Sliver\n\nThis page is not representative.\n",
+      repoPath: "README.md",
+    });
+    const report = scanReadiness({
+      agentMap: buildAgentMap({ pages: [page], chunks: chunkMarkdownByHeading(page) }),
+      artifacts: {
+        hasAgentMap: true,
+        hasAgentsMd: true,
+        hasConfig: true,
+        hasLlmsTxt: true,
+        hasSitemap: false,
+        taskPackFileIds: [],
+        sourceCoverage: {
+          supportedFiles: 1,
+          unsupportedFiles: 20,
+          intendedFiles: 21,
+          compiledFiles: 1,
+          degradedFiles: 0,
+          skippedFiles: 0,
+          failedFiles: 0,
+          coverageRatio: 0.0476,
+          supportedByFormat: { markdown: 1, mdx: 0 },
+          unsupportedByFormat: { rst: 18, restText: 2, adoc: 0, asciidoc: 0 },
+          gapSeverity: "fail",
+          gapReason: "unsupported_format",
+          message: "1 of 21 docs-like file(s) compiled; 20 unsupported reST/AsciiDoc file(s) were in scope.",
+        },
+      },
+    });
+    const coverage = report.checks.find((check) => check.id === "has_source_coverage");
+
+    expect(coverage).toMatchObject({
+      status: "fail",
+      message: "1 of 21 docs-like file(s) compiled; 20 unsupported reST/AsciiDoc file(s) were in scope.",
+    });
+    expect(coverage?.evidence[0]?.quote).toContain("unsupported=20");
+    expect(report.score).toBeLessThanOrEqual(49);
   });
 
   it("caps unavoidable mixed exclusive task context and fails missing configured tasks", () => {

@@ -38,9 +38,98 @@ describe("ingestLocalMarkdown", () => {
       JSON.parse(await readFile(first.manifestPath, "utf8")),
     );
     expect(manifest.pageCount).toBe(3);
+    expect(manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 3,
+      unsupportedFiles: 0,
+      intendedFiles: 3,
+      compiledFiles: 3,
+      coverageRatio: 1,
+      gapSeverity: "none",
+    });
     expect(manifest.pages.map((page) => page.repoPath)).toEqual(
       first.pages.map((page) => page.repoPath),
     );
+  });
+
+  it("reports fail-level coverage for a tiny Markdown sliver in mostly reST docs", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-rest-"));
+    const result = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/source-coverage/mostly-rest",
+    });
+
+    expect(result.pages.map((page) => page.repoPath)).toEqual(["README.md"]);
+    expect(result.manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 1,
+      unsupportedFiles: 2,
+      intendedFiles: 3,
+      compiledFiles: 1,
+      coverageRatio: 0.3333,
+      gapSeverity: "fail",
+      gapReason: "unsupported_format",
+      supportedByFormat: { markdown: 1, mdx: 0 },
+      unsupportedByFormat: { rst: 2, restText: 0, adoc: 0, asciidoc: 0 },
+    });
+  });
+
+  it("counts Django-style .txt reST files and writes diagnostics before failing unsupported-only ingest", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-txt-"));
+
+    await expect(ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/source-coverage/django-txt",
+    })).rejects.toThrowError(/No supported Markdown or MDX files found/);
+    const manifest = IngestManifestSchema.parse(JSON.parse(
+      await readFile(path.join(output, "sources", "ingest-manifest.json"), "utf8"),
+    ));
+
+    expect(manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 0,
+      unsupportedFiles: 2,
+      unsupportedByFormat: { restText: 2 },
+      gapReason: "unsupported_format",
+      gapSeverity: "fail",
+    });
+  });
+
+  it("counts AsciiDoc files beside a supported README", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-adoc-"));
+    const result = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/source-coverage/asciidoc-with-readme",
+    });
+
+    expect(result.manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 1,
+      unsupportedFiles: 2,
+      unsupportedByFormat: { adoc: 1, asciidoc: 1 },
+      gapSeverity: "fail",
+    });
+  });
+
+  it("reports full coverage for supported Markdown and MDX sources", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-md-"));
+    const result = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/source-coverage/supported-markdown",
+    });
+
+    expect(result.manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 2,
+      unsupportedFiles: 0,
+      compiledFiles: 2,
+      coverageRatio: 1,
+      supportedByFormat: { markdown: 1, mdx: 1 },
+      gapSeverity: "none",
+    });
   });
 
   it("removes stale pages and does not ingest its own output", async () => {

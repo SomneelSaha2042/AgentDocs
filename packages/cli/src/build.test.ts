@@ -68,6 +68,14 @@ describe("buildFromSources", () => {
     expect(JSON.parse(firstManifest).schemaVersion).toBe("0.2.0");
     expect(manifest.counts.taskPacks).toBe(agentMap.taskPacks.length);
     expect(manifest.project.name).toBe("Basic Docs Fixture");
+    expect(manifest.sourceCoverage).toMatchObject({
+      supportedFiles: 3,
+      unsupportedFiles: 0,
+      compiledFiles: 3,
+      coverageRatio: 1,
+      gapSeverity: "none",
+    });
+    expect(first.sourceCoverage).toEqual(manifest.sourceCoverage);
     expect(firstLlmsTxt).toContain("## Task packs");
     expect(firstAgentsMd).toContain("## Common tasks");
     expect(firstTaskPacks.some((pack) => pack.includes("## Gotchas"))).toBe(true);

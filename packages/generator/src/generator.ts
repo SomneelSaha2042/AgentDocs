@@ -5,6 +5,7 @@ import {
   type AgentMap,
   type Evidence,
   type Manifest,
+  type SourceCoverage,
   type TaskPack,
 } from "@agentdocs/shared";
 
@@ -21,6 +22,7 @@ export type GenerateStaticArtifactsOptions = {
   rules?: string[];
   preferredFacets?: Record<string, string>;
   exclusiveKeys?: string[];
+  sourceCoverage?: SourceCoverage;
   tasks?: Array<{ id: string; title: string; queries: string[]; requiredFacets: Record<string, string> }>;
 };
 
@@ -133,6 +135,7 @@ export function generateStaticArtifacts(
       edges: agentMap.edges.length,
       taskPacks: taskPacks.length,
     },
+    sourceCoverage: options.sourceCoverage,
   });
   const taskPackMarkdown = Object.fromEntries(
     taskPacks.map((pack) => [pack.id, renderTaskPack(pack, agentMap)]),
