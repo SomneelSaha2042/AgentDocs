@@ -8,6 +8,9 @@
   --vp-font-family-mono: 'JetBrains Mono', monospace;
   --vp-font-family-headings: 'Hanken Grotesk', var(--vp-font-family-base);
 
+  /* Increase central content section width */
+  --vp-doc-max-width: 880px;
+
   /* Cyber-Deterministic Colors as Custom Properties */
   --color-background: #0B0E14; /* Terminal Black */
   --color-surface-dim: #10131a;
@@ -229,6 +232,8 @@ h1, .vp-doc h1 {
   background-color: var(--color-surface-dim);
   width: 100%;
   margin: 24px 0;
+  display: block;
+  overflow-x: auto;
 }
 .vp-doc th {
   background-color: var(--color-surface-charcoal);
