@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   /* Brand Fonts */
   --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -316,3 +320,61 @@ h1, .vp-doc h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Custom Homepage overrides to allow full width content */
+.custom-home-page {
+  background-color: var(--color-background) !important;
+}
+.custom-home-page .VPContent {
+  background-color: var(--color-background) !important;
+}
+.custom-home-page .VPDoc {
+  padding: 0 !important;
+  max-width: 100% !important;
+  background-color: var(--color-background) !important;
+}
+.custom-home-page .container {
+  max-width: 100% !important;
+  padding: 0 !important;
+  background-color: var(--color-background) !important;
+}
+.custom-home-page .content {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+.custom-home-page .vp-doc {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+.custom-home-page .vp-doc > div {
+  max-width: 100% !important;
+}
+
+/* Override VitePress default markdown heading styles on homepage */
+.custom-home-page h1,
+.custom-home-page .vp-doc h1,
+.custom-home-page h2,
+.custom-home-page .vp-doc h2,
+.custom-home-page h3,
+.custom-home-page .vp-doc h3 {
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Redesign helper utility classes */
+.glow-hover:hover {
+  box-shadow: 0 0 15px rgba(60, 81, 161, 0.4);
+  border-color: #3C51A1 !important;
+}
+.terminal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-scroll::-webkit-scrollbar-track {
+  background: #0B0E14;
+}
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: #30363D;
+  border-radius: 4px;
+}
+
