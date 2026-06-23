@@ -1,6 +1,6 @@
 {
   "name": "@somneelsaha/agentdocs",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "description": "Deterministic, local-first tooling that compiles technical documentation into an evidence-linked context layer for coding agents.",
   "license": "MIT",
   "author": "Somneel Saha",

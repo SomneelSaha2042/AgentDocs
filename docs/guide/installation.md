@@ -37,7 +37,7 @@ npx @somneelsaha/agentdocs init
 ```
 
 Beta releases use the npm `beta` dist-tag. Pin
-`@somneelsaha/agentdocs@0.1.0-beta.4` when you need a reproducible
+`@somneelsaha/agentdocs@0.1.0-beta.5` when you need a reproducible
 installation.
 
 ## Check The Published Package
