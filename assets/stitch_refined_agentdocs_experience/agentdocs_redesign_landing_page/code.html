@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AgentDocs | Prevent Coding Agent Hallucinations</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Custom Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-container": "#bfcaff",
+                    "surface-container-high": "#272a31",
+                    "tertiary-fixed": "#56ffa8",
+                    "on-secondary-fixed": "#001f24",
+                    "surface-variant": "#32353c",
+                    "status-warn": "#FFB800",
+                    "surface-tint": "#b7c4ff",
+                    "primary-fixed-dim": "#b7c4ff",
+                    "surface-container-low": "#191c22",
+                    "on-tertiary": "#00391f",
+                    "on-surface-variant": "#c5c5d3",
+                    "surface-charcoal": "#161B22",
+                    "secondary-fixed": "#9cf0ff",
+                    "border-muted": "#30363D",
+                    "secondary": "#bdf4ff",
+                    "outline-variant": "#444651",
+                    "text-dim": "#8B949E",
+                    "primary": "#b7c4ff",
+                    "surface-dim": "#10131a",
+                    "terminal-black": "#0B0E14",
+                    "inverse-primary": "#4459a9",
+                    "background": "#10131a",
+                    "surface-container-highest": "#32353c",
+                    "surface-bright": "#363940",
+                    "on-tertiary-fixed": "#002110",
+                    "surface-container-lowest": "#0b0e14",
+                    "error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#004f58",
+                    "outline": "#8f909c",
+                    "secondary-container": "#00e3fd",
+                    "status-fail": "#FF4B4B",
+                    "tertiary-fixed-dim": "#00e38b",
+                    "on-error-container": "#ffdad6",
+                    "secondary-fixed-dim": "#00daf3",
+                    "primary-fixed": "#dde1ff",
+                    "surface-container": "#1d2026",
+                    "primary-container": "#3c51a1",
+                    "on-surface": "#e1e2eb",
+                    "surface": "#10131a",
+                    "inverse-on-surface": "#2e3037",
+                    "on-secondary": "#00363d",
+                    "tertiary-container": "#00643a",
+                    "error": "#ffb4ab",
+                    "on-secondary-container": "#00616d",
+                    "on-primary": "#0e2879",
+                    "on-tertiary-container": "#00ea8f",
+                    "on-background": "#e1e2eb",
+                    "inverse-surface": "#e1e2eb",
+                    "on-primary-fixed": "#001452",
+                    "on-error": "#690005",
+                    "status-pass": "#00FF9D",
+                    "on-primary-fixed-variant": "#2b4090",
+                    "tertiary": "#00e38b",
+                    "on-tertiary-fixed-variant": "#00522f"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "unit": "4px",
+                    "margin-mobile": "16px",
+                    "margin-desktop": "64px",
+                    "container-max": "1200px",
+                    "gutter": "24px"
+            },
+            "fontFamily": {
+                    "label-caps": ["JetBrains Mono"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "code-md": ["JetBrains Mono"],
+                    "headline-xl": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "code-md": ["14px", {"lineHeight": "20px", "fontWeight": "450"}],
+                    "headline-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #0B0E14;
+            color: #e1e2eb;
+            overflow-x: hidden;
+        }
+        .glow-hover:hover {
+            box-shadow: 0 0 15px rgba(60, 81, 161, 0.4);
+            border-color: #3C51A1;
+        }
+        .terminal-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .terminal-scroll::-webkit-scrollbar-track {
+            background: #0B0E14;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background: #30363D;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md antialiased">
+<!-- TopNavBar -->
+<header class="bg-surface-dim bg-opacity-80 backdrop-blur-md border-b border-outline-variant docked full-width top-0 sticky z-50">
+<div class="flex justify-between items-center w-full px-margin-desktop py-4 max-w-container-max mx-auto">
+<div class="font-headline-md text-headline-md font-bold text-on-surface">AgentDocs</div>
+<nav class="hidden md:flex items-center space-x-8">
+<a class="text-on-surface-variant font-label-caps text-label-caps hover:text-primary transition-colors duration-200" href="#">Guides</a>
+<a class="text-on-surface-variant font-label-caps text-label-caps hover:text-primary transition-colors duration-200" href="#">Results</a>
+<a class="text-on-surface-variant font-label-caps text-label-caps hover:text-primary transition-colors duration-200" href="#">Reference</a>
+<a class="text-on-surface-variant font-label-caps text-label-caps hover:text-primary transition-colors duration-200 flex items-center" href="#">GitHub <span class="material-symbols-outlined ml-1 text-sm">open_in_new</span></a>
+</nav>
+<div class="flex items-center gap-4">
+<div class="relative hidden lg:block">
+<input class="bg-surface-container border border-border-muted rounded-lg px-4 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-container w-48" placeholder="Search..." type="text"/>
+<span class="absolute right-3 top-1.5 text-text-dim text-xs">⌘K</span>
+</div>
+<button class="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-label-caps text-label-caps active:scale-95 transition-transform duration-100">Install</button>
+</div>
+</div>
+</header>
+<main>
+<!-- Hero Section -->
+<section class="relative py-24 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto grid lg:grid-cols-2 gap-12 items-center">
+<div class="space-y-8">
+<h1 class="font-headline-xl text-headline-xl text-on-surface leading-tight">
+                    Prevent coding agents from using <span class="text-primary">stale documentation</span>.
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                    A local context compiler and CI gate that gives coding agents task-specific, source-linked evidence. Eliminate hallucinations caused by wrong versions or outdated manuals.
+                </p>
+<div class="flex flex-wrap gap-4">
+<button class="bg-primary-container hover:bg-primary text-white px-8 py-4 rounded font-bold transition-all">Get Started</button>
+<button class="border border-border-muted hover:border-primary text-primary px-8 py-4 rounded font-bold transition-all flex items-center gap-2">
+<span class="material-symbols-outlined">star</span> View on GitHub
+                    </button>
+</div>
+</div>
+<div class="relative group">
+<div class="absolute inset-0 bg-primary-container opacity-10 blur-3xl rounded-full"></div>
+<img alt="Hero Illustration" class="relative z-10 w-full h-auto rounded-xl shadow-2xl border border-border-muted" src="https://lh3.googleusercontent.com/aida/AP1WRLurKweJELxr_NTDCD0-NpBQODrFmTetYTVufrs9AI6QuA-BE_3lS_na1JxUIIbkul6CSbrVopkLQvaljgYyA4IM-DP7XBsmSpbdQx77MRZGLiQ46GqjJZaXv8047s-gb5hOMbwNqPXgUVp0WUJCPojyafsBmWB8pVwZHwLyNZHiDdqhYSrQ3Z5jnO1_YA4CFUUqx-4NrZR_2kKNUMhII-hBoA5nfzx7_4gwDVQVkd1lBu4_JR5qiM6fNGcr"/>
+</div>
+</section>
+<!-- Validation Metrics -->
+<section class="py-20 bg-surface-container-low border-y border-outline-variant">
+<div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop">
+<h2 class="font-label-caps text-label-caps text-primary mb-12 tracking-widest text-center">VALIDATED AGAINST REAL DOCUMENTATION</h2>
+<div class="grid md:grid-cols-3 gap-8">
+<div class="bg-surface-charcoal border border-border-muted p-8 rounded-lg glow-hover transition-all group">
+<div class="font-label-caps text-label-caps text-status-pass mb-2">DETERMINISTIC OUTPUT</div>
+<div class="font-headline-lg text-headline-lg text-on-surface group-hover:text-primary transition-colors">100% Hash Match</div>
+<p class="text-text-dim mt-4 text-sm">Every successful target produced the same artifact hash on repeated builds.</p>
+</div>
+<div class="bg-surface-charcoal border border-border-muted p-8 rounded-lg glow-hover transition-all group">
+<div class="font-label-caps text-label-caps text-tertiary mb-2">RESILIENT PARSING</div>
+<div class="font-headline-lg text-headline-lg text-on-surface group-hover:text-primary transition-colors">737+ MDX Pages</div>
+<p class="text-text-dim mt-4 text-sm">Supabase docs preserved despite per-file diagnostics and complex MDX layouts.</p>
+</div>
+<div class="bg-surface-charcoal border border-border-muted p-8 rounded-lg glow-hover transition-all group">
+<div class="font-label-caps text-label-caps text-secondary mb-2">SCALABLE CRAWLS</div>
+<div class="font-headline-lg text-headline-lg text-on-surface group-hover:text-primary transition-colors">823 Chunks</div>
+<p class="text-text-dim mt-4 text-sm">Next.js compiled bounded 100-page crawls into high-density task packs.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Core Features Grid -->
+<section class="py-32 max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="text-center mb-20">
+<h2 class="font-headline-lg text-headline-lg mb-4">From docs to gateable context</h2>
+<p class="text-on-surface-variant font-body-md max-w-2xl mx-auto">The transformation layer that turns static documentation into deterministic evidence for AI agents.</p>
+</div>
+<div class="grid md:grid-cols-3 gap-gutter">
+<!-- Feature 1 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Compile Docs" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLvUE1k_llxeXkwvOiaEB0Rz-wD1dQsg2SwaafelkcAjC6i515KImqKjC4Rds_5JmDNfBtb3sXoKksoLJ-ggXtZ48otbK9hxk7nN60XpMyBE1D404URMVCw2F67K-X2JbN90yPRPbzdw-_s2zRGqlpWE8aK6gF1x5JPGlBN6kC1dGFn8QcMJ-XAOdXXy7txp8sZvO0wfIO_9NqbK5_jKETVajIlno5XcDVR32_u1AiBJcTcXtNVLjvH88Q7j"/>
+<h3 class="font-headline-md text-headline-md mb-2">Compile Existing Docs</h3>
+<p class="text-text-dim text-sm leading-relaxed">Collect, normalize, graph, and generate deterministic local context from existing docs.</p>
+</div>
+</div>
+<!-- Feature 2 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Scope Retrieval" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLvxfhcFfRXKJGaDaR9qIXG6QhX4YMaiAoWckIBzH8-4UIse_w5edv6PBiFiZM6hgypji1dmiLlS24vkO3joNbcFiI4St5CT9Pm0lLa68SafhO2mKifRolzpEkUaDh0icn9Vhum2d-t4JE6O8Bh6-wqzRfK9QourO6akl0QTHvq9vZ3ZumbxgwjH0E-mRQfwenHANJkIEvr2ewMTmjI9to26MssU5Xw6WXZsmL6TmaPtnoBxG9GspRoNADJ5"/>
+<h3 class="font-headline-md text-headline-md mb-2">Scope Retrieval</h3>
+<p class="text-text-dim text-sm leading-relaxed">Filter versions, frameworks, routers, and runtimes while retrieving evidence offline.</p>
+</div>
+</div>
+<!-- Feature 3 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Trace Claims" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLt-X_Pg3NGapjfg7SN-aVM1VAKfm-bCLd6hpjww8z9SiejBo2ulHZG591B-MMm-_GvameisKhzN05am8rMGgttsQBqS1tMeQjM-bpqxgJLHRHeoPlao77ZqL6QHYBeMhADWpFCivOmiY9VYM872mMOaGSmvOB4iEuJGIEMg1uWdNwDON3vlGfAxJ_nGWtVOMAEwcoL0Q2CBR2wnUMiLslGOfQCwJFRCPBeqxkBAvs_8tUTk7_7XCe-kQsi3"/>
+<h3 class="font-headline-md text-headline-md mb-2">Trace Every Claim</h3>
+<p class="text-text-dim text-sm leading-relaxed">Link task packs, entities, and findings back to source pages, headings, and code.</p>
+</div>
+</div>
+<!-- Feature 4 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Task Packs" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLueY6lZO_FPYHk9I3FkytkUiFOhpD0r6AH0apj_T97TRJds2d1xsFuDvykNJ1oO0F_eg3uEf2J19hRLASMhpLvSuQiKHnlj3zBvTUL_N2cGWtNNOjmSjRoUILJXliNlg-wntiH_NxFq3zpDMYU7AqKmKCODz5B9Gdr2-Ma4MjrGEFZH97g-veacuvHwj_XvUArbR0k4dB0cHNz_mNFcb0vh6ZOnJCtuP6qlO1mRldG4_uSLKyquqxOnziou"/>
+<h3 class="font-headline-md text-headline-md mb-2">Generate Task Packs</h3>
+<p class="text-text-dim text-sm leading-relaxed">Give coding agents compact task context without silently combining conflicting evidence.</p>
+</div>
+</div>
+<!-- Feature 5 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Hand off" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLshAsznuV_YC-CeljqkH61qjnWfb4KTzfJ9WAP0I9cV9TKaYsuI1W4aEQZB9hgaVAYZ4x3EdWIsjKCcyUEcRAHutOLBsA7C0eLy3vySUVlERH_yc_dD15QaiNU7xEABEW5CqxODJY41xgiRxCCvWurwRdZ1k0VFVTdUUNfB1tcYbDmui2wUXSrMteMOuMxNBiCHYNuxwvXFZLiGq6XXMuprHDeN7PWs3UwoRfuxtJAgKA4RSi9F790QG0GM"/>
+<h3 class="font-headline-md text-headline-md mb-2">Hand off to Agents</h3>
+<p class="text-text-dim text-sm leading-relaxed">Serve task context, freshness, verification, and setup commands through read-only MCP.</p>
+</div>
+</div>
+<!-- Feature 6 -->
+<div class="flex flex-col bg-surface-charcoal border border-border-muted rounded-lg overflow-hidden glow-hover transition-all">
+<div class="p-6">
+<img alt="Readiness" class="w-full aspect-square object-cover rounded-lg mb-6 border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AP1WRLtG3k80lRDUC7DNCQs_vi-YpOhgum9RjgDmpecYCxK3wDh-bJQbcgBk2LJcjuSfjwtLOaVOJyATSIc7fXfTIb_sNVvBzcxABT6YEabuz2he_4sjIBKNlyTNnCcU-cqUKZ_nytNwOIYwhPxt2wSftB7rnEjPMRXNFydRUjUbTmBomqgknfyxVShszdNqyeczSI0zIBuvaoIj0jnOFYCnOeiz4nGrTi_8K-I1ibZqvy6aVrWPGFGLURt20OHi"/>
+<h3 class="font-headline-md text-headline-md mb-2">Gate Readiness</h3>
+<p class="text-text-dim text-sm leading-relaxed">Check freshness, coverage, and context conflicts before agents start their work.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Technical Workflow (CLI Terminal) -->
+<section class="py-24 bg-terminal-black overflow-hidden">
+<div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop grid lg:grid-cols-2 gap-16 items-center">
+<div>
+<h2 class="font-headline-lg text-headline-lg mb-6">Automated Guardrails</h2>
+<p class="text-body-lg text-on-surface-variant mb-8">
+                        The `verify-context` command prevents "context drift" by validating your agent's handoff against current build state. It detects deprecated evidence and version mismatches before they lead to failed PRs.
+                    </p>
+<ul class="space-y-4">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-tertiary">check_circle</span>
+<span>Deterministic local context compilation</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-tertiary">check_circle</span>
+<span>CI integration via `agentdocs doctor`</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-tertiary">check_circle</span>
+<span>Source-linked evidence tracking</span>
+</li>
+</ul>
+</div>
+<div class="bg-[#1C2128] rounded-xl border border-border-muted shadow-2xl font-code-md text-code-md overflow-hidden">
+<div class="bg-surface-container-highest px-4 py-2 flex items-center justify-between border-b border-border-muted">
+<div class="flex gap-1.5">
+<div class="w-3 h-3 rounded-full bg-status-fail"></div>
+<div class="w-3 h-3 rounded-full bg-status-warn"></div>
+<div class="w-3 h-3 rounded-full bg-status-pass"></div>
+</div>
+<div class="text-text-dim text-xs">bash — agentdocs verify-context</div>
+<button class="material-symbols-outlined text-sm text-text-dim hover:text-on-surface">content_copy</button>
+</div>
+<div class="p-6 overflow-x-auto terminal-scroll text-sm leading-relaxed">
+<div class="mb-4">
+<span class="text-secondary">$</span> agentdocs verify-context --task "migrate this service to Fastify v5"<br/>
+<span class="text-status-warn font-bold">WARN: Context needs review.</span><br/>
+<span class="ml-4 text-text-dim">Issue: deprecated_evidence</span><br/>
+<span class="ml-4 text-text-dim">Selected task pack: migration</span><br/>
+<span class="ml-4 text-text-dim">Recommended action: inspect migration task pack.</span>
+</div>
+<div>
+<span class="text-secondary">$</span> agentdocs verify-context --task "migrate this service to Fastify v5" --facet version=v5<br/>
+<span class="text-status-pass font-bold">PASS: Context is safe to use for this task.</span><br/>
+<span class="ml-4 text-text-dim">Version boundary: v5</span><br/>
+<span class="ml-4 text-text-dim">Task evidence: source-linked migration sections</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Local-First Section -->
+<section class="py-32 border-t border-outline-variant relative">
+<div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop text-center">
+<div class="inline-block px-4 py-1 bg-primary-container bg-opacity-20 border border-primary-container rounded-full text-primary font-label-caps text-label-caps mb-8">
+                    SECURITY FIRST
+                </div>
+<h2 class="font-headline-lg text-headline-lg mb-8">Run locally and safely</h2>
+<div class="max-w-4xl mx-auto rounded-2xl overflow-hidden border border-border-muted bg-surface-container mb-12 shadow-inner">
+<img alt="Local First Infrastructure" class="w-full h-auto object-cover opacity-90" src="https://lh3.googleusercontent.com/aida/AP1WRLsVXwgAXaV218ZvUw4jmMLXFKkEulR3URnBVIXmd09UCQV-YppYVkvKBjK31UYRgbsj7VYwsSaJ8Me-w4RFCzJH8BSNlxmoJvsif1epjo6buvtCqDbxacV8kubE0JHzw9oBMGzsZgynxjhGulxzgWWiHbcIqTyw9OWxap3rtN8txaG6ULKrzeNWJj7GPWlF9mM86h0YP2580QMTU3avBqoz0fdOIkZQWtkoc5jpb6yg0jfjiENabuSAg2wC"/>
+</div>
+<p class="text-body-lg text-on-surface-variant max-w-2xl mx-auto">
+                    Keep your documentation architecture offline. Treat docs as untrusted input and never execute crawled commands. AgentDocs is designed for privacy-conscious engineering teams who require air-gapped context for their development agents.
+                </p>
+<div class="mt-12 flex justify-center gap-12 flex-wrap">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">security</span>
+<span class="font-label-caps text-label-caps">No Data Leakage</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">wifi_off</span>
+<span class="font-label-caps text-label-caps">Offline Ready</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">terminal</span>
+<span class="font-label-caps text-label-caps">CLI Driven</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA -->
+<section class="py-24 bg-primary-container text-on-primary-container text-center">
+<div class="max-w-container-max mx-auto px-margin-mobile">
+<h2 class="font-headline-lg text-headline-lg mb-6">Ready to harden your AI workflow?</h2>
+<p class="font-body-lg mb-10 opacity-90 max-w-xl mx-auto">Install the published beta and start generating source-linked evidence today.</p>
+<div class="flex justify-center gap-4">
+<button class="bg-on-surface text-surface px-8 py-4 rounded font-bold hover:bg-white transition-all">Get Started</button>
+<button class="border border-on-primary-container px-8 py-4 rounded font-bold hover:bg-on-primary-container hover:text-primary-container transition-all">View Documentation</button>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-terminal-black border-t border-outline-variant mt-20">
+<div class="flex flex-col md:flex-row justify-between items-center w-full px-margin-desktop py-12 max-w-container-max mx-auto">
+<div class="flex flex-col items-center md:items-start mb-8 md:mb-0">
+<div class="font-headline-md text-headline-md font-bold text-on-surface mb-2">AgentDocs</div>
+<p class="font-label-caps text-label-caps text-on-surface-variant text-center md:text-left">Released under the MIT License. Copyright 2024 Somneel Saha</p>
+</div>
+<nav class="flex gap-8">
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface underline" href="#">Privacy</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface underline" href="#">Security</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface underline" href="#">Terms</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface underline" href="#">Contact</a>
+</nav>
+</div>
+</footer>
+<script>
+        // Simple search shortcut interaction
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                document.querySelector('input[type="text"]').focus();
+            }
+        });
+    </script>
+</body></html>

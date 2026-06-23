@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Architecture &amp; Security | AgentDocs</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500&amp;family=JetBrains+Mono:wght@450;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-fixed-dim": "#00e38b",
+                    "on-primary-container": "#bfcaff",
+                    "surface-container-low": "#191c22",
+                    "surface-container-highest": "#32353c",
+                    "on-secondary-fixed": "#001f24",
+                    "inverse-primary": "#4459a9",
+                    "on-primary-fixed": "#001452",
+                    "secondary": "#bdf4ff",
+                    "on-error-container": "#ffdad6",
+                    "on-background": "#e1e2eb",
+                    "primary-fixed-dim": "#b7c4ff",
+                    "error": "#ffb4ab",
+                    "on-secondary": "#00363d",
+                    "surface-container-lowest": "#0b0e14",
+                    "outline": "#8f909c",
+                    "on-primary-fixed-variant": "#2b4090",
+                    "on-error": "#690005",
+                    "secondary-fixed": "#9cf0ff",
+                    "on-primary": "#0e2879",
+                    "tertiary-fixed": "#56ffa8",
+                    "tertiary-container": "#00643a",
+                    "border-muted": "#30363D",
+                    "text-dim": "#8B949E",
+                    "primary-container": "#3c51a1",
+                    "surface-container": "#1d2026",
+                    "inverse-on-surface": "#2e3037",
+                    "surface-bright": "#363940",
+                    "on-secondary-container": "#00616d",
+                    "on-tertiary-container": "#00ea8f",
+                    "surface": "#10131a",
+                    "status-pass": "#00FF9D",
+                    "surface-charcoal": "#161B22",
+                    "terminal-black": "#0B0E14",
+                    "secondary-container": "#00e3fd",
+                    "error-container": "#93000a",
+                    "primary": "#b7c4ff",
+                    "status-fail": "#FF4B4B",
+                    "on-tertiary": "#00391f",
+                    "tertiary": "#00e38b",
+                    "on-tertiary-fixed": "#002110",
+                    "surface-container-high": "#272a31",
+                    "inverse-surface": "#e1e2eb",
+                    "on-surface": "#e1e2eb",
+                    "secondary-fixed-dim": "#00daf3",
+                    "surface-variant": "#32353c",
+                    "background": "#10131a",
+                    "on-surface-variant": "#c5c5d3",
+                    "surface-tint": "#b7c4ff",
+                    "surface-dim": "#10131a",
+                    "primary-fixed": "#dde1ff",
+                    "on-secondary-fixed-variant": "#004f58",
+                    "status-warn": "#FFB800",
+                    "outline-variant": "#444651",
+                    "on-tertiary-fixed-variant": "#00522f"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "margin-mobile": "16px",
+                    "margin-desktop": "64px",
+                    "container-max": "1200px",
+                    "gutter": "24px",
+                    "unit": "4px"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "label-caps": ["JetBrains Mono"],
+                    "headline-xl": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "code-md": ["JetBrains Mono"],
+                    "body-md": ["Inter"],
+                    "headline-lg-mobile": ["Hanken Grotesk"]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .active-nav-border {
+            box-shadow: inset -2px 0 0 0 #b7c4ff;
+        }
+        .technical-gradient {
+            background: linear-gradient(135deg, #161B22 0%, #10131a 100%);
+        }
+        .gate-border {
+            border: 1px solid #30363D;
+            transition: all 0.2s ease;
+        }
+        .gate-border:hover {
+            border-color: #3c51a1;
+            box-shadow: 0 0 12px rgba(60, 81, 161, 0.2);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0B0E14;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #30363D;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-surface-dim text-on-surface font-body-md selection:bg-primary-container selection:text-white">
+<!-- TopNavBar -->
+<header class="bg-surface-dim dark:bg-surface-dim docked full-width top-0 sticky z-50 border-b border-outline-variant bg-opacity-80 backdrop-blur-md">
+<nav class="flex justify-between items-center w-full px-margin-desktop py-4 max-w-container-max mx-auto">
+<div class="flex items-center gap-8">
+<a class="font-headline-md text-headline-md font-bold text-on-surface dark:text-on-surface tracking-tight" href="#">AgentDocs</a>
+<div class="hidden md:flex items-center gap-6">
+<a class="text-primary dark:text-primary font-bold border-b-2 border-primary pb-1 font-label-caps text-label-caps hover:text-primary dark:hover:text-tertiary transition-colors duration-200" href="#">Guides</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-primary dark:hover:text-tertiary transition-colors duration-200" href="#">Results</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-primary dark:hover:text-tertiary transition-colors duration-200" href="#">Reference</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-primary dark:hover:text-tertiary transition-colors duration-200" href="#">GitHub</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-sm">search</span>
+<input class="bg-surface-container-lowest border border-border-muted rounded-lg pl-10 pr-4 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-primary-container transition-all" placeholder="Search documentation..." type="text"/>
+</div>
+<button class="bg-primary-container text-white px-6 py-2 rounded-lg font-label-caps text-label-caps hover:opacity-90 active:scale-95 transition-all">Install</button>
+</div>
+</nav>
+</header>
+<div class="max-w-container-max mx-auto flex min-h-screen">
+<!-- Sidebar Navigation -->
+<aside class="hidden md:block w-72 border-r border-outline-variant px-8 py-12 sticky top-20 h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar">
+<div class="mb-10">
+<h3 class="font-label-caps text-label-caps text-text-dim mb-4 uppercase tracking-widest">Introduction</h3>
+<ul class="space-y-3">
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Getting Started</a></li>
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Core Concepts</a></li>
+</ul>
+</div>
+<div class="mb-10">
+<h3 class="font-label-caps text-label-caps text-text-dim mb-4 uppercase tracking-widest">Architecture</h3>
+<ul class="space-y-3">
+<li><a class="text-primary font-bold flex items-center gap-2" href="#">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                        Overview &amp; Security
+                    </a></li>
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Workflow Engines</a></li>
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">The MCP Bridge</a></li>
+</ul>
+</div>
+<div class="mb-10">
+<h3 class="font-label-caps text-label-caps text-text-dim mb-4 uppercase tracking-widest">Security</h3>
+<ul class="space-y-3">
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Local-First Safety</a></li>
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Data Encryption</a></li>
+<li><a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Audit Logs</a></li>
+</ul>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 px-8 md:px-16 py-12 max-w-4xl">
+<!-- Breadcrumbs -->
+<nav class="flex items-center gap-2 text-text-dim font-label-caps text-label-caps mb-8">
+<a class="hover:text-primary" href="#">Guides</a>
+<span class="material-symbols-outlined text-xs">chevron_right</span>
+<span class="text-on-surface">Architecture &amp; Security</span>
+</nav>
+<header class="mb-16">
+<h1 class="font-headline-xl text-headline-xl text-on-surface mb-6 leading-tight">Architecture &amp; <br/><span class="text-primary">Technical Safety</span></h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                    AgentDocs is built on a "Zero-Trust Documentation" philosophy. By combining a decoupled workflow layer with local-first execution, we ensure your intellectual property never leaves your environment while maintaining the power of cloud-scale AI reasoning.
+                </p>
+</header>
+<!-- Architecture Diagram Placeholder (Canvas/Simple Geometric) -->
+<section class="mb-20">
+<div class="gate-border bg-surface-container-lowest rounded-xl p-8 overflow-hidden relative min-h-[400px] flex items-center justify-center">
+<!-- Geometric Representation -->
+<div class="relative z-10 w-full max-w-lg">
+<div class="flex flex-col gap-12 items-center">
+<!-- Cloud Layer -->
+<div class="w-full p-4 gate-border rounded bg-surface-charcoal flex flex-col items-center gap-2 opacity-60">
+<span class="font-label-caps text-[10px] text-text-dim">LLM ORCHESTRATION LAYER (CLOUD)</span>
+<div class="flex gap-4">
+<div class="h-8 w-24 bg-border-muted rounded flex items-center justify-center text-[10px]">OpenAI</div>
+<div class="h-8 w-24 bg-border-muted rounded flex items-center justify-center text-[10px]">Anthropic</div>
+</div>
+</div>
+<!-- Security Barrier -->
+<div class="w-full border-t-2 border-dashed border-status-pass relative py-2">
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-status-pass text-terminal-black font-label-caps text-[10px] px-3 py-1 rounded-full font-bold">
+                                    ENCRYPTED MCP GATEWAY
+                                </div>
+</div>
+<!-- Local Layer -->
+<div class="w-full flex justify-between gap-6">
+<div class="flex-1 p-6 gate-border rounded-xl bg-surface-charcoal text-center space-y-4">
+<span class="material-symbols-outlined text-tertiary">workflow</span>
+<h4 class="font-label-caps text-label-caps text-tertiary">Workflow Engine</h4>
+<p class="text-[11px] text-text-dim">Processes logic and file states locally.</p>
+</div>
+<div class="flex-1 p-6 gate-border rounded-xl bg-surface-charcoal text-center space-y-4">
+<span class="material-symbols-outlined text-primary">storage</span>
+<h4 class="font-label-caps text-label-caps text-primary">Local Vector DB</h4>
+<p class="text-[11px] text-text-dim">Stores documentation indices on-disk.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Background Glows -->
+<div class="absolute -top-24 -left-24 w-64 h-64 bg-primary/5 blur-[120px] rounded-full"></div>
+<div class="absolute -bottom-24 -right-24 w-64 h-64 bg-tertiary/5 blur-[120px] rounded-full"></div>
+</div>
+<p class="mt-4 text-center font-label-caps text-[11px] text-text-dim">Fig 1.0: Decoupled workflow and storage architecture via MCP.</p>
+</section>
+<!-- Why the workflow layer exists -->
+<section class="mb-20 space-y-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-primary-container/20 flex items-center justify-center border border-primary-container/30">
+<span class="material-symbols-outlined text-primary">hub</span>
+</div>
+<h2 class="font-headline-md text-headline-md">Why the workflow layer exists</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="space-y-4">
+<p class="text-on-surface-variant leading-relaxed">
+                            Traditional AI documentation tools send your entire codebase to a remote server for processing. This creates a massive security liability and introduces latency that kills the developer experience.
+                        </p>
+<p class="text-on-surface-variant leading-relaxed">
+                            AgentDocs introduces a **Deterministic Workflow Layer**. Instead of the AI guessing how to navigate your docs, our engine provides a structured state machine that the AI must follow.
+                        </p>
+</div>
+<div class="bg-surface-charcoal gate-border rounded-xl p-6">
+<ul class="space-y-4">
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-status-pass text-sm">check_circle</span>
+<div>
+<h5 class="text-sm font-bold text-on-surface">State Persistence</h5>
+<p class="text-xs text-text-dim">Maintains context between long-running technical audits.</p>
+</div>
+</li>
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-status-pass text-sm">check_circle</span>
+<div>
+<h5 class="text-sm font-bold text-on-surface">Protocol Agnostic</h5>
+<p class="text-xs text-text-dim">Switch between LLMs without re-indexing your local data.</p>
+</div>
+</li>
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-status-pass text-sm">check_circle</span>
+<div>
+<h5 class="text-sm font-bold text-on-surface">Cost Efficiency</h5>
+<p class="text-xs text-text-dim">Reduces token usage by 40% via pre-computed logic gates.</p>
+</div>
+</li>
+</ul>
+</div>
+</div>
+</section>
+<!-- Run locally and safely -->
+<section class="mb-20">
+<div class="flex items-center gap-4 mb-8">
+<div class="w-12 h-12 rounded-lg bg-tertiary-container/20 flex items-center justify-center border border-tertiary-container/30">
+<span class="material-symbols-outlined text-tertiary">lock</span>
+</div>
+<h2 class="font-headline-md text-headline-md">Run locally and safely</h2>
+</div>
+<div class="space-y-12">
+<div class="prose prose-invert max-w-none text-on-surface-variant space-y-6">
+<p class="text-lg">
+                            Security isn't a feature; it's the foundation. AgentDocs is built to be "Local-First," meaning all sensitive data—source code, private keys, and internal documentation—never touches our servers.
+                        </p>
+<div class="grid grid-cols-1 gap-6">
+<!-- Card 1 -->
+<div class="gate-border bg-surface-charcoal p-8 rounded-xl flex items-start gap-6">
+<div class="text-status-warn">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">security</span>
+</div>
+<div class="space-y-2">
+<h4 class="font-bold text-on-surface">The MCP Privacy Shield</h4>
+<p class="text-sm text-text-dim leading-relaxed">
+                                        We utilize the Model Context Protocol (MCP) to create a secure tunnel. The LLM can only "request" information through defined schemas. It cannot arbitrarily read your file system or execute shell commands without explicit permission from your local agent.
+                                    </p>
+</div>
+</div>
+<!-- Code Block Interaction -->
+<div class="bg-terminal-black rounded-lg border border-border-muted overflow-hidden">
+<div class="flex items-center justify-between px-4 py-2 bg-surface-charcoal border-b border-border-muted">
+<span class="font-label-caps text-[10px] text-text-dim">agentdocs.config.json</span>
+<span class="font-label-caps text-[10px] text-status-pass">VALIDATED</span>
+</div>
+<div class="p-6 font-code-md text-code-md leading-relaxed overflow-x-auto custom-scrollbar">
+<pre class="text-on-surface">{
+  <span class="text-tertiary">"security_policy"</span>: <span class="text-primary">"strict"</span>,
+  <span class="text-tertiary">"local_embedding"</span>: <span class="text-status-pass">true</span>,
+  <span class="text-tertiary">"allowed_directories"</span>: [
+    <span class="text-primary">"./docs"</span>,
+    <span class="text-primary">"./src/schemas"</span>
+  ],
+  <span class="text-tertiary">"audit_logging"</span>: <span class="text-status-pass">true</span>
+}</pre>
+</div>
+</div>
+<!-- Stats Row -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+<div class="p-4 bg-surface-container-low gate-border rounded-lg text-center">
+<div class="text-2xl font-bold text-primary mb-1">AES-256</div>
+<div class="text-[10px] font-label-caps text-text-dim uppercase">Encryption</div>
+</div>
+<div class="p-4 bg-surface-container-low gate-border rounded-lg text-center">
+<div class="text-2xl font-bold text-status-pass mb-1">0ms</div>
+<div class="text-[10px] font-label-caps text-text-dim uppercase">Server Hops</div>
+</div>
+<div class="p-4 bg-surface-container-low gate-border rounded-lg text-center">
+<div class="text-2xl font-bold text-status-warn mb-1">100%</div>
+<div class="text-[10px] font-label-caps text-text-dim uppercase">Open Source</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom CTA -->
+<section class="mt-32 pt-16 border-t border-outline-variant">
+<div class="bg-primary-container/10 p-12 rounded-2xl flex flex-col items-center text-center space-y-6">
+<h2 class="font-headline-md text-headline-md text-primary">Ready to architect your docs?</h2>
+<p class="text-on-surface-variant max-w-md">Start your local-first journey today. AgentDocs can be deployed in under 60 seconds.</p>
+<div class="flex gap-4">
+<button class="bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:brightness-110 transition-all">Get Started</button>
+<button class="border border-border-muted text-on-surface px-8 py-3 rounded-lg font-bold hover:bg-surface-charcoal transition-all">Read Whitepaper</button>
+</div>
+</div>
+</section>
+</main>
+<!-- Right Side TOC (Optional but good for technical guides) -->
+<aside class="hidden xl:block w-64 px-8 py-20 sticky top-20 h-fit">
+<h4 class="font-label-caps text-[10px] text-text-dim mb-6 uppercase tracking-[0.2em]">On this page</h4>
+<nav class="space-y-4">
+<a class="block text-xs text-primary border-l-2 border-primary pl-4" href="#">Architecture Overview</a>
+<a class="block text-xs text-text-dim hover:text-on-surface border-l-2 border-transparent pl-4" href="#">Why Workflow Layer</a>
+<a class="block text-xs text-text-dim hover:text-on-surface border-l-2 border-transparent pl-4" href="#">Local-First Safety</a>
+<a class="block text-xs text-text-dim hover:text-on-surface border-l-2 border-transparent pl-4" href="#">MCP Gateway</a>
+<a class="block text-xs text-text-dim hover:text-on-surface border-l-2 border-transparent pl-4" href="#">Compliance</a>
+</nav>
+</aside>
+</div>
+<!-- Footer -->
+<footer class="bg-terminal-black dark:bg-terminal-black full-width border-t border-outline-variant mt-20">
+<div class="flex flex-col md:flex-row justify-between items-center w-full px-margin-desktop py-12 max-w-container-max mx-auto">
+<div class="mb-8 md:mb-0">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">AgentDocs</span>
+<p class="text-on-surface-variant font-body-md text-body-md mt-2">Released under the MIT License. Copyright 2024 Somneel Saha</p>
+</div>
+<div class="flex gap-8">
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-on-surface dark:hover:text-on-surface underline transition-all" href="#">Privacy</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-on-surface dark:hover:text-on-surface underline transition-all" href="#">Security</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-on-surface dark:hover:text-on-surface underline transition-all" href="#">Terms</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant font-label-caps text-label-caps hover:text-on-surface dark:hover:text-on-surface underline transition-all" href="#">Contact</a>
+</div>
+</div>
+</footer>
+<!-- Simple Interactivity for Diagram -->
+<script>
+        document.querySelectorAll('.gate-border').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                const glow = card.querySelector('.bg-primary\/5');
+                if(glow) glow.style.opacity = '0.2';
+            });
+            card.addEventListener('mouseleave', () => {
+                const glow = card.querySelector('.bg-primary\/5');
+                if(glow) glow.style.opacity = '0.05';
+            });
+        });
+    </script>
+</body></html>

@@ -60,16 +60,9 @@ doctor:
 ```
 
 Supported beta source types are `local_markdown`, `repo`, and `website`.
-Repository sources reuse local ingestion and do not clone. Prepare repositories
-containing Windows-invalid filenames on Linux or WSL. OpenAPI declarations are
-recognized but fail explicitly until implemented.
-Fixed source facets, matching path rules, recognized frontmatter, and
-deterministic path/title extraction add evidence-linked context facets to
-pages, chunks, and search results. Automatic facets include
-`content_type=docs|blog|news|release|reference|tutorial|example`,
-`locale=<language>`, `source_format=markdown|mdx|html`, and existing
-version/framework/router/runtime values. Add `context.rules` for content type
-or locale when project paths are ambiguous.
+Local and repository sources scan for Markdown (`.md`, `.mdx`), Sphinx/reST (`.rst`, `.txt`), and AsciiDoc (`.adoc`, `.asciidoc`) file extensions. Prepare repositories containing Windows-invalid filenames on Linux or WSL. OpenAPI declarations are recognized but fail explicitly until implemented.
+
+Fixed source facets, matching path rules, recognized frontmatter, and deterministic path/title extraction add evidence-linked context facets to pages, chunks, and search results. Automatic facets include `content_type=docs|blog|news|release|reference|tutorial|example`, `locale=<language>`, `source_format=markdown|mdx|html|rst|adoc`, and existing version/framework/router/runtime values. Add `context.rules` for content type or locale when project paths are ambiguous.
 Tolerant MDX normalization is the default. It records diagnostics and uses a
 line-preserving sanitizer only after strict MDX parsing fails. Set
 `normalization.mdx: strict` to fail on unsupported MDX.

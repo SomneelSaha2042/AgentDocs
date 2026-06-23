@@ -4,11 +4,16 @@ export default defineConfig({
   title: "AgentDocs",
   description: "Deterministic, local-first, context-safe tooling for agent-readable documentation.",
   base: "/AgentDocs/",
+  appearance: "dark",
   head: [
     ["link", { rel: "icon", href: "/AgentDocs/brand/favicon.ico" }],
     ["link", { rel: "apple-touch-icon", href: "/AgentDocs/brand/app-icon-agentdocs-256.png" }],
     ["meta", { property: "og:image", content: "https://somneelsaha2042.github.io/AgentDocs/brand/hero-agentdocs.png" }],
     ["meta", { name: "twitter:image", content: "https://somneelsaha2042.github.io/AgentDocs/brand/hero-agentdocs.png" }],
+    ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
+    ["link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" }],
+    ["link", { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" }],
+    ["link", { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" }],
   ],
   // Explicit file URLs keep the deployed artifact portable and verifiable.
   cleanUrls: false,

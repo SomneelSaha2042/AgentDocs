@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Installation &amp; Quick Start | AgentDocs</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-fixed-dim": "#00e38b",
+                    "on-primary-container": "#bfcaff",
+                    "surface-container-low": "#191c22",
+                    "surface-container-highest": "#32353c",
+                    "on-secondary-fixed": "#001f24",
+                    "inverse-primary": "#4459a9",
+                    "on-primary-fixed": "#001452",
+                    "secondary": "#bdf4ff",
+                    "on-error-container": "#ffdad6",
+                    "on-background": "#e1e2eb",
+                    "primary-fixed-dim": "#b7c4ff",
+                    "error": "#ffb4ab",
+                    "on-secondary": "#00363d",
+                    "surface-container-lowest": "#0b0e14",
+                    "outline": "#8f909c",
+                    "on-primary-fixed-variant": "#2b4090",
+                    "on-error": "#690005",
+                    "secondary-fixed": "#9cf0ff",
+                    "on-primary": "#0e2879",
+                    "tertiary-fixed": "#56ffa8",
+                    "tertiary-container": "#00643a",
+                    "border-muted": "#30363D",
+                    "text-dim": "#8B949E",
+                    "primary-container": "#3c51a1",
+                    "surface-container": "#1d2026",
+                    "inverse-on-surface": "#2e3037",
+                    "surface-bright": "#363940",
+                    "on-secondary-container": "#00616d",
+                    "on-tertiary-container": "#00ea8f",
+                    "surface": "#10131a",
+                    "status-pass": "#00FF9D",
+                    "surface-charcoal": "#161B22",
+                    "terminal-black": "#0B0E14",
+                    "secondary-container": "#00e3fd",
+                    "error-container": "#93000a",
+                    "primary": "#b7c4ff",
+                    "status-fail": "#FF4B4B",
+                    "on-tertiary": "#00391f",
+                    "tertiary": "#00e38b",
+                    "on-tertiary-fixed": "#002110",
+                    "surface-container-high": "#272a31",
+                    "inverse-surface": "#e1e2eb",
+                    "on-surface": "#e1e2eb",
+                    "secondary-fixed-dim": "#00daf3",
+                    "surface-variant": "#32353c",
+                    "background": "#10131a",
+                    "on-surface-variant": "#c5c5d3",
+                    "surface-tint": "#b7c4ff",
+                    "surface-dim": "#10131a",
+                    "primary-fixed": "#dde1ff",
+                    "on-secondary-fixed-variant": "#004f58",
+                    "status-warn": "#FFB800",
+                    "outline-variant": "#444651",
+                    "on-tertiary-fixed-variant": "#00522f"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "margin-mobile": "16px",
+                    "margin-desktop": "64px",
+                    "container-max": "1200px",
+                    "gutter": "24px",
+                    "unit": "4px"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "label-caps": ["JetBrains Mono"],
+                    "headline-xl": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "code-md": ["JetBrains Mono"],
+                    "body-md": ["Inter"],
+                    "headline-lg-mobile": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-xl": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "code-md": ["14px", {"lineHeight": "20px", "fontWeight": "450"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0B0E14; }
+        ::-webkit-scrollbar-thumb { background: #30363D; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3C51A1; }
+        
+        .code-block {
+            background-color: #0B0E14;
+            border: 1px solid #30363D;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .glow-border:hover {
+            border-color: #3C51A1;
+            box-shadow: 0 0 12px rgba(60, 81, 161, 0.2);
+        }
+
+        .terminal-cursor::after {
+            content: '_';
+            animation: blink 1s infinite;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md selection:bg-primary-container selection:text-white">
+<!-- TopNavBar -->
+<header class="bg-surface-dim border-b border-outline-variant bg-opacity-80 backdrop-blur-md docked full-width top-0 sticky z-50">
+<div class="flex justify-between items-center w-full px-margin-desktop py-4 max-w-container-max mx-auto">
+<div class="flex items-center gap-8">
+<a class="font-headline-md text-headline-md font-bold text-on-surface" href="#">AgentDocs</a>
+<nav class="hidden md:flex gap-6">
+<a class="text-primary font-bold border-b-2 border-primary pb-1 font-label-caps text-label-caps" href="#">Guides</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-caps text-label-caps" href="#">Results</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-caps text-label-caps" href="#">Reference</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 font-label-caps text-label-caps" href="#">GitHub</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:block relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-dim text-[18px]">search</span>
+<input class="bg-surface-container-low border border-border-muted rounded-lg pl-10 pr-4 py-1.5 text-sm w-64 focus:ring-1 focus:ring-primary focus:border-primary transition-all outline-none" placeholder="Search documentation..." type="text"/>
+</div>
+<button class="bg-primary-container text-white px-6 py-2 rounded-lg font-label-caps text-label-caps hover:brightness-110 active:scale-95 transition-all">Install</button>
+</div>
+</div>
+</header>
+<div class="max-w-container-max mx-auto flex min-h-screen">
+<!-- Persistent Sidebar -->
+<aside class="hidden md:block w-72 border-r border-outline-variant py-10 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto pr-6">
+<div class="space-y-8">
+<section>
+<h5 class="font-label-caps text-label-caps text-on-surface mb-4">Getting Started</h5>
+<ul class="space-y-2 border-l border-outline-variant ml-1">
+<li><a class="block pl-4 py-1 border-l-2 border-primary -ml-[1px] text-primary font-bold" href="#">Introduction</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">Installation</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">Quick Start</a></li>
+</ul>
+</section>
+<section>
+<h5 class="font-label-caps text-label-caps text-on-surface mb-4">Core Concepts</h5>
+<ul class="space-y-2 border-l border-outline-variant ml-1">
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">The Context Gate</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">Deterministic Logic</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">Flow Architectures</a></li>
+</ul>
+</section>
+<section>
+<h5 class="font-label-caps text-label-caps text-on-surface mb-4">CLI Reference</h5>
+<ul class="space-y-2 border-l border-outline-variant ml-1">
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">agentdocs try</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">agentdocs lint</a></li>
+<li><a class="block pl-4 py-1 border-l-2 border-transparent -ml-[1px] text-on-surface-variant hover:text-on-surface transition-colors" href="#">agentdocs publish</a></li>
+</ul>
+</section>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 py-10 md:px-12 w-full max-w-4xl">
+<!-- Hero Heading -->
+<header class="mb-16">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-container/10 border border-primary/20 text-primary mb-6">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="font-label-caps text-[10px] tracking-widest uppercase">Version 2.4.0 Now Live</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl mb-6 text-on-surface">Installation &amp; <span class="text-primary">Quick Start</span></h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+                    Set up your mission-control for AI documentation logic. AgentDocs provides a rigorous, deterministic framework to ensure your automated agents always have the correct context.
+                </p>
+</header>
+<!-- 5-minute Quick Start Section -->
+<section class="mb-20">
+<div class="flex items-center gap-4 mb-8">
+<div class="h-8 w-8 rounded bg-surface-container-highest flex items-center justify-center font-label-caps text-primary">01</div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">5-Minute Quick Start</h2>
+</div>
+<div class="space-y-10">
+<div>
+<h3 class="font-headline-md text-headline-md mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">download</span>
+                            1. Install Global CLI
+                        </h3>
+<p class="text-on-surface-variant mb-6">First, pull the core binaries. Requires Node.js 18+ or Python 3.10+.</p>
+<div class="code-block rounded-lg overflow-hidden relative group">
+<div class="flex items-center justify-between px-4 py-2 bg-surface-charcoal border-b border-border-muted">
+<span class="font-label-caps text-label-caps text-text-dim">Terminal — zsh</span>
+<button class="text-text-dim hover:text-primary transition-colors flex items-center gap-1" onclick="copyCode(this)">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+<span class="font-label-caps text-label-caps">Copy</span>
+</button>
+</div>
+<pre class="p-6 overflow-x-auto"><code class="text-code-md font-code-md text-on-surface"><span class="text-tertiary">npm install</span> -g @agentdocs/core</code></pre>
+</div>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">settings_input_component</span>
+                            2. Initialize Workspace
+                        </h3>
+<p class="text-on-surface-variant mb-6">Create your project manifest. This generates the <code>agent.config.json</code> used to manage context gates.</p>
+<div class="code-block rounded-lg overflow-hidden relative group">
+<div class="flex items-center justify-between px-4 py-2 bg-surface-charcoal border-b border-border-muted">
+<span class="font-label-caps text-label-caps text-text-dim">Terminal — bash</span>
+<button class="text-text-dim hover:text-primary transition-colors flex items-center gap-1" onclick="copyCode(this)">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+<span class="font-label-caps text-label-caps">Copy</span>
+</button>
+</div>
+<pre class="p-6 overflow-x-auto"><code class="text-code-md font-code-md text-on-surface"><span class="text-primary">agentdocs</span> init <span class="text-secondary">--template=minimal</span></code></pre>
+</div>
+</div>
+</div>
+</section>
+<!-- Bento Workflow Section -->
+<section class="mb-20">
+<div class="flex items-center gap-4 mb-8">
+<div class="h-8 w-8 rounded bg-surface-container-highest flex items-center justify-center font-label-caps text-primary">02</div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">The Documentation Workflow</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Workflow Card 1 -->
+<div class="md:col-span-2 bg-surface-charcoal border border-border-muted p-8 rounded-xl glow-border transition-all">
+<div class="flex items-center gap-3 mb-6">
+<div class="p-2 bg-primary-container/20 rounded">
+<span class="material-symbols-outlined text-primary">play_circle</span>
+</div>
+<h3 class="font-headline-md text-headline-md">Testing with 'agentdocs try'</h3>
+</div>
+<p class="text-on-surface-variant mb-8 leading-relaxed">
+                            The <code>try</code> command is your primary validation tool. It simulates an agent's traversal of your documentation without actually making API calls, allowing you to debug logical loops and dead ends in your technical manuals.
+                        </p>
+<div class="code-block rounded-lg p-6">
+<code class="text-code-md font-code-md block mb-2"><span class="text-primary">agentdocs</span> try ./docs/auth-flow.md</code>
+<div class="mt-4 border-t border-border-muted pt-4">
+<div class="flex items-center gap-2 mb-2">
+<span class="h-2 w-2 rounded-full bg-status-pass"></span>
+<span class="font-label-caps text-xs text-status-pass">PASS</span>
+<span class="text-text-dim text-xs">Context Gate 04: Resolved</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="h-2 w-2 rounded-full bg-status-warn"></span>
+<span class="font-label-caps text-xs text-status-warn">WARN</span>
+<span class="text-text-dim text-xs">Latency: 240ms (High overhead)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Callout: Warning -->
+<div class="bg-error-container/10 border border-error/30 p-8 rounded-xl">
+<div class="flex items-center gap-2 text-error mb-4">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="font-label-caps text-label-caps">Warning</span>
+</div>
+<h4 class="font-headline-md text-headline-md mb-2 text-on-surface">Context Drift</h4>
+<p class="text-on-surface-variant text-sm">
+                            Always run <code>--fresh</code> when testing documentation that involves real-time API schemas. Stale context results in non-deterministic agent behavior.
+                        </p>
+</div>
+<!-- Callout: Pro-Tip -->
+<div class="md:col-span-3 bg-tertiary-container/10 border border-tertiary/30 p-8 rounded-xl flex flex-col md:flex-row gap-6 items-center">
+<div class="flex-shrink-0">
+<div class="h-16 w-16 rounded-full bg-tertiary/20 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[32px]" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+</div>
+<div>
+<span class="font-label-caps text-label-caps text-tertiary mb-1 block">Pro-Tip</span>
+<h4 class="font-headline-md text-headline-md mb-2 text-on-surface">Atomic Context Mapping</h4>
+<p class="text-on-surface-variant leading-relaxed">
+                                Keep your documentation files under 1,500 words. Larger files cause context window saturation for agents, leading to hallucinations during technical execution. Use the "Gate Logic" to link smaller documents instead of one massive manual.
+                            </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Navigation -->
+<div class="flex items-center justify-between pt-12 border-t border-outline-variant">
+<a class="group" href="#">
+<span class="text-text-dim font-label-caps text-xs block mb-1">Previous</span>
+<div class="flex items-center gap-2 text-on-surface group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+<span class="font-headline-md text-headline-md">Introduction</span>
+</div>
+</a>
+<a class="group text-right" href="#">
+<span class="text-text-dim font-label-caps text-xs block mb-1">Next</span>
+<div class="flex items-center gap-2 text-on-surface group-hover:text-primary transition-colors">
+<span class="font-headline-md text-headline-md">The Context Gate</span>
+<span class="material-symbols-outlined">arrow_forward</span>
+</div>
+</a>
+</div>
+</main>
+</div>
+<!-- Footer -->
+<footer class="bg-terminal-black border-t border-outline-variant mt-20">
+<div class="flex flex-col md:flex-row justify-between items-center w-full px-margin-desktop py-12 max-w-container-max mx-auto">
+<div class="mb-8 md:mb-0">
+<a class="font-headline-md text-headline-md font-bold text-on-surface block mb-2" href="#">AgentDocs</a>
+<p class="font-body-md text-body-md text-on-surface-variant">Released under the MIT License. Copyright 2024 Somneel Saha</p>
+</div>
+<div class="flex gap-8">
+<a class="text-on-surface-variant hover:text-on-surface underline font-label-caps text-label-caps" href="#">Privacy</a>
+<a class="text-on-surface-variant hover:text-on-surface underline font-label-caps text-label-caps" href="#">Security</a>
+<a class="text-on-surface-variant hover:text-on-surface underline font-label-caps text-label-caps" href="#">Terms</a>
+<a class="text-on-surface-variant hover:text-on-surface underline font-label-caps text-label-caps" href="#">Contact</a>
+</div>
+</div>
+</footer>
+<script>
+        function copyCode(button) {
+            const codeBlock = button.closest('.code-block').querySelector('code');
+            const text = codeBlock.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalContent = button.innerHTML;
+                button.innerHTML = `
+                    <span class="material-symbols-outlined text-[18px] text-status-pass">check</span>
+                    <span class="font-label-caps text-label-caps text-status-pass">Copied!</span>
+                `;
+                setTimeout(() => {
+                    button.innerHTML = originalContent;
+                }, 2000);
+            });
+        }
+
+        // Simple observer for scroll highlighting (logic layer)
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log("AgentDocs Navigation Loaded");
+        });
+    </script>
+</body></html>

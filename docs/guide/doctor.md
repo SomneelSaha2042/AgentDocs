@@ -16,17 +16,11 @@ Checks cover discoverability, structure, task coverage, version safety, agent
 safety, and runtime readiness. Findings identify inspected evidence and provide
 specific recommendations.
 
-For local and repo sources, doctor also reports `has_source_coverage`. This
-check compares supported Markdown/MDX files with unsupported docs-like files in
-the configured source scope, including `.rst`, likely Sphinx/reST `.txt`,
-`.adoc`, and `.asciidoc`. A fail-level `unsupported_format` finding means the
-build compiled only a small supported slice of a larger docs corpus, so the
-readiness score should not be treated as representative until the scope is
-narrowed or parser support is added.
+For local and repo sources, doctor reports `has_source_coverage`. This check compares supported source formats (Markdown, MDX, Sphinx/reST, and AsciiDoc) with other docs-like files in the configured source scope. A fail-level `unsupported_format` finding means the build compiled only a small supported slice of a larger docs corpus, indicating the scope should be adjusted.
 
-Doctor also reports `has_task_search_scope` when common task-query top results
-are dominated by blog, news, or release pages even though docs, tutorial, or
-reference evidence exists. Use `content_type` and `locale` context rules or a
-narrower source scope to make implementation evidence rank first.
+Additionally, doctor audits include/transclusion directives for Sphinx/reST (`.. include::`) and AsciiDoc (`include::[]`):
+* `has_no_include_gaps` checks if all referenced transclusion files exist and reside inside the configured source directory. A fail-level `include-out-of-scope` finding indicates that included documents are located outside the configured source root. Unresolved include paths trigger warnings or failures to prevent incomplete context assembly.
+
+Doctor also reports `has_task_search_scope` when common task-query top results are dominated by blog, news, or release pages even though docs, tutorial, or reference evidence exists. Use `content_type` and `locale` context rules or a narrower source scope to make implementation evidence rank first.
 
 Use `--min-score` in CI. A score below the threshold exits with code `5`.

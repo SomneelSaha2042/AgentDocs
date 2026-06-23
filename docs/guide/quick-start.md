@@ -91,15 +91,17 @@ and commands as untrusted text and never executes them. It records inferred
 scope, sitemap discovery, request counts, failures, and Markdown alternatives
 in `.agentdocs/sources/crawl-manifest.json`.
 
-## Ingest Repository Docs And MDX
+## Ingest Repository Docs, MDX, Sphinx/reST, and AsciiDoc
 
-Configured `repo` sources reuse local ingestion while preserving
-repository-relative paths. AgentDocs never clones a remote repository.
+Configured `repo` sources reuse local ingestion while preserving repository-relative paths. AgentDocs never clones a remote repository.
 
-Tolerant MDX normalization is the default: strict MDX parsing runs first, then
-a deterministic sanitizer preserves useful prose, headings, links, and fenced
-code while recording degraded or failed files. Use `agentdocs ingest --strict`
-or `normalization.mdx: strict` when unsupported MDX must stop the ingest.
+AgentDocs natively supports compiling:
+* **Markdown and MDX:** Tolerant MDX normalization is the default: strict MDX parsing runs first, then a deterministic sanitizer preserves useful prose, headings, links, and fenced code.
+* **Sphinx/reST:** Ingests reStructuredText `.rst` and Sphinx-style `.txt` documentation trees.
+* **AsciiDoc/Antora:** Ingests `.adoc` and `.asciidoc` source files.
+
+**Transclusion Resolution:**
+Includes are resolved deterministically during ingestion (`.. include::` directives in reST and `include::[]` directives in AsciiDoc). Out-of-scope or missing includes are automatically detected and flagged by `agentdocs doctor` as include gaps to ensure complete context safety.
 
 ## Multi-Session Tradeoffs
 

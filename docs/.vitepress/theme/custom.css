@@ -1,8 +1,122 @@
+:root {
+  /* Brand Fonts */
+  --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', monospace;
+  --vp-font-family-headings: 'Hanken Grotesk', var(--vp-font-family-base);
+
+  /* Cyber-Deterministic Colors as Custom Properties */
+  --color-background: #0B0E14; /* Terminal Black */
+  --color-surface-dim: #10131a;
+  --color-surface-charcoal: #161B22;
+  --color-surface-container: #1d2026;
+  --color-surface-container-low: #191c22;
+  --color-surface-container-high: #272a31;
+  --color-surface-container-highest: #32353c;
+  --color-on-surface: #e1e2eb;
+  --color-on-surface-variant: #c5c5d3;
+  --color-border-muted: #30363D;
+  --color-primary: #b7c4ff;
+  --color-primary-container: #3c51a1;
+  --color-on-primary-container: #bfcaff;
+  --color-secondary: #bdf4ff;
+  --color-secondary-container: #00e3fd;
+  --color-on-secondary-container: #00616d;
+  --color-tertiary: #00e38b;
+  --color-on-tertiary-container: #00ea8f;
+  --color-status-pass: #00FF9D;
+  --color-status-warn: #FFB800;
+  --color-status-fail: #FF4B4B;
+  --color-text-dim: #8B949E;
+}
+
+/* Global Overrides for Light & Dark Theme */
+:root, .dark {
+  /* Background colors */
+  --vp-c-bg: var(--color-surface-dim); /* #10131a */
+  --vp-c-bg-alt: var(--color-surface-charcoal); /* #161B22 */
+  --vp-c-bg-soft: var(--color-surface-container-low); /* #191c22 */
+  --vp-c-bg-elv: var(--color-surface-container-high); /* #272a31 */
+
+  /* Text colors */
+  --vp-c-text-1: var(--color-on-surface); /* #e1e2eb */
+  --vp-c-text-2: var(--color-on-surface-variant); /* #c5c5d3 */
+  --vp-c-text-3: var(--color-text-dim); /* #8B949E */
+
+  /* Border / Divider */
+  --vp-c-border: var(--color-border-muted); /* #30363D */
+  --vp-c-divider: var(--color-border-muted); /* #30363D */
+
+  /* Brand overrides */
+  --vp-c-brand-1: var(--color-primary); /* #b7c4ff */
+  --vp-c-brand-2: var(--color-primary-container); /* #3c51a1 */
+  --vp-c-brand-3: var(--color-on-primary-container); /* #bfcaff */
+  --vp-c-brand-soft: rgba(60, 81, 161, 0.2);
+
+  /* Button / control overrides */
+  --vp-button-brand-border: var(--vp-c-brand-2);
+  --vp-button-brand-bg: var(--vp-c-brand-2);
+  --vp-button-brand-hover-border: var(--vp-c-brand-1);
+  --vp-button-brand-hover-bg: var(--vp-c-brand-1);
+  --vp-button-brand-hover-text: #0e2879;
+}
+
+/* Base Headings styling */
+h1, h2, h3, h4, h5, h6,
+.vp-doc h1, .vp-doc h2, .vp-doc h3, .vp-doc h4, .vp-doc h5, .vp-doc h6 {
+  font-family: var(--vp-font-family-headings) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+h1, .vp-doc h1 {
+  font-size: 48px !important;
+  line-height: 56px !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* Home Hero Overrides */
+.VPHomeHero {
+  position: relative;
+  overflow: hidden;
+}
+.VPHomeHero::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(60, 81, 161, 0.18) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
 .VPHomeHero .image-src {
   max-width: 440px;
   max-height: 440px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-muted);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* Structure Customizations */
+.VPNavBar {
+  background-color: rgba(16, 19, 26, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid var(--vp-c-border) !important;
+}
+
+.VPSidebar {
+  background-color: var(--color-surface-charcoal) !important;
+  border-right: 1px solid var(--vp-c-border) !important;
+}
+
+.VPContent {
+  background-color: var(--color-surface-dim) !important;
+}
+
+/* Custom layout/feature elements */
 .feature-illustration-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -14,32 +128,40 @@
   display: block;
   padding: 20px;
   color: var(--vp-c-text-1);
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 16px;
-  transition: border-color 0.2s, transform 0.2s;
+  background: var(--color-surface-charcoal);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px; /* Medium elements / Cards */
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  text-decoration: none !important;
 }
 
 .feature-illustration-card:hover {
-  border-color: var(--vp-c-brand-1);
+  border-color: var(--color-primary-container) !important;
+  box-shadow: 0 0 12px rgba(60, 81, 161, 0.25);
   transform: translateY(-2px);
+  text-decoration: none !important;
 }
 
 .feature-illustration-card img {
   width: 100%;
   margin: 0 0 16px;
-  border-radius: 12px;
+  border-radius: 4px; /* Small elements / Images */
 }
 
 .feature-illustration-card h3 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 8px !important;
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  color: var(--color-on-surface) !important;
+  border-top: none !important;
+  padding-top: 0 !important;
 }
 
 .feature-illustration-card p {
   margin: 0;
-  color: var(--vp-c-text-2);
+  color: var(--color-on-surface-variant);
   line-height: 1.6;
+  font-size: 14px;
 }
 
 .doc-illustration {
@@ -59,6 +181,129 @@
   width: 100%;
 }
 
+/* Button Stylings */
+.VPButton.brand {
+  background-color: var(--color-primary-container) !important;
+  color: #ffffff !important;
+  border-radius: 4px !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--color-primary-container) !important;
+  transition: all 0.2s ease !important;
+}
+.VPButton.brand:hover {
+  background-color: var(--color-primary) !important;
+  color: #0e2879 !important;
+  border-color: var(--color-primary) !important;
+}
+.VPButton.alt {
+  background-color: transparent !important;
+  color: var(--color-on-surface) !important;
+  border: 1px solid var(--color-border-muted) !important;
+  border-radius: 4px !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease !important;
+}
+.VPButton.alt:hover {
+  border-color: var(--color-secondary-container) !important;
+  color: var(--color-secondary-container) !important;
+}
+
+/* Table overrides to match results design matrix */
+.vp-doc table {
+  border-collapse: collapse;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-muted);
+  background-color: var(--color-surface-dim);
+  width: 100%;
+  margin: 24px 0;
+}
+.vp-doc th {
+  background-color: var(--color-surface-charcoal);
+  color: var(--color-text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border-muted);
+  padding: 12px 16px;
+}
+.vp-doc td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-muted);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  color: var(--color-on-surface-variant);
+}
+.vp-doc tr:hover {
+  background-color: var(--color-surface-charcoal);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+.status-pass-badge {
+  background-color: rgba(0, 255, 157, 0.1) !important;
+  color: var(--color-status-pass) !important;
+  border-color: var(--color-status-pass) !important;
+}
+.status-warn-badge {
+  background-color: rgba(255, 184, 0, 0.1) !important;
+  color: var(--color-status-warn) !important;
+  border-color: var(--color-status-warn) !important;
+}
+.status-fail-badge {
+  background-color: rgba(255, 75, 75, 0.1) !important;
+  color: var(--color-status-fail) !important;
+  border-color: var(--color-status-fail) !important;
+}
+
+/* Code block / Terminal styling */
+.vp-doc div[class*="language-"] {
+  background-color: var(--color-background) !important;
+  border: 1px solid var(--color-border-muted) !important;
+  border-radius: 8px !important;
+}
+.vp-doc div[class*="language-"] pre {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-container);
+}
+
+/* Media Queries */
 @media (max-width: 900px) {
   .feature-illustration-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

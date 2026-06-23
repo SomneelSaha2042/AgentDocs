@@ -11,7 +11,7 @@
 | `agentdocs watch` | Poll status and rebuild when configured sources become stale |
 | `agentdocs verify-context --task <goal>` | Check task context for staleness, conflicts, weak evidence, and mismatches |
 | `agentdocs init` | Create starter configuration |
-| `agentdocs ingest <path>` | Collect local Markdown and MDX |
+| `agentdocs ingest <path>` | Collect local Markdown, MDX, Sphinx/reST, and AsciiDoc |
 | `agentdocs crawl <url>` | Collect same-origin website documentation |
 | `agentdocs build` | Generate artifacts and search index |
 | `agentdocs doctor` | Audit agent readiness |
