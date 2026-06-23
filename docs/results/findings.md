@@ -84,6 +84,17 @@ This confirms the targeted routing improvements on Fastify, TanStack Query,
 and Next.js while exposing Hono quickstart as the next selector issue. See
 [Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) for the metrics.
 
+## June 23, 2026 Parser format expansion rerun
+
+On June 23, 2026, the dogfood suite was rerun with newly integrated Sphinx/reST and AsciiDoc/Antora format normalizers, transclusion resolution, and include-gap doctor auditing.
+
+| Target | Result | Format / Coverage finding |
+| --- | --- | --- |
+| Django | 671 pages, 8 packs, 92 | Sphinx/reST (`.txt` files) parser support, 100% source coverage. |
+| CPython | 556 pages, 8 packs, 79 | Sphinx/reST (`.rst` Doc tree) parser support, 99.6% source coverage. |
+| Spring Framework | 469 pages, 6 packs, 79 | AsciiDoc/Antora (`.adoc`) parser support, 99.5% source coverage. |
+| Airflow | 1,617 pages, 10 packs, 79 | Mixed reST (`.rst`, `.txt` docs) parser support, 86% coverage with transclusion gap tracking. |
+
 ## AgentDocs self-dogfood
 
 **Result:** 13 pages, 42 chunks, 83 entities, 2 task packs, readiness 88,
@@ -224,6 +235,38 @@ Sparse checkout did not produce the intended documentation subtree.
 **Utility shown:** This is an infrastructure limitation, not an AgentDocs
 result. Recording it separately keeps the evaluation honest and prevents an
 untested target from being labeled as a product failure or success.
+
+## Django
+
+**Result:** 671 pages, 8 task packs, readiness 92, stable repeated build.
+
+Added Sphinx/reST parser support, successfully compiling 671 pages of `.txt`/`.rst` documentation with 100% source coverage.
+
+**Utility shown:** AgentDocs can compile a large, text-based Python documentation system using Sphinx parser support without losing conceptual structure.
+
+## CPython
+
+**Result:** 556 pages, 8 task packs, readiness 79, stable repeated build.
+
+Successfully compiled the full `.rst` Doc tree with 99.6% source coverage.
+
+**Utility shown:** Proof of concept for parsing complex, systems-level Python documentation in Sphinx format, capturing core modules and platform details.
+
+## Spring Framework
+
+**Result:** 469 pages, 6 task packs, readiness 79, stable repeated build.
+
+Added AsciiDoc/Antora parser support, successfully compiling 469 pages of Java-focused documentation with 99.5% source coverage.
+
+**Utility shown:** Extends parser support to Java ecosystem's standard AsciiDoc documentation structure, producing clean, structured chunks.
+
+## Airflow
+
+**Result:** 1,617 pages, 10 task packs, readiness 79, stable repeated build.
+
+Integrated mixed reST parser support, compiling 1,617 pages of `.rst`/`.txt` documentation with deterministic skip and transclusion gap tracking, achieving 86% coverage.
+
+**Utility shown:** AgentDocs handles scale and complexity in large, mixed-format data-ecosystem documentation while honestly reporting transclusion include-gaps.
 
 ## Open evaluation status
 

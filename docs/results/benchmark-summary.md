@@ -9,7 +9,7 @@ page.
 
 AgentDocs has deterministic evidence for these claims:
 
-- It compiles varied Markdown and MDX documentation corpora into local
+- It compiles varied Markdown, MDX, Sphinx/reST, and AsciiDoc/Antora documentation corpora into local
   artifacts.
 - Repeated builds can produce stable generated-artifact hashes.
 - It detects and reports mixed-version, mixed-framework, router, locale, and
@@ -68,7 +68,6 @@ Phase 5.
 - Hono quickstart routing still selects related packs instead of `quickstart`
   on both local and prepared-crawl targets.
 - OpenAPI ingestion is planned but not implemented.
-- reST and AsciiDoc are counted as source coverage gaps, not parsed.
 - Prepared crawl artifacts were rebuilt from stored pages unless explicitly
   marked as live recrawls.
 - Readiness score is an audit signal, not an agent-success score.

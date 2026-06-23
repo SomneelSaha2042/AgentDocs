@@ -21,6 +21,18 @@ a run explicitly says it was a live recrawl.
 | June 20, 2026 | Metrics and routing instrumentation | Added a metrics reference and dogfood routing benchmark capture with explicit `--routing-goal` and `--expect-route` flags. | Offline fixtures now verify one expected task-pack route. Future dogfood rows can report routing accuracy without making all routing goals hard failures. |
 | June 20, 2026 | Routing improvements | Added built-in route-handler, query-invalidation, and schema-validation task families, then expanded the offline routing fixture. | Offline fixtures now verify four expected task-pack routes and keep routing accuracy separate from readiness score. |
 | June 20, 2026 | Full Phase 5 dogfood rerun | Reran the nine documented prepared targets and populated routing metrics in `.dogfood/regression-summary.csv`. | Stable repeated builds across all targets. Fastify local, TanStack local, Next.js prepared crawl, Supabase, and AgentDocs exact routing passed. Hono quickstart routing failed on local and prepared-crawl targets. |
+| June 23, 2026 | Parser format expansion | Integrated Sphinx/reST and AsciiDoc format normalizers, transclusion resolution, and include-gap doctor auditing. | Sphinx/reST and AsciiDoc/Antora formats supported and verified against django, cpython, spring-framework, and airflow targets. |
+
+## June 23, 2026 Parser Format Expansion Rerun
+
+These targets test the expanded format parsers (Sphinx/reST and AsciiDoc/Antora) and transclusion resolution plumbing on large-scale real-world documentation estates.
+
+| Target | Pages | Task packs | Readiness | Source Coverage | Status | Result |
+| --- | ---: | ---: | ---: | --- | --- | --- |
+| Django | 671 | 8 | 92 | 100% | Passed | Sphinx/reST parser support successfully compiling `.txt`/`.rst` docs. |
+| CPython | 556 | 8 | 79 | 99.6% | Passed | Full `.rst` tree compilation. |
+| Spring Framework | 469 | 6 | 79 | 99.5% | Passed | AsciiDoc/Antora parser support compiling `.adoc` files. |
+| Airflow | 1,617 | 10 | 79 | 86% | Passed | Mixed reST parser support compiling `.rst`/`.txt` docs with transclusion gap tracking. |
 
 ## June 20, 2026 Phase 5 Full Dogfood Rerun
 

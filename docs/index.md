@@ -124,16 +124,17 @@ explicit build action.
 ## Validated Against Real Documentation
 
 AgentDocs was tested against its own docs and documentation from Hono, Fastify,
-Supabase, TanStack Query, Next.js, and Octokit. The post-hardening regression
-suite compiled successful targets twice, audited readiness, and checked
-version, framework, router, locale, content-type, MDX, and task-pack behavior.
-Deterministic compilation and context-risk detection are proven. End-to-end
-agent-task benchmarks are still in progress.
+Supabase, TanStack Query, Next.js, Octokit, Django, CPython, Spring Framework,
+and Airflow. The post-hardening regression suite compiled successful targets twice,
+audited readiness, and checked version, framework, router, locale, content-type,
+MDX, Sphinx/reST, AsciiDoc, and task-pack behavior. Deterministic compilation and
+context-risk detection are proven. End-to-end agent-task benchmarks are still in progress.
 
 | Result | Evidence |
 | --- | --- |
 | Deterministic output | Every successful target produced the same artifact hash on its repeated build |
 | Resilient MDX | Supabase compiled 737 pages while preserving per-file degraded and failed diagnostics |
+| Sphinx & AsciiDoc Parsing | Django, CPython, Spring Framework, and Airflow compiled cleanly with Sphinx/reST and AsciiDoc normalizers |
 | Large website crawl | Next.js compiled a bounded 100-page crawl into 823 chunks and 7 task packs |
 | Context-safe retrieval | Fastify v5 filters exclude v3 evidence; TanStack React filters exclude other frameworks |
 | Context risk detection | Unsafe unfiltered retrieval emits explicit conflict warnings |

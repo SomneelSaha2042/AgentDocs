@@ -12,7 +12,8 @@ versioned docs, multi-framework docs, and its own documentation.
 > Agent workflow layer rerun: June 16, 2026. Prepared website crawl artifacts
 > were rebuilt without a live recrawl unless explicitly noted. Candidate
 > expansion metrics were captured on June 19, 2026. A full Phase 5 dogfood
-> rerun populated routing metrics on June 20, 2026.
+> rerun populated routing metrics on June 20, 2026. A parser format expansion
+> rerun was verified on June 23, 2026.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
@@ -22,10 +23,10 @@ agent-implementation benchmarks are still in progress.
 
 These results are a useful beta baseline, not the final confidence bar. Before
 AgentDocs should be considered polished for broad use, the workflow matrix
-should expand across larger and more varied documentation systems: versioned
-Hugo/Docsy docs, Sphinx/reST trees, AsciiDoc/Antora sources, docs-only mega
-repos, code-plus-doc monorepos, split docs/code repositories, and huge
-reference surfaces. The candidate targets are tracked in the
+should expand across larger and more varied documentation shapes. With the
+June 23, 2026 update, Sphinx/reST trees and AsciiDoc/Antora sources are supported and verified.
+Other candidates like versioned Hugo/Docsy docs, docs-only mega repos, and split
+docs/code repositories are tracked in the
 [dogfood workflow matrix](/guide/workflow-matrix#expansion-candidates).
 The first expansion metric run is recorded in
 [Candidate Expansion Metrics](./candidate-expansion.md), including the
@@ -116,6 +117,10 @@ How to read the table:
 | Octokit REST | Local docs | Passed | report-only | Not evaluated | 93/100 conditional | Stable hash | Auth request handoff selects authentication in report-only routing |
 | Supabase | Local MDX | Passed | 1/1 | Not evaluated | 79/100 conditional | Stable hash | Auth/RLS routes exactly; MDX coverage gap remains explicit |
 | Prisma | Local monorepo | Blocked preparation | Not evaluated | Not evaluated | Not evaluated | Not evaluated | Upstream Windows-invalid filenames blocked preparation |
+| Django | Local Sphinx/reST | Passed | Not evaluated | Not evaluated | 92/100 | Stable hash | Sphinx/reST parser support successfully compiling 671 pages (100% coverage). |
+| CPython | Local Sphinx/reST | Passed | Not evaluated | Not evaluated | 79/100 conditional | Stable hash | Full `.rst` tree compilation ingesting 556 pages (99.6% coverage). |
+| Spring Framework | Local AsciiDoc | Passed | Not evaluated | Not evaluated | 79/100 conditional | Stable hash | AsciiDoc/Antora parser support compiling 469 pages (99.5% coverage). |
+| Airflow | Local mixed reST | Passed | Not evaluated | Not evaluated | 79/100 conditional | Stable hash | Mixed reST parser support compiling 1,617 pages (86% coverage) with transclusion gap tracking. |
 
 Compile counts remain available in the
 [Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) and historical
