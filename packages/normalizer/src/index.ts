@@ -2,6 +2,10 @@ export { normalizeMarkdown } from "./markdown.js";
 export type { NormalizeMarkdownOptions } from "./markdown.js";
 export { normalizeHtml } from "./html.js";
 export type { NormalizeHtmlOptions } from "./html.js";
+export { normalizeRest, convertRestToMarkdown } from "./rest.js";
+export type { NormalizeRestOptions } from "./rest.js";
+export { normalizeAsciiDoc, convertAsciiDocToMarkdown } from "./asciidoc.js";
+export type { NormalizeAsciiDocOptions } from "./asciidoc.js";
 export { chunkMarkdownByHeading, estimateTokens } from "./chunk.js";
 export type { ChunkMarkdownOptions } from "./chunk.js";
 export {

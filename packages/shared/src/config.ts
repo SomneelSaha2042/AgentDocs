@@ -1,6 +1,15 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
+const SourceLimitsSchema = z
+  .object({
+    maxFiles: z.number().int().positive().optional(),
+    maxBytes: z.number().int().positive().optional(),
+    maxPages: z.number().int().positive().optional(),
+    maxElapsedMs: z.number().int().positive().optional(),
+  })
+  .strict();
+
 const WebsiteSourceSchema = z
   .object({
     type: z.literal("website"),
@@ -19,6 +28,7 @@ const LocalMarkdownSourceSchema = z
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     facets: z.record(z.string().min(1)).optional(),
+    limits: SourceLimitsSchema.optional(),
   })
   .strict();
 
@@ -36,6 +46,7 @@ const RepoSourceSchema = z
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     facets: z.record(z.string().min(1)).optional(),
+    limits: SourceLimitsSchema.optional(),
   })
   .strict();
 

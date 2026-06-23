@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   AgentSetupSnippetSchema,
+  BuildStateSchema,
   ContextVerificationSchema,
   HandoffBundleSchema,
   StatusReportSchema,
@@ -66,6 +67,50 @@ describe("agent workflow CLI", () => {
       ]);
     })));
     expect(refreshed.state).toBe("fresh");
+  });
+
+  it("records source limits in build state for reproducible shards", async () => {
+    const cwd = await createFixtureProject();
+    await writeFile(
+      path.join(cwd, "docs", "second.md"),
+      "# Second\n\nAnother page in the same source scope.\n",
+      "utf8",
+    );
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: Workflow Fixture
+slug: workflow-fixture
+version: v1
+sources:
+  - type: local_markdown
+    path: ./docs
+    limits:
+      maxFiles: 1
+doctor:
+  minScore: 0
+`, "utf8");
+
+    await createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ]);
+    const state = BuildStateSchema.parse(JSON.parse(
+      await readFile(path.join(cwd, ".agentdocs", "state", "build-state.json"), "utf8"),
+    ));
+    const status = StatusReportSchema.parse(JSON.parse(await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--json", "status",
+      ]);
+    })));
+
+    expect(state.sources[0]).toMatchObject({
+      fileCount: 2,
+      selectedFileCount: 1,
+      limits: { maxFiles: 1 },
+    });
+    expect(status.sources[0]).toMatchObject({
+      fileCount: 2,
+      selectedFileCount: 1,
+      limits: { maxFiles: 1 },
+    });
   });
 
   it("emits handoff and verification bundles", async () => {

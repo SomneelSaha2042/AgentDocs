@@ -35,7 +35,7 @@ export type NormalizeMarkdownOptions = {
   markdown: string;
   format?: "markdown" | "mdx";
   repoPath?: string;
-  sourceFormat?: "markdown" | "mdx" | "html";
+  sourceFormat?: "markdown" | "mdx" | "html" | "rst" | "restText" | "adoc" | "asciidoc";
   sourceType?: "local_markdown" | "repo" | "website";
   sourceUrl?: string;
   canonicalUrl?: string;

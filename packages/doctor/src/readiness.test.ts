@@ -283,11 +283,11 @@ describe("scanReadiness", () => {
           skippedFiles: 0,
           failedFiles: 0,
           coverageRatio: 0.0476,
-          supportedByFormat: { markdown: 1, mdx: 0 },
+          supportedByFormat: { markdown: 1, mdx: 0, rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
           unsupportedByFormat: { rst: 18, restText: 2, adoc: 0, asciidoc: 0 },
           gapSeverity: "fail",
           gapReason: "unsupported_format",
-          message: "1 of 21 docs-like file(s) compiled; 20 unsupported reST/AsciiDoc file(s) were in scope.",
+          message: "1 of 21 docs-like file(s) compiled; 20 unsupported file(s) were in scope.",
         },
       },
     });
@@ -295,7 +295,7 @@ describe("scanReadiness", () => {
 
     expect(coverage).toMatchObject({
       status: "fail",
-      message: "1 of 21 docs-like file(s) compiled; 20 unsupported reST/AsciiDoc file(s) were in scope.",
+      message: "1 of 21 docs-like file(s) compiled; 20 unsupported file(s) were in scope.",
     });
     expect(coverage?.evidence[0]?.quote).toContain("unsupported=20");
     expect(report.score).toBeLessThanOrEqual(49);
@@ -380,5 +380,46 @@ describe("scanReadiness", () => {
     expect(report.checks.find((check) => check.id === "has_expected_task_coverage")?.status)
       .toBe("fail");
     expect(report.score).toBeLessThanOrEqual(69);
+  });
+
+  it("evaluates include gaps correctly", () => {
+    const reportPass = scanReadiness({
+      artifacts: {
+        hasAgentMap: false,
+        hasAgentsMd: false,
+        hasConfig: false,
+        hasLlmsTxt: false,
+        hasSitemap: false,
+        taskPackFileIds: [],
+        includeGaps: [],
+      },
+    });
+    expect(reportPass.checks.find((check) => check.id === "has_no_include_gaps")?.status).toBe("pass");
+
+    const reportWarn = scanReadiness({
+      artifacts: {
+        hasAgentMap: false,
+        hasAgentsMd: false,
+        hasConfig: false,
+        hasLlmsTxt: false,
+        hasSitemap: false,
+        taskPackFileIds: [],
+        includeGaps: [{ repoPath: "index.rst", target: "missing.rst", reason: "include-missing" }],
+      },
+    });
+    expect(reportWarn.checks.find((check) => check.id === "has_no_include_gaps")?.status).toBe("warn");
+
+    const reportFail = scanReadiness({
+      artifacts: {
+        hasAgentMap: false,
+        hasAgentsMd: false,
+        hasConfig: false,
+        hasLlmsTxt: false,
+        hasSitemap: false,
+        taskPackFileIds: [],
+        includeGaps: [{ repoPath: "index.rst", target: "/etc/passwd", reason: "include-out-of-scope" }],
+      },
+    });
+    expect(reportFail.checks.find((check) => check.id === "has_no_include_gaps")?.status).toBe("fail");
   });
 });

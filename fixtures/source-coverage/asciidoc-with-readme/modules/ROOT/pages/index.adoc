@@ -1,3 +1,31 @@
 = Reference
 
-AsciiDoc content is counted as unsupported before parser expansion.
+This is the Antora-style AsciiDoc reference page.
+
+[source,python]
+----
+import os
+print(os.environ.get("API_KEY"))
+----
+
+NOTE: Read the setup page before deploying.
+
+WARNING: Do not commit secrets to the repository.
+
+IMPORTANT: Use environment variables for credentials.
+
+See xref:setup.adoc[Setup] and link:https://example.com[example].
+
+[NOTE]
+====
+Added in v5.0.
+
+Configuration overrides are now supported.
+====
+
+[WARNING]
+====
+Deprecated since 4.0.
+
+Use `configure()` instead of `setup()`.
+====

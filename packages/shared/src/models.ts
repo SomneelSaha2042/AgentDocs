@@ -85,7 +85,7 @@ export const DocPageSchema = z
     facets: z.array(ContextFacetSchema).default([]),
     normalization: z
       .object({
-        mode: z.enum(["strict", "mdx-fallback", "html"]),
+        mode: z.enum(["strict", "mdx-fallback", "html", "rest", "asciidoc"]),
         warnings: z.array(z.string()),
         omittedCharacterRatio: z.number().min(0).max(1).optional(),
       })
@@ -300,6 +300,32 @@ export const MissingMetricReasonSchema = z.enum([
   "preparation_blocked",
 ]);
 
+export const SkipReasonSchema = z.enum([
+  "empty",
+  "include-missing",
+  "include-out-of-scope",
+  "include-cycle",
+  "include-depth",
+  "include-unsupported-format",
+  "include-antora-id",
+]);
+
+const SUPPORTED_FORMAT_KEYS = {
+  markdown: 0,
+  mdx: 0,
+  rst: 0,
+  restText: 0,
+  adoc: 0,
+  asciidoc: 0,
+} as const;
+
+const UNSUPPORTED_FORMAT_KEYS = {
+  rst: 0,
+  restText: 0,
+  adoc: 0,
+  asciidoc: 0,
+} as const;
+
 const HistoricalSourceCoverageDefault = {
   supportedFiles: 0,
   unsupportedFiles: 0,
@@ -309,39 +335,91 @@ const HistoricalSourceCoverageDefault = {
   skippedFiles: 0,
   failedFiles: 0,
   coverageRatio: 0,
-  supportedByFormat: { markdown: 0, mdx: 0 },
-  unsupportedByFormat: { rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
+  supportedByFormat: { ...SUPPORTED_FORMAT_KEYS },
+  unsupportedByFormat: { ...UNSUPPORTED_FORMAT_KEYS },
   gapSeverity: "warn" as const,
   gapReason: "historical_metric_not_captured" as const,
   message: "Historical source coverage metrics were not captured.",
 };
 
-export const SourceCoverageSchema = z
+const SUPPORTED_BY_FORMAT_SHAPE = z
   .object({
-    supportedFiles: z.number().int().nonnegative(),
-    unsupportedFiles: z.number().int().nonnegative(),
-    intendedFiles: z.number().int().nonnegative(),
-    compiledFiles: z.number().int().nonnegative(),
-    degradedFiles: z.number().int().nonnegative(),
-    skippedFiles: z.number().int().nonnegative(),
-    failedFiles: z.number().int().nonnegative(),
-    coverageRatio: z.number().min(0).max(1),
-    supportedByFormat: z
-      .object({
-        markdown: z.number().int().nonnegative(),
-        mdx: z.number().int().nonnegative(),
-      })
-      .strict(),
-    unsupportedByFormat: z
-      .object({
-        rst: z.number().int().nonnegative(),
-        restText: z.number().int().nonnegative(),
-        adoc: z.number().int().nonnegative(),
-        asciidoc: z.number().int().nonnegative(),
-      })
-      .strict(),
-    gapSeverity: z.enum(["none", "warn", "fail"]),
-    gapReason: MissingMetricReasonSchema.optional(),
+    markdown: z.number().int().nonnegative(),
+    mdx: z.number().int().nonnegative(),
+    rst: z.number().int().nonnegative().default(0),
+    restText: z.number().int().nonnegative().default(0),
+    adoc: z.number().int().nonnegative().default(0),
+    asciidoc: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+
+const UNSUPPORTED_BY_FORMAT_SHAPE = z
+  .object({
+    rst: z.number().int().nonnegative(),
+    restText: z.number().int().nonnegative(),
+    adoc: z.number().int().nonnegative(),
+    asciidoc: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const SourceCoverageSchema = z
+  .preprocess((value) => upgradeSourceCoverage(value), z
+    .object({
+      supportedFiles: z.number().int().nonnegative(),
+      unsupportedFiles: z.number().int().nonnegative(),
+      intendedFiles: z.number().int().nonnegative(),
+      compiledFiles: z.number().int().nonnegative(),
+      degradedFiles: z.number().int().nonnegative(),
+      skippedFiles: z.number().int().nonnegative(),
+      failedFiles: z.number().int().nonnegative(),
+      coverageRatio: z.number().min(0).max(1),
+      supportedByFormat: SUPPORTED_BY_FORMAT_SHAPE,
+      unsupportedByFormat: UNSUPPORTED_BY_FORMAT_SHAPE,
+      gapSeverity: z.enum(["none", "warn", "fail"]),
+      gapReason: MissingMetricReasonSchema.optional(),
+      message: z.string().min(1),
+    })
+    .strict());
+
+function upgradeSourceCoverage(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const coverage = value as Record<string, unknown>;
+  const supportedByFormat = coverage.supportedByFormat;
+  if (supportedByFormat === null || typeof supportedByFormat !== "object" || Array.isArray(supportedByFormat)) {
+    return coverage;
+  }
+  const supported = supportedByFormat as Record<string, unknown>;
+  const hasNewKeys = ["rst", "restText", "adoc", "asciidoc"].every((key) => key in supported);
+  if (hasNewKeys) {
+    return coverage;
+  }
+  return {
+    ...coverage,
+    supportedByFormat: { ...SUPPORTED_FORMAT_KEYS, ...supported },
+  };
+}
+
+const SourceLimitConfigSchema = z
+  .object({
+    maxFiles: z.number().int().positive().optional(),
+    maxBytes: z.number().int().positive().optional(),
+    maxPages: z.number().int().positive().optional(),
+    maxElapsedMs: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const SourceLimitDiagnosticsSchema = z
+  .object({
+    configured: SourceLimitConfigSchema.default({}),
+    reached: z.array(z.enum(["maxFiles", "maxBytes", "maxPages", "maxElapsedMs"])).default([]),
+    totalDocsLikeFiles: z.number().int().nonnegative(),
+    selectedDocsLikeFiles: z.number().int().nonnegative(),
+    totalSupportedFiles: z.number().int().nonnegative(),
+    selectedSupportedFiles: z.number().int().nonnegative(),
+    skippedByLimit: z.number().int().nonnegative(),
+    selectedBytes: z.number().int().nonnegative(),
     message: z.string().min(1),
   })
   .strict();
@@ -516,6 +594,8 @@ export const BuildStateSchema = z
           value: z.string().min(1),
           hash: z.string().regex(/^[a-f0-9]{64}$/),
           fileCount: z.number().int().nonnegative().optional(),
+          selectedFileCount: z.number().int().nonnegative().optional(),
+          limits: SourceLimitDiagnosticsSchema.shape.configured.optional(),
           collectedAt: z.string().datetime(),
           expiresAt: z.string().datetime().optional(),
         })
@@ -548,6 +628,8 @@ export const StatusReportSchema = z
           state: z.enum(["fresh", "stale", "unknown"]),
           reason: z.string().min(1),
           fileCount: z.number().int().nonnegative().optional(),
+          selectedFileCount: z.number().int().nonnegative().optional(),
+          limits: SourceLimitDiagnosticsSchema.shape.configured.optional(),
           collectedAt: z.string().datetime().optional(),
           expiresAt: z.string().datetime().optional(),
         })
@@ -634,15 +716,18 @@ export const IngestManifestSchema = z
       .strict()
       .default({ usable: 0, degraded: 0, skipped: 0, failed: 0 }),
     sourceCoverage: SourceCoverageSchema.default(HistoricalSourceCoverageDefault),
+    limits: SourceLimitDiagnosticsSchema.optional(),
     diagnostics: z
       .array(
         z
           .object({
             repoPath: z.string().min(1),
             status: z.enum(["usable", "degraded", "skipped", "failed"]),
-            mode: z.enum(["strict", "mdx-fallback"]).optional(),
+            mode: z.enum(["strict", "mdx-fallback", "html", "rest", "asciidoc"]).optional(),
             warnings: z.array(z.string()).default([]),
             message: z.string().min(1).optional(),
+            skipReason: SkipReasonSchema.optional(),
+            includeTargets: z.array(z.string()).optional(),
           })
           .strict(),
       )
@@ -765,7 +850,10 @@ export type AgentMap = z.infer<typeof AgentMapSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type MissingMetricReason = z.infer<typeof MissingMetricReasonSchema>;
 export type SourceCoverage = z.infer<typeof SourceCoverageSchema>;
+export type SourceLimitConfig = z.infer<typeof SourceLimitConfigSchema>;
+export type SourceLimitDiagnostics = z.infer<typeof SourceLimitDiagnosticsSchema>;
 export type ReadinessCategory = z.infer<typeof ReadinessCategorySchema>;
+export type SkipReason = z.infer<typeof SkipReasonSchema>;
 export type ReadinessCheckResult = z.infer<typeof ReadinessCheckResultSchema>;
 export type ReadinessReport = z.infer<typeof ReadinessReportSchema>;
 export type SearchDocument = z.infer<typeof SearchDocumentSchema>;

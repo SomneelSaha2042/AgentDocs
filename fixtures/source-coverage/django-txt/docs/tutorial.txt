@@ -1,6 +1,14 @@
 Tutorial
 ========
 
-.. note::
+Django tutorial overview.
 
-   Django historically stores Sphinx reST in .txt files.
+.. code-block:: bash
+
+   python -m pip install django
+
+.. deprecated:: 4.2
+
+   Use the new ``configure()`` helper instead of ``setup()``.
+
+See the `docs <https://docs.djangoproject.com>`_ for more.

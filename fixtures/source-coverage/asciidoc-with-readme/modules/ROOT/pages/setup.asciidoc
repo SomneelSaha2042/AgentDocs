@@ -1,3 +1,14 @@
 = Setup
 
-Another unsupported AsciiDoc source file.
+AsciiDoc setup guide.
+
+[source,bash]
+----
+python -m pip install example
+----
+
+TIP: Use a virtual environment.
+
+CAUTION: Keep your API key secret.
+
+See xref:index.adoc[Reference].

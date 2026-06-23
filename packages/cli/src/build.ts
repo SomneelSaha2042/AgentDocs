@@ -299,6 +299,10 @@ function aggregateSourceCoverage(coverages: SourceCoverage[]): SourceCoverage {
     supportedByFormat: {
       markdown: summary.supportedByFormat.markdown + coverage.supportedByFormat.markdown,
       mdx: summary.supportedByFormat.mdx + coverage.supportedByFormat.mdx,
+      rst: summary.supportedByFormat.rst + coverage.supportedByFormat.rst,
+      restText: summary.supportedByFormat.restText + coverage.supportedByFormat.restText,
+      adoc: summary.supportedByFormat.adoc + coverage.supportedByFormat.adoc,
+      asciidoc: summary.supportedByFormat.asciidoc + coverage.supportedByFormat.asciidoc,
     },
     unsupportedByFormat: {
       rst: summary.unsupportedByFormat.rst + coverage.unsupportedByFormat.rst,
@@ -314,7 +318,7 @@ function aggregateSourceCoverage(coverages: SourceCoverage[]): SourceCoverage {
     degradedFiles: 0,
     skippedFiles: 0,
     failedFiles: 0,
-    supportedByFormat: { markdown: 0, mdx: 0 },
+    supportedByFormat: { markdown: 0, mdx: 0, rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
     unsupportedByFormat: { rst: 0, restText: 0, adoc: 0, asciidoc: 0 },
   });
   const coverageRatio = totals.intendedFiles === 0
@@ -331,8 +335,8 @@ function aggregateSourceCoverage(coverages: SourceCoverage[]): SourceCoverage {
     gapSeverity,
     gapReason: totals.unsupportedFiles > 0 ? "unsupported_format" : undefined,
     message: totals.unsupportedFiles > 0
-      ? `${totals.compiledFiles} of ${totals.intendedFiles} docs-like file(s) compiled; ${totals.unsupportedFiles} unsupported reST/AsciiDoc file(s) were in scope.`
-      : `${totals.compiledFiles} of ${totals.intendedFiles} supported Markdown/MDX file(s) compiled.`,
+      ? `${totals.compiledFiles} of ${totals.intendedFiles} docs-like file(s) compiled; ${totals.unsupportedFiles} unsupported file(s) were in scope.`
+      : `${totals.compiledFiles} of ${totals.intendedFiles} supported docs file(s) compiled.`,
   });
 }
 

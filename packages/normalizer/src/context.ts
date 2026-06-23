@@ -16,7 +16,7 @@ export type ContextRule = {
 export type ApplyContextFacetsOptions = {
   fixed?: Record<string, string>;
   rules?: ContextRule[];
-  sourceFormat?: "markdown" | "mdx" | "html";
+  sourceFormat?: "markdown" | "mdx" | "html" | "rst" | "restText" | "adoc" | "asciidoc";
 };
 
 const FRONTMATTER_KEYS = [

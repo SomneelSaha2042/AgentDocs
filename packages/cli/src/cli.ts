@@ -300,15 +300,31 @@ export function createProgram(): Command {
   program
     .command("ingest <path>")
     .description("Ingest a local documentation source")
+    .option("--max-files <n>", "Maximum docs-like files to consider", parseInteger)
+    .option("--max-bytes <n>", "Maximum bytes of supported Markdown/MDX to read", parseInteger)
+    .option("--max-pages <n>", "Maximum supported pages to ingest", parseInteger)
+    .option("--max-elapsed-ms <n>", "Maximum elapsed time for local ingestion", parseInteger)
     .option("--strict", "Fail on unsupported MDX instead of using the tolerant fallback")
-    .action(async (source: string, options: { strict?: boolean }, command: Command) => {
+    .action(async (
+      source: string,
+      options: {
+        maxBytes?: number;
+        maxElapsedMs?: number;
+        maxFiles?: number;
+        maxPages?: number;
+        strict?: boolean;
+      },
+      command: Command,
+    ) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
       const context = await resolveCommandContext(command, globals);
       const result = await ingestLocalMarkdown({
         cwd: context.cwd,
         out: context.out,
         source,
+        limits: limitOptions(options),
         mdxMode: options.strict ? "strict" : context.config?.normalization.mdx,
+        onProgress: progressLogger(globals),
       });
 
       if (globals.json) {
@@ -318,6 +334,7 @@ export function createProgram(): Command {
             pageCount: result.pages.length,
             counts: result.manifest.counts,
             sourceCoverage: result.manifest.sourceCoverage,
+            limits: result.manifest.limits,
             diagnostics: result.manifest.diagnostics,
           })}\n`,
         );
@@ -363,7 +380,7 @@ export function createProgram(): Command {
         } else {
           await pruneRemovedSourceArtifacts(config, cwd, out);
         }
-        await collectConfiguredSources(config, cwd, out, options.skipCrawl ?? false);
+        await collectConfiguredSources(config, cwd, out, options.skipCrawl ?? false, undefined, progressLogger(globals));
         const result = await buildFromSources({
           cwd,
           out,
@@ -414,7 +431,7 @@ export function createProgram(): Command {
           .map((source) => `${source.type}:${source.value}`));
       await pruneRemovedSourceArtifacts(config, cwd, out);
       if (staleSourceKeys === undefined || staleSourceKeys.size > 0) {
-        await collectConfiguredSources(config, cwd, out, false, staleSourceKeys);
+        await collectConfiguredSources(config, cwd, out, false, staleSourceKeys, progressLogger(globals));
       }
       const result = await buildFromSources({
         cwd,
@@ -456,7 +473,7 @@ export function createProgram(): Command {
         }
         if (status.state !== "fresh") {
           await pruneRemovedSourceArtifacts(context.config, context.cwd, context.out);
-          await collectConfiguredSources(context.config, context.cwd, context.out, false);
+          await collectConfiguredSources(context.config, context.cwd, context.out, false, undefined, progressLogger(globals));
           await buildFromSources({
             cwd: context.cwd,
             out: context.out,
@@ -622,6 +639,7 @@ async function collectConfiguredSources(
   out: string,
   skipCrawl: boolean,
   onlySourceKeys?: Set<string>,
+  onProgress?: (event: { message: string }) => void,
 ): Promise<void> {
   if (config === undefined) {
     return;
@@ -642,6 +660,8 @@ async function collectConfiguredSources(
         facets: source.facets,
         contextRules: config.context.rules,
         mdxMode: config.normalization.mdx,
+        limits: source.limits,
+        onProgress: prefixProgress(onProgress, `local_markdown ${source.path}`),
       });
       continue;
     }
@@ -656,6 +676,8 @@ async function collectConfiguredSources(
         facets: source.facets,
         contextRules: config.context.rules,
         mdxMode: config.normalization.mdx,
+        limits: source.limits,
+        onProgress: prefixProgress(onProgress, `repo ${source.path}`),
       });
       continue;
     }
@@ -715,4 +737,35 @@ async function resolveCommandContext(command: Command, globals: GlobalOptions) {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function limitOptions(options: {
+  maxBytes?: number;
+  maxElapsedMs?: number;
+  maxFiles?: number;
+  maxPages?: number;
+}) {
+  return {
+    maxBytes: options.maxBytes,
+    maxElapsedMs: options.maxElapsedMs,
+    maxFiles: options.maxFiles,
+    maxPages: options.maxPages,
+  };
+}
+
+function progressLogger(globals: GlobalOptions) {
+  return globals.verbose === true && globals.quiet !== true
+    ? (event: { message: string }) => {
+      process.stderr.write(`agentdocs: ${event.message}\n`);
+    }
+    : undefined;
+}
+
+function prefixProgress(
+  logger: ((event: { message: string }) => void) | undefined,
+  prefix: string,
+) {
+  return logger === undefined
+    ? undefined
+    : (event: { message: string }) => logger({ message: `${prefix}: ${event.message}` });
 }

@@ -95,4 +95,39 @@ sources:
 
     expect(config.sources[0]).toMatchObject({ type: "repo", path: "." });
   });
+
+  it("parses local and repo source limits for large-repo shards", () => {
+    const config = parseConfig(`
+name: Example Docs
+slug: example-docs
+sources:
+  - type: local_markdown
+    path: ./docs
+    limits:
+      maxFiles: 100
+      maxBytes: 5000000
+      maxPages: 80
+      maxElapsedMs: 60000
+  - type: repo
+    path: .
+    include:
+      - docs/**/*.md
+    limits:
+      maxFiles: 20
+`);
+
+    expect(config.sources[0]).toMatchObject({
+      type: "local_markdown",
+      limits: {
+        maxFiles: 100,
+        maxBytes: 5000000,
+        maxPages: 80,
+        maxElapsedMs: 60000,
+      },
+    });
+    expect(config.sources[1]).toMatchObject({
+      type: "repo",
+      limits: { maxFiles: 20 },
+    });
+  });
 });

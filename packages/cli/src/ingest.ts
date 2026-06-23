@@ -2,15 +2,20 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, stat, unlink, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { normalizeMarkdown } from "@agentdocs/normalizer";
+import { normalizeAsciiDoc, normalizeMarkdown, normalizeRest, type ApplyContextFacetsOptions } from "@agentdocs/normalizer";
 import {
   DocPageSchema,
   IngestManifestSchema,
+  SourceLimitDiagnosticsSchema,
   type DocPage,
   type IngestManifest,
+  type SourceLimitConfig,
+  type SourceLimitDiagnostics,
   type SourceCoverage,
+  type SkipReason,
 } from "@agentdocs/shared";
 import { minimatch } from "minimatch";
+import { resolveIncludes, type IncludeUnresolved } from "./includes.js";
 
 export type IngestOptions = {
   cwd: string;
@@ -21,8 +26,18 @@ export type IngestOptions = {
   exclude?: string[];
   facets?: Record<string, string>;
   contextRules?: Array<{ match: string; facets: Record<string, string> }>;
+  limits?: SourceLimitConfig;
   mdxMode?: "tolerant" | "strict";
+  onProgress?: (event: IngestProgressEvent) => void;
   sourceType?: "local_markdown" | "repo";
+};
+
+export type IngestProgressEvent = {
+  phase: "discovered" | "selected" | "processed";
+  message: string;
+  processedFiles?: number;
+  selectedFiles?: number;
+  totalFiles?: number;
 };
 
 export type IngestResult = {
@@ -46,6 +61,7 @@ type SourceFile = {
 export async function ingestLocalMarkdown(
   options: IngestOptions,
 ): Promise<IngestResult> {
+  const startedAt = Date.now();
   const sourcePath = path.resolve(options.cwd, options.source);
   const outputRoot = path.resolve(options.cwd, options.out);
   const sourceIdentity = isWithin(options.cwd, sourcePath)
@@ -68,11 +84,22 @@ export async function ingestLocalMarkdown(
     options.include,
     options.exclude,
   );
-  const files = scopedSourceFiles
-    .filter((file) => file.supported)
-    .map((file) => file.filePath);
+  options.onProgress?.({
+    phase: "discovered",
+    message: `Discovered ${scopedSourceFiles.length} docs-like file(s) in source scope.`,
+    totalFiles: scopedSourceFiles.length,
+  });
+  const selection = await selectFilesWithinLimits(scopedSourceFiles, options.limits);
+  options.onProgress?.({
+    phase: "selected",
+    message: `Selected ${selection.selectedSupportedFiles.length} supported file(s) for ingestion${selection.diagnostics.reached.length === 0 ? "" : `; limits reached: ${selection.diagnostics.reached.join(", ")}`}.`,
+    selectedFiles: selection.selectedSupportedFiles.length,
+    totalFiles: selection.diagnostics.totalSupportedFiles,
+  });
+  const selectedFiles = selection.selectedSupportedFiles
+    .filter((file) => file.supported);
 
-  if (files.length === 0) {
+  if (selectedFiles.length === 0) {
     const manifest = await writeEmptyIngestManifest({
       counts: { usable: 0, degraded: 0, skipped: 0, failed: 0 },
       manifestPath,
@@ -80,24 +107,49 @@ export async function ingestLocalMarkdown(
       sourceCoverage: createSourceCoverage(scopedSourceFiles, {
         usable: 0,
         degraded: 0,
-        skipped: 0,
+        skipped: selection.limitSkippedSupportedFiles(),
         failed: 0,
-      }),
+      }, selection.diagnostics),
       sourceIdentity,
       sourceType: options.sourceType ?? "local_markdown",
+      limits: selection.diagnostics,
       stateManifestPath,
     });
     throw new IngestError(
-      manifest.sourceCoverage.unsupportedFiles > 0
-        ? `No supported Markdown or MDX files found at ${options.source}. Found ${manifest.sourceCoverage.unsupportedFiles} unsupported docs-like file(s); coverage diagnostics were written to ${manifestPath}.`
-        : `No Markdown or MDX files found at ${options.source}.`,
+      selection.diagnostics.reached.length > 0
+        ? `No supported docs files were selected at ${options.source} because ingestion limits were reached (${selection.diagnostics.reached.join(", ")}); diagnostics were written to ${manifestPath}.`
+        : manifest.sourceCoverage.unsupportedFiles > 0
+        ? `No supported docs files found at ${options.source}. Found ${manifest.sourceCoverage.unsupportedFiles} unsupported docs-like file(s); coverage diagnostics were written to ${manifestPath}.`
+        : `No supported docs files found at ${options.source}.`,
     );
   }
 
   const pages: DocPage[] = [];
   const diagnostics: IngestManifest["diagnostics"] = [];
-  for (const filePath of files) {
-    const markdown = await readFile(filePath, "utf8");
+  for (const sourceFile of selectedFiles) {
+    if (hasElapsedLimitBeenReached(startedAt, options.limits)) {
+      selection.markElapsedReached();
+      break;
+    }
+    const filePath = sourceFile.filePath;
+    const initialContent = await readFile(filePath, "utf8");
+    let markdown = initialContent;
+    let unresolved: IncludeUnresolved[] = [];
+    if (
+      sourceFile.format === "rst" ||
+      sourceFile.format === "restText" ||
+      sourceFile.format === "adoc" ||
+      sourceFile.format === "asciidoc"
+    ) {
+      const resolution = await resolveIncludes({
+        content: initialContent,
+        filePath,
+        sourceRoot,
+        format: sourceFile.format,
+      });
+      markdown = resolution.content;
+      unresolved = resolution.unresolved;
+    }
     const sourceRelativePath = sourceStats.isDirectory()
       ? path.relative(sourcePath, filePath)
       : path.basename(filePath);
@@ -113,21 +165,26 @@ export async function ingestLocalMarkdown(
         : configuredSourcePath
       : sourceRelativePath;
     try {
-      const page = normalizeMarkdown({
+      const page = normalizeSourceFile({
         markdown,
-        format: path.extname(filePath).toLowerCase() === ".mdx" ? "mdx" : "markdown",
+        format: sourceFile.format,
         repoPath,
         context: { fixed: options.facets, rules: options.contextRules },
         mdxMode: options.mdxMode ?? "tolerant",
         sourceType: options.sourceType ?? "local_markdown",
       });
-      if (!hasUsefulPageContent(page)) {
+      const skipReason = classifySkip(page, unresolved);
+      if (skipReason !== undefined) {
         diagnostics.push({
           repoPath: toPosixPath(repoPath),
           status: "skipped",
-          mode: page.normalization.mode === "mdx-fallback" ? "mdx-fallback" : "strict",
+          mode: page.normalization.mode,
           warnings: page.normalization.warnings,
-          message: "No useful prose, headings, or fenced code remained after normalization.",
+          message: skipReason === "empty"
+            ? "No useful prose, headings, or fenced code remained after normalization."
+            : `Unresolved include directive: ${skipReason}`,
+          skipReason,
+          includeTargets: unresolved.map((u) => u.target),
         });
         continue;
       }
@@ -135,8 +192,9 @@ export async function ingestLocalMarkdown(
       diagnostics.push({
         repoPath: toPosixPath(repoPath),
         status: page.normalization.mode === "mdx-fallback" ? "degraded" : "usable",
-        mode: page.normalization.mode === "mdx-fallback" ? "mdx-fallback" : "strict",
+        mode: page.normalization.mode,
         warnings: page.normalization.warnings,
+        includeTargets: unresolved.length > 0 ? unresolved.map((u) => u.target) : undefined,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -148,6 +206,14 @@ export async function ingestLocalMarkdown(
         status: "failed",
         warnings: [],
         message,
+      });
+    }
+    if (pages.length % 100 === 0 || pages.length === selectedFiles.length) {
+      options.onProgress?.({
+        phase: "processed",
+        message: `Processed ${pages.length} supported file(s).`,
+        processedFiles: pages.length,
+        selectedFiles: selectedFiles.length,
       });
     }
   }
@@ -172,15 +238,20 @@ export async function ingestLocalMarkdown(
     counts: {
       usable: diagnostics.filter((item) => item.status === "usable").length,
       degraded: diagnostics.filter((item) => item.status === "degraded").length,
-      skipped: diagnostics.filter((item) => item.status === "skipped").length,
+      skipped: diagnostics.filter((item) => item.status === "skipped").length
+        + selection.limitSkippedSupportedFiles()
+        + selectedFiles.length - diagnostics.length,
       failed: diagnostics.filter((item) => item.status === "failed").length,
     },
     sourceCoverage: createSourceCoverage(scopedSourceFiles, {
       usable: diagnostics.filter((item) => item.status === "usable").length,
       degraded: diagnostics.filter((item) => item.status === "degraded").length,
-      skipped: diagnostics.filter((item) => item.status === "skipped").length,
+      skipped: diagnostics.filter((item) => item.status === "skipped").length
+        + selection.limitSkippedSupportedFiles()
+        + selectedFiles.length - diagnostics.length,
       failed: diagnostics.filter((item) => item.status === "failed").length,
-    }),
+    }, selection.diagnostics),
+    limits: selection.diagnostics,
     diagnostics,
     pages: manifestPages,
   });
@@ -206,6 +277,30 @@ export async function ingestLocalMarkdown(
   return { manifest, manifestPath, pages: validatedPages };
 }
 
+function classifySkip(
+  page: DocPage,
+  unresolved: IncludeUnresolved[],
+): SkipReason | undefined {
+  if (unresolved.length > 0) {
+    const firstOut = unresolved.find((u) => u.reason === "out-of-scope");
+    if (firstOut) return "include-out-of-scope";
+    const firstMissing = unresolved.find((u) => u.reason === "missing");
+    if (firstMissing) return "include-missing";
+    const firstCycle = unresolved.find((u) => u.reason === "cycle");
+    if (firstCycle) return "include-cycle";
+    const firstDepth = unresolved.find((u) => u.reason === "depth");
+    if (firstDepth) return "include-depth";
+    const firstFormat = unresolved.find((u) => u.reason === "unsupported-format");
+    if (firstFormat) return "include-unsupported-format";
+    const firstAntora = unresolved.find((u) => u.reason === "antora-id");
+    if (firstAntora) return "include-antora-id";
+  }
+  if (!hasUsefulPageContent(page)) {
+    return "empty";
+  }
+  return undefined;
+}
+
 function hasUsefulPageContent(page: DocPage): boolean {
   if (page.headings.some((heading) => heading.text.trim().length > 0)) return true;
   if (page.codeBlocks.some((block) => block.value.trim().length > 0)) return true;
@@ -217,6 +312,7 @@ function hasUsefulPageContent(page: DocPage): boolean {
     .trim()
     .length >= 24;
 }
+
 
 async function statSource(sourcePath: string) {
   try {
@@ -242,6 +338,7 @@ function matchesFilters(
 
 async function writeEmptyIngestManifest(options: {
   counts: IngestManifest["counts"];
+  limits?: SourceLimitDiagnostics;
   manifestPath: string;
   outputRoot: string;
   sourceCoverage: SourceCoverage;
@@ -256,6 +353,7 @@ async function writeEmptyIngestManifest(options: {
     pageCount: 0,
     counts: options.counts,
     sourceCoverage: options.sourceCoverage,
+    limits: options.limits,
     diagnostics: [],
     pages: [],
   });
@@ -270,37 +368,53 @@ async function writeEmptyIngestManifest(options: {
 function createSourceCoverage(
   files: SourceFile[],
   counts: IngestManifest["counts"],
+  limits?: SourceLimitDiagnostics,
 ): SourceCoverage {
   const supportedByFormat = {
     markdown: files.filter((file) => file.format === "markdown").length,
     mdx: files.filter((file) => file.format === "mdx").length,
-  };
-  const unsupportedByFormat = {
     rst: files.filter((file) => file.format === "rst").length,
     restText: files.filter((file) => file.format === "restText").length,
     adoc: files.filter((file) => file.format === "adoc").length,
     asciidoc: files.filter((file) => file.format === "asciidoc").length,
   };
-  const supportedFiles = supportedByFormat.markdown + supportedByFormat.mdx;
-  const unsupportedFiles = unsupportedByFormat.rst
-    + unsupportedByFormat.restText
-    + unsupportedByFormat.adoc
-    + unsupportedByFormat.asciidoc;
+  const unsupportedByFormat = {
+    rst: 0,
+    restText: 0,
+    adoc: 0,
+    asciidoc: 0,
+  };
+  const supportedFiles = supportedByFormat.markdown
+    + supportedByFormat.mdx
+    + supportedByFormat.rst
+    + supportedByFormat.restText
+    + supportedByFormat.adoc
+    + supportedByFormat.asciidoc;
+  const unsupportedFiles = 0;
   const intendedFiles = supportedFiles + unsupportedFiles;
   const compiledFiles = counts.usable + counts.degraded;
   const coverageRatio = intendedFiles === 0 ? 0 : roundRatio(compiledFiles / intendedFiles);
   const hasUnsupportedGap = unsupportedFiles > 0;
-  const gapSeverity = hasUnsupportedGap && coverageRatio < 0.5
+  const limitReached = (limits?.reached.length ?? 0) > 0;
+  const gapSeverity = limitReached
+    ? "warn"
+    : hasUnsupportedGap && coverageRatio < 0.5
     ? "fail"
     : hasUnsupportedGap
       ? "warn"
       : compiledFiles < supportedFiles
         ? "warn"
         : "none";
-  const gapReason = hasUnsupportedGap ? "unsupported_format" as const : undefined;
-  const message = hasUnsupportedGap
-    ? `${compiledFiles} of ${intendedFiles} docs-like file(s) compiled; ${unsupportedFiles} unsupported reST/AsciiDoc file(s) were in scope.`
-    : `${compiledFiles} of ${intendedFiles} supported Markdown/MDX file(s) compiled.`;
+  const gapReason = limitReached
+    ? "scale_limited" as const
+    : hasUnsupportedGap
+      ? "unsupported_format" as const
+      : undefined;
+  const message = limitReached
+    ? `${compiledFiles} of ${intendedFiles} docs-like file(s) compiled; ingestion limits reached (${limits!.reached.join(", ")}).`
+    : hasUnsupportedGap
+    ? `${compiledFiles} of ${intendedFiles} docs-like file(s) compiled; ${unsupportedFiles} unsupported file(s) were in scope.`
+    : `${compiledFiles} of ${intendedFiles} supported docs file(s) compiled.`;
 
   return {
     supportedFiles,
@@ -317,6 +431,72 @@ function createSourceCoverage(
     gapReason,
     message,
   };
+}
+
+async function selectFilesWithinLimits(
+  files: SourceFile[],
+  limits: SourceLimitConfig | undefined,
+): Promise<{
+  diagnostics: SourceLimitDiagnostics;
+  limitSkippedSupportedFiles: () => number;
+  markElapsedReached: () => void;
+  selectedSupportedFiles: SourceFile[];
+}> {
+  const supported = files.filter((file) => file.supported);
+  const reached = new Set<SourceLimitDiagnostics["reached"][number]>();
+  const selected: SourceFile[] = [];
+  let selectedBytes = 0;
+  let stop = false;
+  for (const file of supported) {
+    if (stop) {
+      continue;
+    }
+    if (limits?.maxFiles !== undefined && selected.length >= limits.maxFiles) {
+      reached.add("maxFiles");
+      stop = true;
+      continue;
+    }
+    if (limits?.maxPages !== undefined && selected.length >= limits.maxPages) {
+      reached.add("maxPages");
+      stop = true;
+      continue;
+    }
+    const size = (await stat(file.filePath)).size;
+    if (limits?.maxBytes !== undefined && selectedBytes + size > limits.maxBytes) {
+      reached.add("maxBytes");
+      stop = true;
+      continue;
+    }
+    selected.push(file);
+    selectedBytes += size;
+  }
+  const diagnostics = () => SourceLimitDiagnosticsSchema.parse({
+    configured: limits ?? {},
+    reached: [...reached].sort(compareStrings),
+    totalDocsLikeFiles: files.length,
+    selectedDocsLikeFiles: selected.length + files.filter((file) => !file.supported).length,
+    totalSupportedFiles: supported.length,
+    selectedSupportedFiles: selected.length,
+    skippedByLimit: supported.length - selected.length,
+    selectedBytes,
+    message: reached.size === 0
+      ? `Selected all ${supported.length} supported file(s) in source scope.`
+      : `Selected ${selected.length} of ${supported.length} supported file(s); limit(s) reached: ${[...reached].sort(compareStrings).join(", ")}.`,
+  });
+  return {
+    get diagnostics() {
+      return diagnostics();
+    },
+    limitSkippedSupportedFiles: () => supported.length - selected.length,
+    markElapsedReached: () => {
+      reached.add("maxElapsedMs");
+    },
+    selectedSupportedFiles: selected,
+  };
+}
+
+function hasElapsedLimitBeenReached(startedAt: number, limits: SourceLimitConfig | undefined): boolean {
+  return limits?.maxElapsedMs !== undefined && Date.now() - startedAt >= limits.maxElapsedMs;
 }
 
 async function discoverSourceFiles(
@@ -460,13 +640,55 @@ async function classifySourceFile(
   const extension = path.extname(filePath).toLowerCase();
   if (extension === ".md") return { filePath, format: "markdown", supported: true };
   if (extension === ".mdx") return { filePath, format: "mdx", supported: true };
-  if (extension === ".rst") return { filePath, format: "rst", supported: false };
-  if (extension === ".adoc") return { filePath, format: "adoc", supported: false };
-  if (extension === ".asciidoc") return { filePath, format: "asciidoc", supported: false };
+  if (extension === ".rst") return { filePath, format: "rst", supported: true };
+  if (extension === ".adoc") return { filePath, format: "adoc", supported: true };
+  if (extension === ".asciidoc") return { filePath, format: "asciidoc", supported: true };
   if (extension === ".txt" && await isLikelyRestTextFile(filePath, sourceRoot)) {
-    return { filePath, format: "restText", supported: false };
+    return { filePath, format: "restText", supported: true };
   }
   return undefined;
+}
+
+type NormalizeSourceFileOptions = {
+  markdown: string;
+  format: SourceFileFormat;
+  repoPath: string;
+  context: ApplyContextFacetsOptions;
+  mdxMode: "tolerant" | "strict";
+  sourceType: "local_markdown" | "repo";
+};
+
+function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
+  switch (options.format) {
+    case "markdown":
+    case "mdx":
+      return normalizeMarkdown({
+        markdown: options.markdown,
+        format: options.format,
+        repoPath: options.repoPath,
+        context: options.context,
+        mdxMode: options.mdxMode,
+        sourceType: options.sourceType,
+      });
+    case "rst":
+    case "restText":
+      return normalizeRest({
+        rest: options.markdown,
+        sourceFormat: options.format,
+        repoPath: options.repoPath,
+        context: options.context,
+        sourceType: options.sourceType,
+      });
+    case "adoc":
+    case "asciidoc":
+      return normalizeAsciiDoc({
+        asciidoc: options.markdown,
+        sourceFormat: options.format,
+        repoPath: options.repoPath,
+        context: options.context,
+        sourceType: options.sourceType,
+      });
+  }
 }
 
 async function isLikelyRestTextFile(filePath: string, sourceRoot: string): Promise<boolean> {

@@ -1,6 +1,21 @@
 Introduction
 ============
 
+This is the Django-style reST introduction stored as a .txt file.
+
 .. toctree::
 
    tutorial
+
+.. note::
+
+   Django historically stores Sphinx reST in .txt files.
+
+.. code-block:: python
+
+   import django
+   print(django.VERSION)
+
+.. versionchanged:: 5.0
+
+   The default settings module is now auto-detected.

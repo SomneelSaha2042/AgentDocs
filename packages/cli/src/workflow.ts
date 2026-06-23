@@ -14,6 +14,7 @@ import {
   type BuildState,
   type ContextVerification,
   type HandoffBundle,
+  type SourceLimitConfig,
   type StatusReport,
 } from "@agentdocs/shared";
 import { minimatch } from "minimatch";
@@ -430,7 +431,8 @@ async function fingerprintConfiguredSources(
       };
     }
     if (source.type === "local_markdown" || source.type === "repo") {
-      const files = await markdownFilesForSource(context.cwd, context.out, source);
+      const allFiles = await markdownFilesForSource(context.cwd, context.out, source);
+      const files = await selectMarkdownFilesWithinLimits(allFiles, source.limits);
       const entries = await Promise.all(files.map(async (file) => ({
         path: toPosixPath(path.relative(context.cwd, file)),
         hash: hashBuffer(await readFile(file)),
@@ -439,8 +441,17 @@ async function fingerprintConfiguredSources(
         id: sourceId(source, index),
         type: source.type,
         value: source.path,
-        hash: hashJson({ type: source.type, path: source.path, include: source.include ?? [], exclude: source.exclude ?? [], entries }),
-        fileCount: entries.length,
+        hash: hashJson({
+          type: source.type,
+          path: source.path,
+          include: source.include ?? [],
+          exclude: source.exclude ?? [],
+          limits: source.limits ?? {},
+          entries,
+        }),
+        fileCount: allFiles.length,
+        selectedFileCount: entries.length,
+        limits: source.limits,
         collectedAt,
       };
     }
@@ -471,6 +482,23 @@ async function markdownFilesForSource(
     const excluded = source.exclude?.some((pattern) => minimatch(relative, pattern)) ?? false;
     return included && !excluded;
   });
+}
+
+async function selectMarkdownFilesWithinLimits(
+  files: string[],
+  limits: SourceLimitConfig | undefined,
+): Promise<string[]> {
+  const selected: string[] = [];
+  let selectedBytes = 0;
+  for (const file of files) {
+    if (limits?.maxFiles !== undefined && selected.length >= limits.maxFiles) break;
+    if (limits?.maxPages !== undefined && selected.length >= limits.maxPages) break;
+    const size = (await stat(file)).size;
+    if (limits?.maxBytes !== undefined && selectedBytes + size > limits.maxBytes) break;
+    selected.push(file);
+    selectedBytes += size;
+  }
+  return selected;
 }
 
 async function discoverMarkdownFiles(sourcePath: string, excludedDirectory: string): Promise<string[]> {
@@ -587,5 +615,7 @@ function publicSourceStatusFields(source: SourceFingerprint) {
     type: source.type,
     value: source.value,
     fileCount: source.fileCount,
+    selectedFileCount: source.selectedFileCount,
+    limits: source.limits,
   };
 }

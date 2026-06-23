@@ -12,6 +12,12 @@ import {
   type SourceCoverage,
 } from "@agentdocs/shared";
 
+export type IncludeGap = {
+  repoPath: string;
+  target: string;
+  reason: string;
+};
+
 export type ReadinessArtifacts = {
   hasAgentMap: boolean;
   hasAgentsMd: boolean;
@@ -26,6 +32,7 @@ export type ReadinessArtifacts = {
   sourceCoverage?: SourceCoverage;
   expectedTaskIds?: string[];
   preferredFacets?: Record<string, string>;
+  includeGaps?: IncludeGap[];
 };
 
 export type ScanReadinessOptions = {
@@ -213,6 +220,33 @@ function buildChecks(options: ScanReadinessOptions): CheckDefinition[] {
           : `${usablePages} useful normalized page(s) are available.`,
       evidence(pages[0]),
       "Inspect raw crawl snapshots and improve extraction before trusting generated context."),
+    (() => {
+      const includeGaps = options.artifacts.includeGaps ?? [];
+      const hasOutOfScope = includeGaps.some((gap) => gap.reason === "include-out-of-scope" || gap.reason === "out-of-scope");
+      const hasOtherGaps = includeGaps.length > 0;
+      const status = hasOutOfScope ? "fail" : hasOtherGaps ? "warn" : "pass";
+      const message = hasOutOfScope
+        ? `${includeGaps.filter((g) => g.reason === "include-out-of-scope" || g.reason === "out-of-scope").length} out-of-scope include gap(s) found.`
+        : hasOtherGaps
+          ? `${includeGaps.length} unresolved include gap(s) found.`
+          : "No include gaps found.";
+      const evidence = includeGaps.map((gap) => ({
+        source: "page" as const,
+        repoPath: gap.repoPath,
+        quote: `${gap.target} (${gap.reason})`,
+      }));
+      return check(
+        "has_no_include_gaps",
+        "structure",
+        5,
+        status,
+        message,
+        evidence,
+        hasOutOfScope
+          ? "Move included files inside the configured source root or adjust include path."
+          : "Verify and fix missing or broken include paths."
+      );
+    })(),
     check("has_source_coverage", "structure", 0,
       sourceCoverageStatus,
       sourceCoverage === undefined
