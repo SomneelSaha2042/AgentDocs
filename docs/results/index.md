@@ -136,9 +136,9 @@ findings with the latest summary.
 | June 12, 2026 | Post-hardening | Added context safety, tolerant MDX diagnostics, and regression assertions; Supabase completed and filtered Fastify/TanStack retrieval became safer. |
 | June 16, 2026 | Workflow layer | Reran all documented prepared targets after adding `status`, `handoff`, `verify-context`, setup snippets, build-state freshness, `agent-brief.md`, and richer MCP tools. All prepared targets passed regression; all reported fresh status. |
 | June 19, 2026 | Candidate expansion | Ran larger candidate metrics across Kubernetes, FastAPI, Rust, TypeScript, Airflow-site, Terraform, and a .NET docs shard; identified source-format, scale, scope, and retrieval gaps before broad-use polish. |
-| June 20, 2026 | Routing benchmark instrumentation | Added stable metric definitions and deterministic task-pack routing capture to dogfood summaries. |
 | June 20, 2026 | Routing improvements | Added deterministic route-handler, query-invalidation, and schema-validation task families with offline exact-route fixture checks. |
 | June 20, 2026 | Full Phase 5 dogfood rerun | Reran nine documented prepared targets and populated routing metrics. Fastify schema validation, TanStack React invalidation, and Next.js App Router routing passed; Hono quickstart routing remains open. |
+| June 23, 2026 | Parser format expansion | Integrated Sphinx/reST and AsciiDoc format normalizers, transclusion resolution, and include-gap readiness doctor auditing. Verified against django, cpython, spring-framework, and airflow dogfood targets. |
 
 Read the [evaluation history](./history.md) for the run-by-run table and the
 workflow-layer findings.

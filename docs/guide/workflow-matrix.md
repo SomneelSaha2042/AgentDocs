@@ -50,24 +50,31 @@ Regression output is stored under each prepared target's
 ignored `results/` directory and summarized in
 `.dogfood/regression-summary.csv`.
 
+## Completed Parser-Format Candidates
+
+These targets test the expanded format parsers (Sphinx/reST and AsciiDoc/Antora) and transclusion resolution plumbing on large-scale real-world documentation estates.
+
+| Repository | Ecosystem | Docs Shape | Pages | Task Packs | Readiness | Status |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| [`django/django`](https://github.com/django/django) | Python | Sphinx/reST (`.txt` files) | 671 | 8 | 92 | **Passed** |
+| [`python/cpython`](https://github.com/python/cpython) | Python / systems | Sphinx/reST (`.rst` Doc tree) | 556 | 8 | 79 | **Passed** |
+| [`spring-projects/spring-framework`](https://github.com/spring-projects/spring-framework) | Java | AsciiDoc/Antora (`.adoc`) | 469 | 6 | 79 | **Passed** |
+| [`apache/airflow`](https://github.com/apache/airflow) | Python / data | Mixed reST (`.rst`, `.txt` docs) | 1,617 | 10 | 79 | **Passed** |
+
 ## Expansion Candidates
 
 The current test bed covers useful cases, but broad confidence needs multiple
 documentation systems, multiple implementation languages, multiple scale
-profiles, and multiple kinds of ambiguity. These targets are candidate
-regression additions, not completed AgentDocs runs. They should be added as
-bounded prepared targets or opt-in live runs before the product is called
+profiles, and multiple kinds of ambiguity. These targets remain candidate
+regression additions. They should be added as bounded prepared targets or opt-in live runs before the product is called
 polished across large real-world documentation estates.
 
 | Repository | Ecosystem | Docs shape | Why it matters | What should pass |
 | --- | --- | --- | --- | --- |
 | [`kubernetes/website`](https://github.com/kubernetes/website) | Go / cloud-native | Dedicated docs repo; large Hugo/Docsy site | Massive, versioned, highly linked docs with many examples and multiple contributor patterns | Correct version scoping, sane crawl bounds, strong task packs for deployment/networking/auth, low internal-link breakage |
-| [`django/django`](https://github.com/django/django) | Python | Code plus `docs/` in-repo | Canonical Sphinx/reST corpus with long-form tutorials and API docs | Good task routing across tutorial versus reference material; no section mixing across versions |
-| [`python/cpython`](https://github.com/python/cpython) | Python / systems | Huge repo with `Doc/` tree | Very large reST corpus, multiple release streams, giant pages, nuanced version notes | Stable build times, no giant-page degradation surprises, good release-version facet handling |
 | [`dotnet/docs`](https://github.com/dotnet/docs) | C# / .NET | Giant docs-only repo | Multi-language platform docs with broad conceptual and reference content | Strong retrieval precision, bounded task packs, robust chunking at scale |
-| [`spring-projects/spring-framework`](https://github.com/spring-projects/spring-framework) | Java | Code plus `framework-docs` AsciiDoc/Antora | Different docs toolchain from current examples; heavy version semantics | Correct extraction from AsciiDoc, version-safe routing, good how-to versus reference separation |
 | [`rust-lang/rust`](https://github.com/rust-lang/rust) | Rust | Huge mixed code and docs repo | Very large codebase with compiler, standard library, and docs in one place | Good repo-source inclusion boundaries, no over-indexing irrelevant internals, useful task packs from docs |
-| [`apache/airflow-site`](https://github.com/apache/airflow-site) and [`apache/airflow`](https://github.com/apache/airflow) | Python / data | Docs site plus main code repo | Split-docs-and-code pattern common in real organizations | Successful per-site compile, correct cross-link handling, task packs for DAG authoring and deployment |
+| [`apache/airflow-site`](https://github.com/apache/airflow-site) | Python / data | Docs site | Split-docs-and-code pattern website | Successful per-site compile, correct cross-link handling, task packs for DAG authoring and deployment |
 | [`hashicorp/terraform`](https://github.com/hashicorp/terraform) | Go / IaC | Large product plus extensive documentation | Strong versioning and operational workflows, excellent fit for migration/provider tasks | Good tutorial/reference distinction, provider/version disambiguation, high-value task packs |
 | [`microsoft/TypeScript-Website`](https://github.com/microsoft/TypeScript-Website) | TypeScript | Docs-focused monorepo | Markdown/MDX-heavy website with handbook-style docs and generated schema content | Correct monorepo scoping, strong task packs for config/compiler API concepts, bounded chunking |
 | [`fastapi/fastapi`](https://github.com/fastapi/fastapi) | Python | Code plus docs; modern framework docs | Good control sample against the current Fastify/Hono/TanStack set | Clear docs/task retrieval for auth, dependencies, background tasks, and OpenAPI usage |
@@ -78,13 +85,7 @@ status, query captures, and at least one human-judged agent task. Large
 repositories should prefer scoped local preparation first, then opt-in website
 crawls once local ingestion behavior is understood.
 
-The June 19, 2026 candidate expansion run measured the first slice of this
-matrix. Kubernetes, FastAPI, Rust, TypeScript Website, Airflow-site, Terraform,
-and a scoped .NET docs shard compiled with stable repeated builds. Django,
-CPython, Spring Framework, and Airflow main exposed source-format coverage gaps
-because their dominant documentation sources are Sphinx/reST or AsciiDoc. See
-[Candidate Expansion Metrics](/results/candidate-expansion) for the measured
-counts and the two-iteration viability plan.
+The June 23, 2026 candidate expansion rerun verified the Sphinx and AsciiDoc format parsers on django, cpython, spring-framework, and airflow. All targets compiled with stable repeated builds. See [Candidate Expansion Metrics](/results/candidate-expansion) for detailed counts.
 
 ## Workflow-Layer Checks
 

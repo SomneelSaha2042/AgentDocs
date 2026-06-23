@@ -40,11 +40,11 @@ Use AgentDocs when:
 > MVP phases 0-9, the June 2026 hardening work, and the agent workflow layer
 > are implemented for real-repository testing.
 >
-> It is still beta software: OpenAPI ingestion is not implemented, and large or
+> It is still beta software: OpenAPI Ingestion is not implemented, and large or
 > unusual docs sites may need scoped crawl settings. Local and repo ingestion
-> currently compiles Markdown/MDX while counting unsupported reST and AsciiDoc
-> docs-like files as explicit source coverage gaps. The core
-> compile, audit, search, handoff, freshness, and MCP workflows are usable.
+> compiles Markdown/MDX, Sphinx/reST (including Django-style `.txt` files), and
+> AsciiDoc/Antora formats, with deterministic transclusion and skip telemetry.
+> The core compile, audit, search, handoff, freshness, and MCP workflows are usable.
 
 ## Install
 
@@ -280,11 +280,11 @@ evidence-linked outputs. When evidence is weak or missing, generated artifacts
 say so rather than inventing instructions.
 
 For local and repo sources, AgentDocs also measures source coverage before it
-claims confidence. Supported `.md` and `.mdx` files are compiled; unsupported
-docs-like `.rst`, likely Sphinx/reST `.txt`, `.adoc`, and `.asciidoc` files are
-counted and reported in ingest manifests, `manifest.json`, dogfood summaries,
-and doctor checks. A tiny Markdown pass inside a larger reST or AsciiDoc corpus
-is reported as an `unsupported_format` gap, not a clean readiness signal.
+claims confidence. Supported `.md`, `.mdx`, Sphinx/reST (`.rst`, `.txt`), and
+AsciiDoc (`.adoc`, `.asciidoc`) files are compiled, resolving transclusions
+(includes) up to a bounded depth of 8. Any out-of-scope, missing, or cyclic
+includes are reported as transclusion gaps, and pages with insufficient content
+are skipped with precise reasons.
 
 The workflow layer follows the same rule. Freshness is computed from local
 source hashes, website TTLs, config hashes, and build-owned artifact hashes.
@@ -386,7 +386,6 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 ## Current Limitations
 
 - OpenAPI ingestion is recognized but not implemented.
-- reST and AsciiDoc sources are counted for coverage but not parsed yet.
 - Additional inspect targets beyond entities, links, and task-pack explanations
   are planned.
 - Broken-link checks validate generated heading fragments for collected pages;
