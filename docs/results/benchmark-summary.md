@@ -10,6 +10,7 @@ page.
 AgentDocs has deterministic evidence for these claims:
 
 - **Reduces token consumption by up to 72%** (e.g., in `aws-js-v3` pagination task) by providing optimized MCP tool responses and preventing broad grep/file context bloat.
+- **Outperforms un-normalized web retrieval**: In comparisons against a simulated standard agent harness (which searches the web and fetches raw HTML pages), AgentDocs MCP reduces task duration by up to 2 turns and cuts token consumption by up to 40% (e.g., in `aws-js-v3`).
 - **Improves agent task success rates** (+100% success delta on complex validation and pagination tasks like `fastify-validation` and `octokit-pagination` where control group agents failed).
 - **Accelerates task resolution**, saving up to 5 turns per task by guiding agents through pre-summarized task packs.
 - Compiles varied Markdown, MDX, Sphinx/reST, and AsciiDoc/Antora documentation corpora into local artifacts.

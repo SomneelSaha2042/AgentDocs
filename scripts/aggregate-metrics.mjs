@@ -11,14 +11,20 @@ async function main() {
 
   const resultsDir = path.join(repositoryRoot, ".dogfood");
   const controlPath = path.join(resultsDir, `eval-result-${taskName}-control.json`);
+  const controlWebPath = path.join(resultsDir, `eval-result-${taskName}-control-web.json`);
   const experimentalPath = path.join(resultsDir, `eval-result-${taskName}-experimental.json`);
 
-  let control, experimental;
+  let control = null, controlWeb = null, experimental = null;
   try {
     control = JSON.parse(await readFile(controlPath, "utf8"));
   } catch (err) {
-    console.error(`Missing control results file: ${controlPath}`);
-    process.exit(1);
+    console.warn(`Note: Missing standard control results file: ${controlPath}`);
+  }
+
+  try {
+    controlWeb = JSON.parse(await readFile(controlWebPath, "utf8"));
+  } catch (err) {
+    // Optional
   }
 
   try {
@@ -28,46 +34,82 @@ async function main() {
     process.exit(1);
   }
 
-  const successRateDelta = (experimental.passed ? 1 : 0) - (control.passed ? 1 : 0);
-  
-  // Tokens delta (negative means experimental used more, positive means experimental saved tokens)
-  const tokenUsageDelta = control.tokens.total - experimental.tokens.total;
-  const tokenUsagePercentSaved = control.tokens.total > 0 
-    ? Math.round((tokenUsageDelta / control.tokens.total) * 100) 
-    : 0;
-
-  // Turns delta
-  const turnDelta = control.turns - experimental.turns;
-
-  // Duration delta
-  const durationDeltaMs = control.durationMs - experimental.durationMs;
+  if (!control && !controlWeb) {
+    console.error("Must have at least one control results file (either standard or web control).");
+    process.exit(1);
+  }
 
   const summary = {
     task: taskName,
-    metrics: {
-      taskSuccessRateDelta: successRateDelta, // 1 (improved), 0 (no change), -1 (worse)
+    metrics: {},
+    runs: {
+      experimental
+    }
+  };
+
+  if (control) {
+    const successRateDelta = (experimental.passed ? 1 : 0) - (control.passed ? 1 : 0);
+    const tokenUsageDelta = control.tokens.total - experimental.tokens.total;
+    const tokenUsagePercentSaved = control.tokens.total > 0 
+      ? Math.round((tokenUsageDelta / control.tokens.total) * 100) 
+      : 0;
+    const turnDelta = control.turns - experimental.turns;
+    const durationDeltaMs = control.durationMs - experimental.durationMs;
+
+    summary.metrics = {
+      taskSuccessRateDelta: successRateDelta,
       timeToCorrectImplementationDeltaMs: durationDeltaMs,
       turnsSaved: turnDelta,
       tokenUsageDelta: {
         raw: tokenUsageDelta,
         percentSaved: tokenUsagePercentSaved
       }
-    },
-    runs: {
-      control,
-      experimental
-    }
-  };
+    };
+    summary.runs.control = control;
+  }
+
+  if (controlWeb) {
+    const successRateDeltaWeb = (experimental.passed ? 1 : 0) - (controlWeb.passed ? 1 : 0);
+    const tokenUsageDeltaWeb = controlWeb.tokens.total - experimental.tokens.total;
+    const tokenUsagePercentSavedWeb = controlWeb.tokens.total > 0 
+      ? Math.round((tokenUsageDeltaWeb / controlWeb.tokens.total) * 100) 
+      : 0;
+    const turnDeltaWeb = controlWeb.turns - experimental.turns;
+    const durationDeltaMsWeb = controlWeb.durationMs - experimental.durationMs;
+
+    summary.metricsWeb = {
+      taskSuccessRateDelta: successRateDeltaWeb,
+      timeToCorrectImplementationDeltaMs: durationDeltaMsWeb,
+      turnsSaved: turnDeltaWeb,
+      tokenUsageDelta: {
+        raw: tokenUsageDeltaWeb,
+        percentSaved: tokenUsagePercentSavedWeb
+      }
+    };
+    summary.runs.controlWeb = controlWeb;
+  }
 
   const summaryPath = path.join(resultsDir, `eval-summary-${taskName}.json`);
   await writeFile(summaryPath, JSON.stringify(summary, null, 2), "utf8");
 
   console.log(`\nAggregate Summary for ${taskName}:`);
   console.log(`-----------------------------------`);
-  console.log(`Task Success Rate Delta: ${successRateDelta > 0 ? "+" : ""}${successRateDelta * 100}%`);
-  console.log(`Turns Saved: ${turnDelta}`);
-  console.log(`Tokens Saved: ${tokenUsageDelta} (${tokenUsagePercentSaved}%)`);
-  console.log(`Time Delta: ${durationDeltaMs > 0 ? "Saved " : "Added "}${Math.abs(durationDeltaMs)}ms`);
+  if (control) {
+    const m = summary.metrics;
+    console.log(`Vs Standard Control (Grep):`);
+    console.log(`  Success Rate Delta: ${m.taskSuccessRateDelta > 0 ? "+" : ""}${m.taskSuccessRateDelta * 100}%`);
+    console.log(`  Turns Saved: ${m.turnsSaved}`);
+    console.log(`  Tokens Saved: ${m.tokenUsageDelta.raw} (${m.tokenUsageDelta.percentSaved}%)`);
+    console.log(`  Time Delta: ${m.timeToCorrectImplementationDeltaMs > 0 ? "Saved " : "Added "}${Math.abs(m.timeToCorrectImplementationDeltaMs)}ms`);
+  }
+  if (controlWeb) {
+    const mw = summary.metricsWeb;
+    console.log(`Vs Web Control (Search/Fetch Webpage):`);
+    console.log(`  Success Rate Delta: ${mw.taskSuccessRateDelta > 0 ? "+" : ""}${mw.taskSuccessRateDelta * 100}%`);
+    console.log(`  Turns Saved: ${mw.turnsSaved}`);
+    console.log(`  Tokens Saved: ${mw.tokenUsageDelta.raw} (${mw.tokenUsageDelta.percentSaved}%)`);
+    console.log(`  Time Delta: ${mw.timeToCorrectImplementationDeltaMs > 0 ? "Saved " : "Added "}${Math.abs(mw.timeToCorrectImplementationDeltaMs)}ms`);
+  }
   console.log(`Saved detailed summary to ${summaryPath}`);
 }
 

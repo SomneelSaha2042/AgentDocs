@@ -37,6 +37,248 @@ function recursiveGrep(dir, pattern, baseDir) {
   return results;
 }
 
+function performMockSearch(query, agentMap) {
+  if (!agentMap) return "No search index available.";
+  
+  // Clean query and split into keywords/terms, ignoring empty terms
+  // Filter out site: constraints if any
+  const cleanQuery = query.toLowerCase()
+    .replace(/site:\S+/g, "") // remove site: constraints
+    .replace(/[^a-z0-9\s]/g, " "); // keep alphanumeric and space
+  
+  const terms = cleanQuery.split(/\s+/).filter(t => t.length > 1);
+  if (terms.length === 0) {
+    return `No search results found for query: "${query}"`;
+  }
+
+  const matchedPages = new Map();
+
+  for (const page of agentMap.pages) {
+    let score = 0;
+    const titleLower = page.title.toLowerCase();
+    const markdownLower = page.markdown.toLowerCase();
+    
+    // Check term matches
+    let matchedTermsCount = 0;
+    for (const term of terms) {
+      let termMatched = false;
+      if (titleLower.includes(term)) {
+        score += 15;
+        termMatched = true;
+      }
+      if (markdownLower.includes(term)) {
+        score += 3;
+        termMatched = true;
+      }
+      if (termMatched) {
+        matchedTermsCount++;
+      }
+    }
+    
+    // Bonus for matching more terms
+    if (matchedTermsCount > 0) {
+      score += matchedTermsCount * 10;
+      // Additional big bonus if all terms matched
+      if (matchedTermsCount === terms.length) {
+        score += 50;
+      }
+      
+      matchedPages.set(page.id, {
+        title: page.title,
+        url: page.canonicalUrl || page.sourceUrl || `https://docs.example.com/${page.id}`,
+        score
+      });
+    }
+  }
+
+  for (const chunk of agentMap.chunks) {
+    const chunkTextLower = chunk.text.toLowerCase();
+    let matchedTermsCount = 0;
+    let chunkScore = 0;
+    
+    for (const term of terms) {
+      if (chunkTextLower.includes(term)) {
+        chunkScore += 2;
+        matchedTermsCount++;
+      }
+    }
+    
+    if (matchedTermsCount > 0) {
+      const pageId = chunk.pageId;
+      const pageInfo = matchedPages.get(pageId) || {
+        title: agentMap.pages.find(p => p.id === pageId)?.title || "Untitled",
+        url: agentMap.pages.find(p => p.id === pageId)?.canonicalUrl || `https://docs.example.com/${pageId}`,
+        score: 0
+      };
+      
+      pageInfo.score += chunkScore;
+      if (matchedTermsCount === terms.length) {
+        pageInfo.score += 20; // bonus for all terms matching in the chunk
+      }
+      matchedPages.set(pageId, pageInfo);
+    }
+  }
+
+  const results = Array.from(matchedPages.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  if (results.length === 0) {
+    return `No search results found for query: "${query}"`;
+  }
+  return results.map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}`).join("\n\n");
+}
+
+async function resolveRawHtml(targetPagesDir, page) {
+  let files;
+  try {
+    files = await fs.promises.readdir(targetPagesDir);
+  } catch (err) {
+    return null;
+  }
+
+  const jsonFiles = files.filter(f => f.endsWith(".json"));
+
+  for (const jsonFile of jsonFiles) {
+    try {
+      const metadataPath = path.join(targetPagesDir, jsonFile);
+      const metadata = JSON.parse(await fs.promises.readFile(metadataPath, "utf8"));
+      
+      if (
+        metadata.title && page.title && 
+        metadata.title.toLowerCase().trim() === page.title.toLowerCase().trim()
+      ) {
+        const htmlFile = jsonFile.replace(".json", ".raw.html");
+        const htmlPath = path.join(targetPagesDir, htmlFile);
+        if (fs.existsSync(htmlPath)) {
+          return htmlPath;
+        }
+      }
+      
+      if (
+        metadata.sourceUrl && page.sourceUrl &&
+        metadata.sourceUrl.replace(/\/$/, "") === page.sourceUrl.replace(/\/$/, "")
+      ) {
+        const htmlFile = jsonFile.replace(".json", ".raw.html");
+        const htmlPath = path.join(targetPagesDir, htmlFile);
+        if (fs.existsSync(htmlPath)) {
+          return htmlPath;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Fuzzy fallback match by title
+  for (const jsonFile of jsonFiles) {
+    try {
+      const metadataPath = path.join(targetPagesDir, jsonFile);
+      const metadata = JSON.parse(await fs.promises.readFile(metadataPath, "utf8"));
+      
+      if (
+        metadata.title && page.title && 
+        (metadata.title.toLowerCase().includes(page.title.toLowerCase()) || 
+         page.title.toLowerCase().includes(metadata.title.toLowerCase()))
+      ) {
+        const htmlFile = jsonFile.replace(".json", ".raw.html");
+        const htmlPath = path.join(targetPagesDir, htmlFile);
+        if (fs.existsSync(htmlPath)) {
+          return htmlPath;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function cleanRawHtmlToText(html) {
+  // Strip head, scripts, styles, svgs
+  let clean = html
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "");
+  
+  // Convert basic HTML elements to markdown-like linebreaks
+  clean = clean
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n");
+
+  // Strip all other HTML tags
+  clean = clean.replace(/<[^>]+>/g, " ");
+  // Collapse whitespace
+  clean = clean.replace(/[ \t]+/g, " ");
+  clean = clean.replace(/\n\s*\n+/g, "\n\n").trim();
+  
+  // Limit length to ~30k chars (around 8k tokens) to prevent rate limit/context crashes
+  if (clean.length > 30000) {
+    clean = clean.slice(0, 30000) + "\n\n[... content truncated by web fetch scraper ...]";
+  }
+  return clean;
+}
+
+// Add simulated web scraper navigation noise to markdown fallbacks
+function addWebScraperBoilerplate(markdown, pageTitle) {
+  const header = `[Web Search Scraper] Document: ${pageTitle || "Untitled Page"}
+Navigation Menu:
+- Home | Guides | Reference | API | Github | Community
+- Sidebar: Getting Started, Configuration, Installation, API Reference, Advanced Topics, Troubleshooting, Support
+--------------------------------------------------------------------------------`;
+  const footer = `--------------------------------------------------------------------------------
+Footer: © 2026 Documentation Hub. Built with Docusaurus/VitePress.
+Related Links:
+- Support Channel | Discord | GitHub Issues | NPM Package`;
+  return `${header}\n\n${markdown}\n\n${footer}`;
+}
+
+async function performMockFetch(url, agentMap, taskName, repositoryRoot) {
+  if (!agentMap) return "Webpage fetch error: documentation map not loaded.";
+  const page = agentMap.pages.find(p => p.canonicalUrl === url || p.sourceUrl === url || `https://docs.example.com/${p.id}` === url);
+  if (!page) {
+    return `Error 404: Webpage not found at URL: ${url}`;
+  }
+
+  let targetFolder = taskName;
+  if (taskName === "fastify-validation") {
+    targetFolder = "fastify-crawl";
+  } else if (taskName === "nextjs-app-router") {
+    targetFolder = "nextjs-crawl";
+  }
+
+  const targetPagesDir = path.join(repositoryRoot, ".dogfood", targetFolder, "sources", "pages");
+  
+  // Try direct page ID file first
+  const dogfoodHtmlPath = path.join(targetPagesDir, `${page.id}.raw.html`);
+  try {
+    if (fs.existsSync(dogfoodHtmlPath)) {
+      const htmlContent = await fs.promises.readFile(dogfoodHtmlPath, "utf8");
+      return cleanRawHtmlToText(htmlContent);
+    }
+  } catch (err) {
+    // fallback
+  }
+
+  // Resolve by scanning metadata JSON files
+  const resolvedPath = await resolveRawHtml(targetPagesDir, page);
+  if (resolvedPath) {
+    try {
+      const htmlContent = await fs.promises.readFile(resolvedPath, "utf8");
+      return cleanRawHtmlToText(htmlContent);
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  return addWebScraperBoilerplate(page.markdown, page.title);
+}
+
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 
 // Simple MCP Client Implementation
@@ -201,7 +443,9 @@ async function main() {
   const modelName = getArg(args, "--model") || (provider === "openai" ? "gpt-4o" : "claude-3-5-sonnet-20241022");
   const maxCost = parseFloat(getArg(args, "--max-cost") || "1.00");
 
-  console.log(`Starting eval run. Task: ${taskName}, Control Group: ${control}, Provider: ${provider}, Model: ${modelName}, Max Cost: $${maxCost}`);
+  const useWebSearch = args.includes("--web");
+
+  console.log(`Starting eval run. Task: ${taskName}, Control Group: ${control}, Web Search harness: ${useWebSearch}, Provider: ${provider}, Model: ${modelName}, Max Cost: $${maxCost}`);
 
   const taskDir = path.join(repositoryRoot, "fixtures", "eval-tasks", taskName);
   const sandboxDir = await mkdtemp(path.join(os.tmpdir(), `agentdocs-eval-sandbox-${taskName}-`));
@@ -221,23 +465,39 @@ async function main() {
   let mcpClient = null;
   let mcpTools = [];
 
-  if (!control) {
-    console.log("Experimental Group: Building AgentDocs and starting MCP server...");
-    // 1. Build AgentDocs inside sandbox
-    const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  // Generate agent-map.json by building first (so we can use it to map URLs and search mock pages)
+  console.log("Pre-building AgentDocs to generate documentation index...");
+  const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  try {
     execSync(`"${process.execPath}" "${cliPath}" --cwd "${sandboxDir}" build`, { stdio: "inherit" });
+  } catch (err) {
+    console.warn("Pre-build failed, mock index might be missing:", err.message);
+  }
 
-    // 2. Start MCP server
+  let agentMap = null;
+  try {
+    agentMap = JSON.parse(await readFile(path.join(sandboxDir, ".agentdocs", "agent-map.json"), "utf8"));
+  } catch (err) {
+    console.warn("Could not load agent-map.json for web simulation:", err.message);
+  }
+
+  if (!control) {
+    console.log("Experimental Group: Starting MCP server...");
     mcpClient = new McpClient(sandboxDir);
     await mcpClient.start();
     mcpTools = await mcpClient.listTools();
     console.log(`Loaded ${mcpTools.length} MCP tools.`);
   } else {
-    console.log("Control Group: Skipping AgentDocs MCP context.");
+    console.log(`Control Group: Skipping AgentDocs MCP context. Web Search harness: ${useWebSearch}`);
+    if (useWebSearch) {
+      // Remove local documentation folder and generated artifacts from workspace so agent MUST use web search
+      await rm(path.join(sandboxDir, "docs"), { recursive: true, force: true }).catch(() => {});
+      await rm(path.join(sandboxDir, ".agentdocs"), { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   // Base sandbox tools
-  const sandboxTools = [
+  const baseTools = [
     {
       name: "write_file",
       description: "Write content to a file in the workspace.",
@@ -271,30 +531,71 @@ async function main() {
         },
         required: ["command"]
       }
-    },
-    {
-      name: "grep",
-      description: "Search for a text pattern recursively in the workspace files, returning matching lines and filenames.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          pattern: { type: "string", description: "The text pattern or keyword to search for" }
-        },
-        required: ["pattern"]
-      }
     }
   ];
 
+  const searchTools = [];
+  if (control) {
+    if (useWebSearch) {
+      searchTools.push(
+        {
+          name: "web_search",
+          description: "Search the web for documentation pages related to a query. Returns a list of URLs and page titles.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "fetch_webpage",
+          description: "Fetch and download the raw contents of a webpage by URL.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "The full URL of the webpage to fetch" }
+            },
+            required: ["url"]
+          }
+        }
+      );
+    } else {
+      searchTools.push({
+        name: "grep",
+        description: "Search for a text pattern recursively in the workspace files, returning matching lines and filenames.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            pattern: { type: "string", description: "The text pattern or keyword to search for" }
+          },
+          required: ["pattern"]
+        }
+      });
+    }
+  }
+
+  const sandboxTools = [...baseTools, ...searchTools];
   const allTools = [...sandboxTools, ...mcpTools];
 
   // Load task description
   const taskDesc = await readFile(path.join(sandboxDir, "task.md"), "utf8");
 
+  let docInstruction = "";
+  if (!control) {
+    docInstruction = "You also have access to documentation tools. Use them to read about how to implement the task correctly.";
+  } else if (useWebSearch) {
+    docInstruction = "You also have access to web search and webpage fetching tools. Use them to find documentation on the web about how to implement the task correctly. The documentation home page URL is: https://docs.example.com/";
+  } else {
+    docInstruction = "You also have access to a local grep tool to search through the files in the workspace.";
+  }
+
   const systemPrompt = `You are a professional software engineer agent.
 Your objective is to complete the task defined in task.md.
 You have access to file-system tools and command-running tools.
 Always run tests to verify that your implementation is correct before finishing.
-${!control ? "You also have access to documentation tools. Use them to read about how to implement the task correctly." : ""}`;
+${docInstruction}`;
 
   const messages = [
     {
@@ -414,6 +715,12 @@ ${!control ? "You also have access to documentation tools. Use them to read abou
           } catch (execErr) {
             resultText = `Command failed:\nExit Code: ${execErr.status}\nStdout: ${execErr.stdout}\nStderr: ${execErr.stderr}`;
           }
+        } else if (tc.name === "web_search") {
+          const query = tc.arguments.query;
+          resultText = performMockSearch(query, agentMap);
+        } else if (tc.name === "fetch_webpage") {
+          const url = tc.arguments.url;
+          resultText = await performMockFetch(url, agentMap, taskName, repositoryRoot);
         } else if (tc.name === "grep") {
           const pattern = tc.arguments.pattern;
           const matches = recursiveGrep(sandboxDir, pattern, sandboxDir);
@@ -475,9 +782,12 @@ ${!control ? "You also have access to documentation tools. Use them to read abou
   }
   await rm(sandboxDir, { recursive: true, force: true });
 
+  const groupName = control ? (useWebSearch ? "control-web" : "control") : "experimental";
+
   const result = {
     task: taskName,
     control,
+    web: useWebSearch,
     passed,
     turns,
     tokens: {
@@ -490,7 +800,7 @@ ${!control ? "You also have access to documentation tools. Use them to read abou
 
   const resultsDir = path.join(repositoryRoot, ".dogfood");
   await mkdir(resultsDir, { recursive: true });
-  const outPath = path.join(resultsDir, `eval-result-${taskName}-${control ? "control" : "experimental"}.json`);
+  const outPath = path.join(resultsDir, `eval-result-${taskName}-${groupName}.json`);
   await writeFile(outPath, JSON.stringify(result, null, 2), "utf8");
 
   console.log(`\nEvaluation complete! Saved to ${outPath}`);
