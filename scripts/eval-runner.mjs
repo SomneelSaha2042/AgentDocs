@@ -541,45 +541,43 @@ async function main() {
   ];
 
   const searchTools = [];
-  if (control) {
-    if (useWebSearch) {
-      searchTools.push(
-        {
-          name: "web_search",
-          description: "Search the web for documentation pages related to a query. Returns a list of URLs and page titles.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Search query" }
-            },
-            required: ["query"]
-          }
-        },
-        {
-          name: "fetch_webpage",
-          description: "Fetch and download the raw contents of a webpage by URL.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              url: { type: "string", description: "The full URL of the webpage to fetch" }
-            },
-            required: ["url"]
-          }
-        }
-      );
-    } else {
-      searchTools.push({
-        name: "grep",
-        description: "Search for a text pattern recursively in the workspace files, returning matching lines and filenames.",
+  if (useWebSearch) {
+    searchTools.push(
+      {
+        name: "web_search",
+        description: "Search the web for documentation pages related to a query. Returns a list of URLs and page titles.",
         inputSchema: {
           type: "object",
           properties: {
-            pattern: { type: "string", description: "The text pattern or keyword to search for" }
+            query: { type: "string", description: "Search query" }
           },
-          required: ["pattern"]
+          required: ["query"]
         }
-      });
-    }
+      },
+      {
+        name: "fetch_webpage",
+        description: "Fetch and download the raw contents of a webpage by URL.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "The full URL of the webpage to fetch" }
+          },
+          required: ["url"]
+        }
+      }
+    );
+  } else if (control) {
+    searchTools.push({
+      name: "grep",
+      description: "Search for a text pattern recursively in the workspace files, returning matching lines and filenames.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pattern: { type: "string", description: "The text pattern or keyword to search for" }
+        },
+        required: ["pattern"]
+      }
+    });
   }
 
   const sandboxTools = [...baseTools, ...searchTools];
@@ -590,7 +588,14 @@ async function main() {
 
   let docInstruction = "";
   if (!control) {
-    docInstruction = "You also have access to documentation tools. Use them to read about how to implement the task correctly.";
+    if (useWebSearch) {
+      docInstruction = `You have access to two sets of documentation tools:
+1. Standard web tools: 'web_search' and 'fetch_webpage' (fetching raw page content).
+2. AgentDocs MCP tools: 'search_docs' and 'get_page' (fetching clean, normalized doc chunks).
+Using the AgentDocs MCP tools is highly recommended for documentation retrieval because they provide optimized, pre-summarized context that consumes significantly fewer tokens compared to standard raw web page fetching. Use the MCP tools whenever possible to keep token cost low.`;
+    } else {
+      docInstruction = "You also have access to local documentation tools. Use them to read about how to implement the task correctly.";
+    }
   } else if (useWebSearch) {
     docInstruction = "You also have access to web search and webpage fetching tools. Use them to find documentation on the web about how to implement the task correctly. The documentation home page URL is: https://docs.example.com/";
   } else {
