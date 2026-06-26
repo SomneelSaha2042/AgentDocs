@@ -30,6 +30,11 @@ No deterministic concepts extracted.
 
 - Prefer current SDK examples.
 
+## Guidelines for coding agents
+
+- **Retrieve context once**: Call retrieval/MCP tools (like \`get_task_context\` or \`search_docs\` + \`get_page\`) early in Turn 1 or Turn 2 to build your task context and plan.
+- **Coding & Implementation**: Once documentation context is loaded, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
+
 ## Evidence and source docs
 
 - Setup: setup.md
