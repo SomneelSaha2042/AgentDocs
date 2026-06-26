@@ -4,6 +4,7 @@ import { ArtifactService, McpArtifactError, type ArtifactServiceOptions } from "
 
 export type McpServerOptions = ArtifactServiceOptions & {
   version?: string;
+  allowedTools?: string[];
 };
 
 type JsonRpcId = number | string | null;
@@ -101,7 +102,7 @@ export function createMcpRequestHandler(options: McpServerOptions) {
       return {
         jsonrpc: "2.0",
         id: request.id,
-        result: await dispatch(service, request, options.version ?? "development"),
+        result: await dispatch(service, request, options.version ?? "development", options),
       };
     } catch (error) {
       return {
@@ -144,6 +145,7 @@ async function dispatch(
   service: ArtifactService,
   request: JsonRpcRequest,
   version: string,
+  options?: McpServerOptions,
 ): Promise<unknown> {
   switch (request.method) {
     case "initialize":
@@ -154,8 +156,13 @@ async function dispatch(
       };
     case "ping":
       return {};
-    case "tools/list":
-      return { tools: TOOLS };
+    case "tools/list": {
+      const allowed = options?.allowedTools;
+      const filteredTools = allowed
+        ? TOOLS.filter(t => allowed.includes(t.name))
+        : TOOLS;
+      return { tools: filteredTools };
+    }
     case "tools/call":
       return callTool(service, request.params);
     case "resources/list":

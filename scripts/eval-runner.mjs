@@ -283,8 +283,9 @@ const repositoryRoot = path.resolve(import.meta.dirname, "..");
 
 // Simple MCP Client Implementation
 class McpClient {
-  constructor(cwd) {
+  constructor(cwd, allowedTools = null) {
     this.cwd = cwd;
+    this.allowedTools = allowedTools;
     this.child = null;
     this.requestId = 0;
     this.pendingRequests = new Map();
@@ -292,7 +293,11 @@ class McpClient {
 
   async start() {
     const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
-    this.child = spawn(process.execPath, [cliPath, "--cwd", this.cwd, "serve-mcp"], {
+    const args = ["--cwd", this.cwd, "serve-mcp"];
+    if (this.allowedTools) {
+      args.push("--tools", this.allowedTools);
+    }
+    this.child = spawn(process.execPath, [cliPath, ...args], {
       stdio: ["pipe", "pipe", "inherit"],
     });
 
@@ -444,6 +449,7 @@ async function main() {
   const maxCost = parseFloat(getArg(args, "--max-cost") || "1.00");
 
   const useWebSearch = args.includes("--web");
+  const mcpToolsArg = getArg(args, "--mcp-tools");
 
   console.log(`Starting eval run. Task: ${taskName}, Control Group: ${control}, Web Search harness: ${useWebSearch}, Provider: ${provider}, Model: ${modelName}, Max Cost: $${maxCost}`);
 
@@ -482,8 +488,8 @@ async function main() {
   }
 
   if (!control) {
-    console.log("Experimental Group: Starting MCP server...");
-    mcpClient = new McpClient(sandboxDir);
+    console.log(`Experimental Group: Starting MCP server with tools: ${mcpToolsArg || "all"}...`);
+    mcpClient = new McpClient(sandboxDir, mcpToolsArg);
     await mcpClient.start();
     mcpTools = await mcpClient.listTools();
     console.log(`Loaded ${mcpTools.length} MCP tools.`);
@@ -610,16 +616,24 @@ ${docInstruction}`;
   const startTime = performance.now();
   let done = false;
 
+  const turnsList = [];
+  const toolCallCounts = {};
+
   while (!done && turns < 10) {
     turns++;
     console.log(`\n--- Turn ${turns} ---`);
+    const turnStartTime = performance.now();
+    let turnInputTokens = 0;
+    let turnOutputTokens = 0;
 
     let response;
     try {
       if (provider === "anthropic") {
         const rawRes = await callAnthropic(messages, allTools, systemPrompt);
-        totalInputTokens += rawRes.usage.input_tokens;
-        totalOutputTokens += rawRes.usage.output_tokens;
+        turnInputTokens = rawRes.usage.input_tokens;
+        turnOutputTokens = rawRes.usage.output_tokens;
+        totalInputTokens += turnInputTokens;
+        totalOutputTokens += turnOutputTokens;
         
         response = {
           content: rawRes.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
@@ -631,8 +645,10 @@ ${docInstruction}`;
         };
       } else {
         const rawRes = await callOpenAI(messages, allTools, systemPrompt, modelName);
-        totalInputTokens += rawRes.usage.prompt_tokens;
-        totalOutputTokens += rawRes.usage.completion_tokens;
+        turnInputTokens = rawRes.usage.prompt_tokens;
+        turnOutputTokens = rawRes.usage.completion_tokens;
+        totalInputTokens += turnInputTokens;
+        totalOutputTokens += turnOutputTokens;
 
         const choice = rawRes.choices[0];
         response = {
@@ -651,6 +667,20 @@ ${docInstruction}`;
 
     const estimatedCost = (totalInputTokens / 1000000) * 3.0 + (totalOutputTokens / 1500000) * 15.0; // Approximation for Anthropic/OpenAI/Gemini blended average
     console.log(`Token Usage: ${totalInputTokens} input, ${totalOutputTokens} output. Estimated Cost: $${estimatedCost.toFixed(4)}`);
+
+    for (const tc of response.tool_calls) {
+      toolCallCounts[tc.name] = (toolCallCounts[tc.name] || 0) + 1;
+    }
+
+    const turnDuration = Math.round(performance.now() - turnStartTime);
+    turnsList.push({
+      turn: turns,
+      inputTokens: turnInputTokens,
+      outputTokens: turnOutputTokens,
+      durationMs: turnDuration,
+      toolCalls: response.tool_calls.map(tc => ({ name: tc.name, args: tc.arguments }))
+    });
+
     if (estimatedCost > maxCost) {
       console.log(`Cost limit of $${maxCost} exceeded. Aborting to save budget.`);
       break;
@@ -767,11 +797,14 @@ ${docInstruction}`;
 
   // Run final CI verification
   let passed = false;
+  let testOutput = "";
   try {
-    execSync("node test.mjs", { cwd: sandboxDir, stdio: "inherit" });
+    const out = execSync("node test.mjs", { cwd: sandboxDir, encoding: "utf8", stdio: "pipe" });
     passed = true;
+    testOutput = out;
   } catch (err) {
     console.log("CI check failed.");
+    testOutput = `Test failed:\nStdout: ${err.stdout}\nStderr: ${err.stderr}`;
   }
 
   const duration = Math.round(performance.now() - startTime);
@@ -795,7 +828,11 @@ ${docInstruction}`;
       output: totalOutputTokens,
       total: totalInputTokens + totalOutputTokens
     },
-    durationMs: duration
+    durationMs: duration,
+    mcpToolsLoaded: mcpTools.map(t => t.name),
+    toolCalls: toolCallCounts,
+    turnsBreakdown: turnsList,
+    testOutput
   };
 
   const resultsDir = path.join(repositoryRoot, ".dogfood");
