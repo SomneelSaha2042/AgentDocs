@@ -22,6 +22,20 @@ a run explicitly says it was a live recrawl.
 | June 20, 2026 | Routing improvements | Added built-in route-handler, query-invalidation, and schema-validation task families, then expanded the offline routing fixture. | Offline fixtures now verify four expected task-pack routes and keep routing accuracy separate from readiness score. |
 | June 20, 2026 | Full Phase 5 dogfood rerun | Reran the nine documented prepared targets and populated routing metrics in `.dogfood/regression-summary.csv`. | Stable repeated builds across all targets. Fastify local, TanStack local, Next.js prepared crawl, Supabase, and AgentDocs exact routing passed. Hono quickstart routing failed on local and prepared-crawl targets. |
 | June 23, 2026 | Parser format expansion | Integrated Sphinx/reST and AsciiDoc format normalizers, transclusion resolution, and include-gap doctor auditing. | Sphinx/reST and AsciiDoc/Antora formats supported and verified against django, cpython, spring-framework, and airflow targets. |
+| June 26, 2026 | Active Evaluation Sandbox | Verified the evaluation sandbox harness and added a mock-verified `octokit-pagination` task to benchmark AgentDocs against control groups. | Confirmed successful runs. `octokit-pagination` on `gpt-4o-mini` showed a +100% Success Rate Delta (Control failed, Experimental passed in 7 turns). `dummy-sdk` on `gpt-4o` showed 2 turns saved (Experimental passed in 5 turns, Control in 7). |
+
+## June 26, 2026 Active Evaluation Sandbox
+
+These targets benchmarked the active evaluation sandbox harness using the `dummy-sdk` and a newly created `octokit-pagination` task (running 14 pages of local Octokit REST documentation).
+
+| Task | Model | Control Group | Experimental (MCP) | Turns Saved | Success Delta | Result |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Dummy SDK | `gpt-4o` | Passed (7 turns) | Passed (5 turns) | 2 | 0% | Experimental used `search_docs` and `get_page` to compile exactly what was needed. |
+| Octokit Pagination | `gpt-4o` | Failed (10 turns) | Passed (7 turns) | 3 | +100% | Control failed on ESM module boundaries; Experimental passed in 7 turns. Optimized get_page cut token usage by 74.4% (from 55k to 14.1k tokens). |
+| Fastify Validation | `gpt-4o` | Failed (10 turns) | Passed (5 turns) | 5 | +100% | Control forgot schema nesting; Experimental passed in 5 turns. Optimized get_page cut token usage by 48.7% (from 66.3k to 33.9k tokens). |
+| AgentDocs Config | `gpt-4o-mini` | Passed (4 turns) | Passed (5 turns) | -1 | 0% | Custom API discovery. Control "peeked" at the import snippet directly inside the grep match output. |
+| Next.js App Router | `gpt-4o` | Passed (8 turns) | Passed (7 turns) | 1 | 0% | Complex Pages-to-App Router migration. Experimental saved 1 turn, but schema overhead added 17% more tokens. |
+| AWS JS SDK v3 | `gpt-4o` | Passed (4 turns) | Passed (3 turns) | 1 | 0% | DynamoDB client pagination. Experimental saved 1 turn and 9.8k tokens (72% saved!) by avoiding grep context bloat. |
 
 ## June 23, 2026 Parser Format Expansion Rerun
 

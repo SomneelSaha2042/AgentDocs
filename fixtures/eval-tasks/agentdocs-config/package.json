@@ -1,0 +1,8 @@
+{
+  "name": "agentdocs-config-task",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@agentdocs/shared": "file:C:/Users/somne/Documents/AgentDocs/packages/shared"
+  }
+}

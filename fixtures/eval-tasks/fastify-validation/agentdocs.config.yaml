@@ -1,0 +1,10 @@
+name: Fastify Validation Task
+slug: fastify-validation
+
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md", "**/*.mdx"]
+
+output:
+  dir: .agentdocs

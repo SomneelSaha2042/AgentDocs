@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
@@ -17,7 +18,9 @@ const globals = ["--cwd", target, "--json", ...(options.out === undefined ? [] :
 await mkdir(resultsDirectory, { recursive: true });
 await rm(path.join(resultsDirectory, "failure.json"), { force: true });
 
+const startFirstBuild = performance.now();
 const firstBuild = JSON.parse(await run([...globals, "build"]));
+const durationFirstBuild = Math.round(performance.now() - startFirstBuild);
 const doctor = JSON.parse(await run([...globals, "doctor"]));
 const standardSearches = {
   authentication: JSON.parse(await run([...globals, "search", "authentication", "--limit", "5"])),
@@ -42,7 +45,9 @@ for (const [label, response] of Object.entries(customSearches)) {
 
 const outputRoot = path.dirname(firstBuild.agentMapPath);
 const firstHashes = await artifactHashes(outputRoot);
+const startSecondBuild = performance.now();
 const secondBuild = JSON.parse(await run([...globals, "build"]));
+const durationSecondBuild = Math.round(performance.now() - startSecondBuild);
 const secondHashes = await artifactHashes(outputRoot);
 const repeatedBuildStable = JSON.stringify(firstHashes) === JSON.stringify(secondHashes);
 const agentMap = JSON.parse(await readFile(firstBuild.agentMapPath, "utf8"));
@@ -100,6 +105,10 @@ const summary = {
       })),
     ]),
   ),
+  performance: {
+    buildColdStartMs: durationFirstBuild,
+    buildIncrementalMs: durationSecondBuild,
+  },
   repeatedBuild: {
     stable: repeatedBuildStable,
     firstHash: aggregateHash(firstHashes),
@@ -222,6 +231,9 @@ async function evaluateRouting(options) {
   const expected = results.filter((item) => item.expectedTaskPackIds !== undefined);
   const passed = expected.filter((item) => item.passed === true);
   const failed = expected.filter((item) => item.passed === false);
+  const falsePositiveGate = expected.filter((item) => item.passed === true && item.verificationStatus !== "pass");
+  const truePositiveGate = results.filter((item) => item.classification === "unsafe_mixed_context" && item.verificationStatus !== "pass");
+  const falseNegativeGate = results.filter((item) => item.classification === "unsafe_mixed_context" && item.verificationStatus === "pass");
   return {
     total: results.length,
     expected: expected.length,
@@ -230,7 +242,11 @@ async function evaluateRouting(options) {
     fallback: results.filter((item) => item.classification === "fallback").length,
     matchedRelated: results.filter((item) => item.classification === "matched_related").length,
     unsafeMixedContext: results.filter((item) => item.classification === "unsafe_mixed_context").length,
+    falsePositiveGate: falsePositiveGate.length,
+    truePositiveGate: truePositiveGate.length,
+    falseNegativeGate: falseNegativeGate.length,
     accuracy: expected.length === 0 ? null : roundRatio(passed.length / expected.length),
+    falsePositiveGateRate: passed.length === 0 ? null : roundRatio(falsePositiveGate.length / passed.length),
     results: results.map(({ handoff, verification, ...item }) => item),
   };
 }
@@ -391,7 +407,7 @@ async function updateMatrix(filePath, summary) {
 }
 
 function csvHeader() {
-  return "target,pages,task_packs,readiness,source_coverage_ratio,source_coverage_gap,routing_goals,routing_expected,routing_passed,routing_failed,routing_accuracy,search_auth_good,search_quickstart_good,agent_task_passed,notes";
+  return "target,pages,task_packs,readiness,source_coverage_ratio,source_coverage_gap,routing_goals,routing_expected,routing_passed,routing_failed,routing_accuracy,routing_false_positive_gate_rate,build_cold_start_ms,build_incremental_ms,search_auth_good,search_quickstart_good,agent_task_passed,notes";
 }
 
 function csvRow(summary) {
@@ -407,6 +423,9 @@ function csvRow(summary) {
     summary.routing.passed,
     summary.routing.failed,
     summary.routing.accuracy ?? "",
+    summary.routing.falsePositiveGateRate ?? "",
+    summary.performance?.buildColdStartMs ?? "",
+    summary.performance?.buildIncrementalMs ?? "",
     summary.judgments.searchAuthGood,
     summary.judgments.searchQuickstartGood,
     summary.judgments.agentTaskPassed,

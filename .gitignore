@@ -10,3 +10,11 @@ docs/.vitepress/cache/
 docs/.vitepress/dist/
 docs/.vitepress/.temp/
 *.tsbuildinfo
+.env
+
+# Ignore large copied mock docs in eval tasks
+fixtures/eval-tasks/aws-js-v3/docs/
+fixtures/eval-tasks/kubernetes-deployment/docs/
+fixtures/eval-tasks/fastify-validation/docs/
+fixtures/eval-tasks/octokit-pagination/docs/
+fixtures/eval-tasks/agentdocs-config/docs/

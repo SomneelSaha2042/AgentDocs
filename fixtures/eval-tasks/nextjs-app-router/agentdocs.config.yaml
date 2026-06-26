@@ -1,0 +1,12 @@
+name: NextJS Router Task
+slug: nextjs-router-task
+sources:
+  - type: local_markdown
+    path: docs
+context:
+  preferred:
+    version: v14
+normalization:
+  mdx: tolerant
+doctor:
+  minScore: 0

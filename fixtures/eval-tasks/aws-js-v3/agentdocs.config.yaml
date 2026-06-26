@@ -1,0 +1,12 @@
+name: AWS JS SDK v3 Task
+slug: aws-js-v3
+sources:
+  - type: local_markdown
+    path: docs
+context:
+  preferred:
+    version: v3
+normalization:
+  mdx: tolerant
+doctor:
+  minScore: 0

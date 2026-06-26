@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-app-router",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0"
+  }
+}

@@ -186,9 +186,20 @@ async function callTool(
           isRecord(args.filters) && isRecord(args.filters.facets) ? stringRecord(args.filters.facets) : undefined,
         );
         break;
-      case "get_page":
-        result = { page: await service.getPage(requiredString(args.pageId, "pageId")) };
+      case "get_page": {
+        const page = await service.getPage(requiredString(args.pageId, "pageId"));
+        result = { 
+          page: {
+            id: page.id,
+            title: page.title,
+            sourceUrl: page.sourceUrl,
+            repoPath: page.repoPath,
+            markdown: page.markdown,
+            versionHints: page.versionHints
+          }
+        };
         break;
+      }
       case "get_task_pack":
         result = { taskPack: await service.getTaskPack(requiredString(args.task, "task")) };
         break;

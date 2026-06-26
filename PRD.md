@@ -440,6 +440,18 @@ Task packs must not claim unsupported behavior. If evidence is weak, the pack sh
 - Generated artifacts validate against schemas.
 - The MVP has no required LLM dependency.
 
+### Production value metrics
+
+The current metrics prove the compiler works. What is needed to actually measure value in production:
+
+- **Task success rate delta**: % of agent tasks that produce passing CI with AgentDocs context vs. without, on a fixed task suite.
+- **Time-to-correct-implementation**: How many agent turns/tokens until a passing implementation, with and without AgentDocs.
+- **Context conflict rate surfaced vs. missed**: Of all cases where an agent would have received wrong-version context, what % did AgentDocs catch?
+- **Routing precision@1**: For a given natural language task goal, does the correct task pack appear first, measured across a standardized task suite (not just the targets the tool was tuned on).
+- **False positive gate rate**: How often does verify-context fail when the context was actually safe? (i.e., is the gate blocking legitimate work).
+- **Build cold-start and incremental time**: At repo scale; this matters for CI integration cost.
+- **Per-task token usage delta**: Does using task packs reduce the token budget the agent spends on context retrieval?
+
 ## 15. Future scope
 
 Potential future features:

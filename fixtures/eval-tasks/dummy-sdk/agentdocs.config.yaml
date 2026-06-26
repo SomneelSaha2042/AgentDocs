@@ -1,0 +1,12 @@
+name: Dummy SDK Task
+slug: dummy-sdk-task
+sources:
+  - type: local_markdown
+    path: docs
+context:
+  preferred:
+    version: v1
+normalization:
+  mdx: tolerant
+doctor:
+  minScore: 0

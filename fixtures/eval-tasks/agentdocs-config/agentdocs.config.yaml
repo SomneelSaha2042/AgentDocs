@@ -1,0 +1,10 @@
+name: AgentDocs Config Task
+slug: agentdocs-config
+
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md", "**/*.mdx"]
+
+output:
+  dir: .agentdocs
