@@ -17,6 +17,11 @@ type Section = {
   lines: string[];
 };
 
+type Block = {
+  kind: "code" | "prose";
+  text: string;
+};
+
 const DEFAULT_MAX_TOKENS = 500;
 
 export function chunkMarkdownByHeading(
@@ -113,50 +118,53 @@ function pushSection(sections: Section[], section: Section): void {
 function splitSection(lines: string[], maxTokens: number): string[] {
   const blocks = toBlocks(lines);
   const chunks: string[] = [];
-  let current: string[] = [];
+  let current: Block[] = [];
 
   for (const block of blocks) {
-    const candidate = [...current, block].join("\n\n").trim();
+    const candidate = serializeBlocks([...current, block]);
     if (current.length === 0 || estimateTokens(candidate) <= maxTokens) {
       current.push(block);
       continue;
     }
-    chunks.push(current.join("\n\n").trim());
-    current = estimateTokens(block) <= maxTokens ? [block] : [];
+    chunks.push(serializeBlocks(current));
+    current = estimateTokens(block.text) <= maxTokens || block.kind === "code" ? [block] : [];
     if (current.length === 0) {
-      chunks.push(...splitOversizedText(block, maxTokens));
+      chunks.push(...splitOversizedProse(block.text, maxTokens));
     }
   }
   if (current.length > 0) {
-    chunks.push(current.join("\n\n").trim());
+    chunks.push(serializeBlocks(current));
   }
   return chunks.filter((chunk) => chunk.length > 0);
 }
 
-function toBlocks(lines: string[]): string[] {
-  const blocks: string[] = [];
+function toBlocks(lines: string[]): Block[] {
+  const blocks: Block[] = [];
   let current: string[] = [];
   let fence: string | undefined;
+  let currentKind: Block["kind"] = "prose";
 
   const flush = () => {
     const value = current.join("\n").trim();
     if (value.length > 0) {
-      blocks.push(value);
+      blocks.push({ kind: currentKind, text: value });
     }
     current = [];
+    currentKind = "prose";
   };
 
   for (const line of lines) {
-    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
     if (fence === undefined && fenceMatch !== null) {
       flush();
-      fence = fenceMatch[1]![0];
+      fence = fenceMatch[1]!;
+      currentKind = "code";
       current.push(line);
       continue;
     }
     if (fence !== undefined) {
       current.push(line);
-      if (fenceMatch?.[1]?.[0] === fence) {
+      if (isClosingFence(fence, line)) {
         flush();
         fence = undefined;
       }
@@ -172,10 +180,18 @@ function toBlocks(lines: string[]): string[] {
   return blocks;
 }
 
-function splitOversizedText(value: string, maxTokens: number): string[] {
-  if (/^\s*(```+|~~~+)/.test(value)) {
-    return [value];
-  }
+function isClosingFence(openingFence: string, line: string): boolean {
+  const closingFence = line.match(/^\s*(`{3,}|~{3,})\s*$/)?.[1];
+  return closingFence !== undefined
+    && closingFence[0] === openingFence[0]
+    && closingFence.length >= openingFence.length;
+}
+
+function serializeBlocks(blocks: Block[]): string {
+  return blocks.map((block) => block.text).join("\n\n").trim();
+}
+
+function splitOversizedProse(value: string, maxTokens: number): string[] {
   const maxCharacters = maxTokens * 4;
   const parts: string[] = [];
   let remaining = value;

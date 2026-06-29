@@ -7,6 +7,9 @@ import {
   type Manifest,
   type SourceCoverage,
   type TaskPack,
+  type Chunk,
+  type CodeBlock,
+  type DocPage,
 } from "@agentdocs/shared";
 
 export type ProjectIdentity = {
@@ -73,7 +76,7 @@ const TASK_FAMILIES: TaskFamily[] = [
     id: "route-handlers",
     title: "Route handlers",
     description: "Implement documented route handlers using router and runtime evidence.",
-    keywords: ["route handler", "route handlers", "app router", "api route", "post route", "get route"],
+    keywords: ["route handler", "route handlers", "api route", "post route", "get route"],
   },
   {
     id: "query-invalidation",
@@ -97,7 +100,11 @@ const TASK_FAMILIES: TaskFamily[] = [
     id: "pagination",
     title: "Pagination",
     description: "Implement pagination using available source evidence.",
-    keywords: ["pagination", "cursor", "page size", "next page"],
+    keywords: [
+      "pagination", "paginate", "paginator", "cursor", "page size", "next page",
+      "next token", "page token", "continuation token", "next cursor", "has more",
+      "offset", "marker",
+    ],
   },
   {
     id: "errors",
@@ -116,6 +123,111 @@ const TASK_FAMILIES: TaskFamily[] = [
     title: "Deployment",
     description: "Deploy using available source evidence.",
     keywords: ["deploy", "deployment", "production", "hosting"],
+  },
+];
+
+type TaskShapeSignal = {
+  families: string[];
+  label: string;
+  bonus: number;
+  match: (ctx: {
+    text: string;
+    headingPath: string[];
+    pageTitle: string;
+    codeBlocks: CodeBlock[];
+  }) => boolean;
+};
+
+type ScoredCodeExample = {
+  implementationEvidence: boolean;
+  relevance: number;
+  source: "chunk" | "sibling";
+  value: string;
+};
+
+const TASK_SHAPE_SIGNALS: TaskShapeSignal[] = [
+  {
+    families: ["schema-validation", "route-handlers"],
+    label: "Route + body schema",
+    bonus: 6,
+    match: ({ text, headingPath, pageTitle, codeBlocks }) => {
+      const heading = `${pageTitle} ${headingPath.join(" ")}`.toLowerCase();
+      const body = text.toLowerCase();
+      
+      const hasRouteTerm = /\b(?:route|handler|router|endpoint|api)\b/i.test(heading) || /\b(?:route|handler|router|endpoint|api)\b/i.test(body);
+      const hasBodyOrSchemaTerm = /\b(?:body|request|schema|json|post|put|patch)\b/i.test(heading) || /\b(?:body|request|schema|json)\b/i.test(body);
+      
+      if (!hasRouteTerm || !hasBodyOrSchemaTerm) return false;
+      
+      return codeBlocks.some((block) => {
+        const val = block.value.toLowerCase();
+        return /\b(?:post|put|patch)\b/i.test(val) 
+          || /\b\w+\.(?:post|put|patch)\b/i.test(val);
+      });
+    },
+  },
+  {
+    families: [],
+    label: "Basic usage example",
+    bonus: 3,
+    match: ({ headingPath, codeBlocks }) => {
+      if (codeBlocks.length === 0) return false;
+      const heading = headingPath.join(" ").toLowerCase();
+      const isAdvanced = /\b(?:compiler|custom|internal|advanced|migration|type\s*provider|extending|deprecated)\b/i.test(heading);
+      return !isAdvanced;
+    },
+  },
+  {
+    families: ["pagination"],
+    label: "Pagination loop",
+    bonus: 4,
+    match: ({ text }) => {
+      const body = text.toLowerCase();
+      const loopMatch = /\b(?:do|while|for\s+await|for)\b/i.test(body);
+      if (!loopMatch) return false;
+      return /\b(?:next|cursor|token|page|marker|offset|hasMore|paginator)\b/i.test(body);
+    },
+  },
+  {
+    families: ["authentication", "quickstart"],
+    label: "Auth initialization",
+    bonus: 4,
+    match: ({ codeBlocks }) => {
+      return codeBlocks.some((block) => {
+        const val = block.value;
+        return /\b(?:new\s+\w*Client|createClient|from)\(/i.test(val);
+      });
+    },
+  },
+  {
+    families: ["webhooks"],
+    label: "Webhook signature",
+    bonus: 4,
+    match: ({ text, codeBlocks }) => {
+      const body = text.toLowerCase();
+      const hasSignature = /\b(?:signature|verify|signing|header)\b/i.test(body);
+      return hasSignature && codeBlocks.length > 0;
+    },
+  },
+  {
+    families: ["installation", "quickstart"],
+    label: "Install + import",
+    bonus: 3,
+    match: ({ text, codeBlocks }) => {
+      const body = text.toLowerCase();
+      const hasInstall = /(?:npm\s+install|npm\s+i|pnpm\s+add|yarn\s+add|bun\s+add|pip\s+install|cargo\s+add|go\s+get)/i.test(body);
+      const hasImport = /\b(?:import|require)\b/i.test(body) || codeBlocks.some((block) => /\b(?:import|require)\b/i.test(block.value));
+      return hasInstall && hasImport;
+    },
+  },
+  {
+    families: [],
+    label: "Advanced/internal penalty",
+    bonus: -4,
+    match: ({ headingPath }) => {
+      const heading = headingPath.join(" ").toLowerCase();
+      return /\b(?:compiler|custom|internal|advanced|migration|type\s*provider|extending)\b/i.test(heading);
+    },
   },
 ];
 
@@ -183,21 +295,26 @@ function generateTaskPack(
     ...(family.requiredFacets ?? {}),
   };
   const candidates = agentMap.chunks
-    .map((chunk) => ({
-      chunk,
-      score: taskScore(
+    .map((chunk) => {
+      const score = taskScore(
         family,
         chunk.text,
         chunk.headingPath,
         pageTitle(agentMap, chunk.pageId),
-      ),
-      facetScore: facetSelectionScore(chunk.facets, requestedFacets),
-    }))
+      );
+      const shapeScore = taskShapeScore(family, chunk, agentMap);
+      return {
+        chunk,
+        score,
+        shapeScore,
+        facetScore: facetSelectionScore(chunk.facets, requestedFacets),
+      };
+    })
     .filter(({ score }) => score > 0)
     .filter(({ chunk }) => contextCompatible(chunk.facets, requestedFacets, exclusiveKeys))
     .sort((left, right) =>
       right.facetScore - left.facetScore
-      || right.score - left.score
+      || (right.score + right.shapeScore) - (left.score + left.shapeScore)
       || compareStrings(left.chunk.id, right.chunk.id));
   const anchoredFacets = anchorExclusiveFacets(
     candidates[0]?.chunk.facets ?? [],
@@ -211,7 +328,7 @@ function generateTaskPack(
   if (ranked.length === 0) {
     return undefined;
   }
-  const strongest = ranked[0]!.score;
+  const strongest = ranked[0]!.score + ranked[0]!.shapeScore;
   const strongTaskEvidence = hasStrongTaskEvidence(family, ranked.map(({ chunk }) => chunk.text));
   if (strongest < 3 && !strongTaskEvidence) {
     return undefined;
@@ -242,34 +359,40 @@ function generateTaskPack(
       evidence: entity.evidence,
     }))
     .sort((left, right) => compareStrings(left.text, right.text));
-  const matchedHeadingIds = new Set(
-    ranked.flatMap(({ chunk }) => {
-      const page = agentMap.pages.find((candidate) => candidate.id === chunk.pageId);
-      const headingText = chunk.headingPath.at(-1);
-      const headings = page?.headings.filter((heading) => heading.text === headingText) ?? [];
-      return headings.length === 1 ? [headings[0]!.id] : [];
-    }),
-  );
+  const topChunkHeadingPath = ranked[0]?.chunk.headingPath ?? [];
+  const scoredExamples = ranked.flatMap<ScoredCodeExample>(({ chunk }) => {
+    const page = agentMap.pages.find((candidate) => candidate.id === chunk.pageId);
+    if (page === undefined) return [];
+    
+    const codeBlocks = getChunkCodeBlocks(agentMap, chunk);
+    if (codeBlocks.length > 0) {
+      return codeBlocks.map<ScoredCodeExample>((block) => ({
+        value: block.value,
+        relevance: codeBlockRelevance(block, page, family, topChunkHeadingPath),
+        implementationEvidence: codeBlockImplementationScore(block, family) > 0,
+        source: "chunk",
+      }));
+    }
+
+    return getSiblingHeadingCodeBlocks(agentMap, chunk).map<ScoredCodeExample>((block) => ({
+      value: block.value,
+      relevance: codeBlockRelevance(block, page, family),
+      implementationEvidence: codeBlockImplementationScore(block, family) > 0,
+      source: "sibling",
+    }));
+  });
+
+  const selectedExamples = scoredExamples
+    .filter((ex) => ex.source === "chunk" ? ex.relevance >= -2 : ex.relevance > 0)
+    .sort((a, b) => b.relevance - a.relevance);
   const codeExamples = stableUniqueInOrder(
-    ranked.flatMap(({ chunk }) => {
-      const page = agentMap.pages.find((candidate) => candidate.id === chunk.pageId);
-      if (page === undefined) {
-        return [];
-      }
-      const hasMatchedHeading = page.headings.some((heading) =>
-        matchedHeadingIds.has(heading.id),
-      );
-      return page.codeBlocks
-        .filter((block) =>
-          hasMatchedHeading
-            ? block.sourceHeadingId !== undefined && matchedHeadingIds.has(block.sourceHeadingId)
-            : block.sourceHeadingId === undefined,
-        )
-        .map((block) => block.value);
-    }),
+    selectedExamples.map((ex) => ex.value)
   ).slice(0, 4);
+
   const context = taskContext(ranked.map(({ chunk }) => chunk.facets), exclusiveKeys);
-  const baseConfidence = strongest >= 6 && requiredPages.length >= 2
+  const hasImplementationEvidence = ranked.some((candidate) => candidate.shapeScore > 0)
+    || selectedExamples.some((example) => example.implementationEvidence);
+  const baseConfidence = strongest >= 6 && requiredPages.length >= 2 && hasImplementationEvidence && codeExamples.length > 0
     ? "high"
     : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
       ? "medium"
@@ -381,7 +504,11 @@ function taskScore(
   const body = text.toLowerCase();
   return family.keywords.reduce((score, keyword) => {
     const normalized = keyword.toLowerCase();
-    return score + (containsKeyword(heading, normalized) ? 3 : containsKeyword(body, normalized) ? 1 : 0);
+    const specificity = Math.max(1, Math.floor(normalized.length / 5));
+    return score + (
+      containsKeyword(heading, normalized) ? 3 * specificity :
+      containsKeyword(body, normalized) ? 1 * specificity : 0
+    );
   }, 0);
 }
 
@@ -448,8 +575,8 @@ function renderAgentsMd(
   taskPacks: TaskPack[],
   rules: string[],
 ): string {
-  const packages = entityNames(agentMap, "package");
-  const versions = entityNames(agentMap, "version");
+  const packages = entityNames(agentMap, "package").filter(isLikelyPackageName).slice(0, 20);
+  const versions = entityNames(agentMap, "version").filter(isLikelyVersionHint).slice(0, 12);
   const installCommands = entityNames(agentMap, "cli_command").filter((command) =>
     /^(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(command),
   );
@@ -489,7 +616,8 @@ ${linesOrFallback([...rules.map((rule) => `- ${rule}`), ...concepts.filter((valu
 
 ## Guidelines for coding agents
 
-- **Retrieve context once**: Call retrieval/MCP tools (like \`get_task_context\` or \`search_docs\` + \`get_page\`) early in Turn 1 or Turn 2 to build your task context and plan.
+- **Retrieve compact context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, and citations.
+- **Read only cited detail**: Use \`read_page\` with the exact citation ID (passed as \`chunkId\`) only when more source detail is needed. Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
 - **Coding & Implementation**: Once documentation context is loaded, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
 
 ## Evidence and source docs
@@ -544,6 +672,22 @@ function sourceEntries(agentMap: AgentMap): Manifest["sources"] {
 
 function entityNames(agentMap: AgentMap, type: AgentMap["entities"][number]["type"]): string[] {
   return agentMap.entities.filter((entity) => entity.type === type).map((entity) => entity.name);
+}
+
+function isLikelyPackageName(value: string): boolean {
+  const normalized = value.replace(/[`,.;:)]+$/g, "");
+  if (normalized !== value.trim()) return false;
+  if (/^(?:and|for|from|install|needed|on|our|plugin|the|to|with)$/i.test(normalized)) return false;
+  return /^(?:@[\w.-]+\/)?[\w.-]+(?:\/[\w.-]+)?$/.test(normalized)
+    && /[a-z]/i.test(normalized)
+    && normalized.length >= 2;
+}
+
+function isLikelyVersionHint(value: string): boolean {
+  const normalized = value.trim();
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(normalized)) return false;
+  return /^(?:v|version\s+)?\d+(?:\.\d+){0,3}(?:[-+][\w.-]+)?$/i.test(normalized)
+    || /^[A-Z]?\d+$/.test(normalized);
 }
 
 function projectDescription(agentMap: AgentMap): string {
@@ -615,4 +759,136 @@ function validateTaskPackReferences(taskPacks: TaskPack[], agentMap: AgentMap): 
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function getChunkCodeBlocks(agentMap: AgentMap, chunk: Chunk): CodeBlock[] {
+  const page = agentMap.pages.find((p) => p.id === chunk.pageId);
+  if (!page) return [];
+  const headingText = chunk.headingPath.at(-1);
+  const headings = page.headings.filter((h) => h.text === headingText);
+  const chunkBlocks = page.codeBlocks.filter((block) =>
+    block.value.trim().length > 0 && chunk.text.includes(block.value.trim()));
+  if (chunkBlocks.length > 0) return chunkBlocks;
+  if (!/^\s*(?:```|~~~)/m.test(chunk.text)) return [];
+  if (headings.length === 1) {
+    const headingId = headings[0]!.id;
+    return page.codeBlocks.filter((b) => b.sourceHeadingId === headingId);
+  }
+  return page.codeBlocks.filter((b) => b.sourceHeadingId === undefined);
+}
+
+function getSiblingHeadingCodeBlocks(agentMap: AgentMap, chunk: Chunk): CodeBlock[] {
+  const page = agentMap.pages.find((p) => p.id === chunk.pageId);
+  if (!page) return [];
+  return page.codeBlocks.filter((block) =>
+    arraysEqual(headingPathFor(page, block.sourceHeadingId), chunk.headingPath));
+}
+
+function taskShapeScore(family: TaskFamily, chunk: Chunk, agentMap: AgentMap): number {
+  const page = agentMap.pages.find((p) => p.id === chunk.pageId);
+  if (!page) return 0;
+  
+  const codeBlocks = getChunkCodeBlocks(agentMap, chunk);
+  const pageTitleVal = page.title;
+  
+  let score = 0;
+  for (const signal of TASK_SHAPE_SIGNALS) {
+    if (signal.families.length > 0 && !signal.families.includes(family.id)) {
+      continue;
+    }
+    if (signal.match({ text: chunk.text, headingPath: chunk.headingPath, pageTitle: pageTitleVal, codeBlocks })) {
+      score += signal.bonus;
+    }
+  }
+  return score;
+}
+
+function headingPathFor(page: DocPage, headingId?: string): string[] {
+  if (headingId === undefined) return [];
+  const index = page.headings.findIndex((heading) => heading.id === headingId);
+  if (index < 0) return [];
+  const target = page.headings[index]!;
+  const parents = page.headings.slice(0, index).filter((heading) => heading.depth < target.depth).reverse();
+  const path: string[] = [];
+  let depth = target.depth;
+  for (const parent of parents) {
+    if (parent.depth < depth) {
+      path.unshift(parent.text);
+      depth = parent.depth;
+    }
+  }
+  return [...path, target.text];
+}
+
+function isAdvancedHeading(headingPath: string[]): boolean {
+  const joined = headingPath.join(" ").toLowerCase();
+  return /\b(?:compiler|custom|internal|advanced|migration|type\s*provider|extending)\b/.test(joined);
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function codeBlockRelevance(
+  block: CodeBlock,
+  page: DocPage,
+  family: TaskFamily,
+  topChunkHeadingPath?: string[],
+): number {
+  let score = codeBlockImplementationScore(block, family);
+  const headingPath = headingPathFor(page, block.sourceHeadingId);
+  if (topChunkHeadingPath !== undefined && arraysEqual(headingPath, topChunkHeadingPath)) score += 6;
+  
+  const normalized = block.value.toLowerCase();
+  score += family.keywords.filter((keyword) => containsKeyword(normalized, keyword.trim().toLowerCase())).length;
+  
+  if (isAdvancedHeading(headingPath)) score -= 4;
+  return score;
+}
+
+function codeBlockImplementationScore(block: CodeBlock, family: TaskFamily): number {
+  const normalized = block.value.toLowerCase();
+  const extracted = block.extracted;
+  const cliCommands = extracted?.cliCommands ?? [];
+  const imports = extracted?.imports ?? [];
+  const httpRoutes = extracted?.httpRoutes ?? [];
+  const envVars = extracted?.envVars ?? [];
+  let score = 0;
+
+  if (family.id === "quickstart" || family.id === "authentication") {
+    if (/\bnew\s+\w*client\b/i.test(block.value) || /\bcreate\w*client\b/i.test(block.value)) score += 4;
+    if (/\b(?:api[_-]?key|token|credential|secret)\b/i.test(block.value)) score += 2;
+  }
+
+  if (family.id === "installation" || family.id === "quickstart") {
+    const hasInstallCommand = cliCommands.some((command) =>
+      /^(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(command),
+    );
+    if (hasInstallCommand) score += 3;
+    if (imports.length > 0 || /\b(?:import|require)\b/i.test(block.value)) score += 1;
+  }
+
+  if (family.id === "route-handlers" || family.id === "schema-validation") {
+    const hasRoute = httpRoutes.length > 0
+      || /\b(?:get|post|put|patch|delete|head|options)\s*\(/i.test(block.value)
+      || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(block.value);
+    if (hasRoute) score += 3;
+    if (family.id === "schema-validation" && /\b(?:schema|json|body|validate|validator)\b/i.test(block.value)) score += 2;
+  }
+
+  if (family.id === "pagination") {
+    const hasLoop = /\b(?:do|while|for\s+await|for)\b/i.test(block.value);
+    const hasPageTerm = /\b(?:next|cursor|token|page|marker|offset|hasmore|paginator)\b/i.test(normalized);
+    if (hasLoop && hasPageTerm) score += 4;
+  }
+
+  if (family.id === "webhooks") {
+    if (/\b(?:signature|verify|signing|header|hmac|secret)\b/i.test(block.value)) score += 4;
+  }
+
+  if (family.id === "configuration") {
+    if (envVars.length > 0 || /\b(?:process\.env|config|configure|option)\b/i.test(block.value)) score += 3;
+  }
+
+  return score;
 }
