@@ -14,12 +14,12 @@ exports[`buildAgentMap > builds a deterministic evidence-linked graph 1`] = `
       "type": "example_for",
     },
     {
-      "from": "example_97c23e77e0d421c0",
+      "from": "example_bd1205a8ba38a25e",
       "to": "env_var_7efbae1a1b0baad7",
       "type": "example_for",
     },
     {
-      "from": "example_97c23e77e0d421c0",
+      "from": "example_bd1205a8ba38a25e",
       "to": "package_4d12ce918d03b7cb",
       "type": "example_for",
     },
@@ -30,7 +30,7 @@ exports[`buildAgentMap > builds a deterministic evidence-linked graph 1`] = `
     },
     {
       "from": "page_19fdf17f25a6d209",
-      "to": "page_4f74d660e0823e45",
+      "to": "page_26715a3fad25cf7d",
       "type": "links_to",
     },
     {
@@ -44,27 +44,27 @@ exports[`buildAgentMap > builds a deterministic evidence-linked graph 1`] = `
       "type": "uses",
     },
     {
-      "from": "page_4f74d660e0823e45",
-      "to": "example_97c23e77e0d421c0",
+      "from": "page_26715a3fad25cf7d",
+      "to": "example_bd1205a8ba38a25e",
       "type": "defines",
     },
     {
-      "from": "page_4f74d660e0823e45",
+      "from": "page_26715a3fad25cf7d",
       "to": "api_e0be5039ada71400",
       "type": "uses",
     },
     {
-      "from": "page_4f74d660e0823e45",
+      "from": "page_26715a3fad25cf7d",
       "to": "env_var_7efbae1a1b0baad7",
       "type": "uses",
     },
     {
-      "from": "page_4f74d660e0823e45",
+      "from": "page_26715a3fad25cf7d",
       "to": "package_4d12ce918d03b7cb",
       "type": "uses",
     },
     {
-      "from": "page_4f74d660e0823e45",
+      "from": "page_26715a3fad25cf7d",
       "to": "version_ef10e7a5fde448c1",
       "type": "versioned_as",
     },
@@ -87,7 +87,7 @@ exports[`buildAgentMap > builds a deterministic evidence-linked graph 1`] = `
       "type": "example",
     },
     {
-      "name": "Setup example code_23510434584ef896",
+      "name": "Setup example code_bb689fc99979495d",
       "type": "example",
     },
     {
