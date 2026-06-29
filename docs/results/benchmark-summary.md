@@ -9,15 +9,13 @@ page.
 
 AgentDocs has deterministic evidence for these claims:
 
-- **Reduces token consumption by up to 72%** (e.g., in `aws-js-v3` pagination task) by providing optimized MCP tool responses and preventing broad grep/file context bloat.
-- **Outperforms un-normalized web retrieval**: In comparisons against a simulated standard agent harness (which searches the web and fetches raw HTML pages), AgentDocs MCP reduces task duration by up to 2 turns and cuts token consumption by up to 40% (e.g., in `aws-js-v3`).
-- **Improves agent task success rates** (+100% success delta on complex validation and pagination tasks like `fastify-validation` and `octokit-pagination` where control group agents failed).
-- **Accelerates task resolution**, saving up to 5 turns per task by guiding agents through pre-summarized task packs.
 - Compiles varied Markdown, MDX, Sphinx/reST, and AsciiDoc/Antora documentation corpora into local artifacts.
 - Repeated builds produce stable generated-artifact hashes.
 - Detects and reports mixed-version, mixed-framework, router, locale, and source-coverage risks.
 - Generates task-shaped handoffs and read-only MCP context from built artifacts.
 - Measures exact task-pack routing separately from readiness score.
+- Provides an active evaluation harness that can isolate AgentDocs MCP, raw local
+  docs, and raw web-style retrieval into separate benchmark groups.
 
 ## What Has Not Been Proven Yet
 
@@ -25,6 +23,10 @@ These are product goals, not proven benchmark claims:
 
 - Engineers spend less time reviewing agent output in production environments.
 - Large-scale production telemetry on token usage reduction.
+- Clean seeded benchmark deltas for task success, turns, and token usage. The
+  June 26, 2026 single-run sandbox numbers are retained as historical
+  directional data, but the control groups were not isolated enough for
+  publishable comparative claims.
 
 ## Current Adoption Scorecard
 
@@ -34,8 +36,8 @@ These are product goals, not proven benchmark claims:
 | Source coverage honesty | Implemented for local/repo Markdown and MDX sources; prepared crawl. |
 | Context-risk detection | Strong for explicit facets and mixed-context warnings. |
 | Exact task-pack routing | Improving; Phase 5 fixed Fastify schema validation, TanStack React invalidation, and Next.js App Router route handlers. |
-| Agent implementation outcomes | **Proven** via sandbox harness; Experimental agents consistently outperform control groups in speed and success. |
-| Comparative baseline | **Measured** across 6 distinct tasks (Dummy SDK, Octokit, Fastify, AgentDocs Config, Next.js, and AWS SDK v3). |
+| Agent implementation outcomes | Active harness implemented; clean seeded rerun pending. |
+| Comparative baseline | Historical single-run data exists; clean isolated controls now available for rerun. |
 
 ## Strongest Case Studies
 

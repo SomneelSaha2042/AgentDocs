@@ -1,287 +1,32 @@
 import { spawn, execSync } from "node:child_process";
-import { mkdir, readFile, writeFile, rm, cp, mkdtemp } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile, rm, cp, mkdtemp, readdir, stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { performance } from "node:perf_hooks";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
-function recursiveGrep(dir, pattern, baseDir) {
-  let results = [];
-  let files;
-  try {
-    files = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (err) {
-    return results;
-  }
-  for (const file of files) {
-    const fullPath = path.join(dir, file.name);
-    if (file.isDirectory()) {
-      if (file.name === "node_modules" || file.name === ".agentdocs" || file.name === "dist" || file.name === ".vitepress" || file.name === ".git") continue;
-      results = results.concat(recursiveGrep(fullPath, pattern, baseDir));
-    } else if (file.isFile()) {
-      try {
-        const content = fs.readFileSync(fullPath, "utf8");
-        const lines = content.split("\n");
-        lines.forEach((line, index) => {
-          if (line.toLowerCase().includes(pattern.toLowerCase())) {
-            const relPath = path.relative(baseDir, fullPath);
-            results.push(`${relPath}:${index + 1}: ${line.trim()}`);
-          }
-        });
-      } catch (err) {
-        // Skip files that cannot be read
-      }
-    }
-  }
-  return results;
-}
-
-function performMockSearch(query, agentMap) {
-  if (!agentMap) return "No search index available.";
-  
-  // Clean query and split into keywords/terms, ignoring empty terms
-  // Filter out site: constraints if any
-  const cleanQuery = query.toLowerCase()
-    .replace(/site:\S+/g, "") // remove site: constraints
-    .replace(/[^a-z0-9\s]/g, " "); // keep alphanumeric and space
-  
-  const terms = cleanQuery.split(/\s+/).filter(t => t.length > 1);
-  if (terms.length === 0) {
-    return `No search results found for query: "${query}"`;
-  }
-
-  const matchedPages = new Map();
-
-  for (const page of agentMap.pages) {
-    let score = 0;
-    const titleLower = page.title.toLowerCase();
-    const markdownLower = page.markdown.toLowerCase();
-    
-    // Check term matches
-    let matchedTermsCount = 0;
-    for (const term of terms) {
-      let termMatched = false;
-      if (titleLower.includes(term)) {
-        score += 15;
-        termMatched = true;
-      }
-      if (markdownLower.includes(term)) {
-        score += 3;
-        termMatched = true;
-      }
-      if (termMatched) {
-        matchedTermsCount++;
-      }
-    }
-    
-    // Bonus for matching more terms
-    if (matchedTermsCount > 0) {
-      score += matchedTermsCount * 10;
-      // Additional big bonus if all terms matched
-      if (matchedTermsCount === terms.length) {
-        score += 50;
-      }
-      
-      matchedPages.set(page.id, {
-        title: page.title,
-        url: page.canonicalUrl || page.sourceUrl || `https://docs.example.com/${page.id}`,
-        score
-      });
-    }
-  }
-
-  for (const chunk of agentMap.chunks) {
-    const chunkTextLower = chunk.text.toLowerCase();
-    let matchedTermsCount = 0;
-    let chunkScore = 0;
-    
-    for (const term of terms) {
-      if (chunkTextLower.includes(term)) {
-        chunkScore += 2;
-        matchedTermsCount++;
-      }
-    }
-    
-    if (matchedTermsCount > 0) {
-      const pageId = chunk.pageId;
-      const pageInfo = matchedPages.get(pageId) || {
-        title: agentMap.pages.find(p => p.id === pageId)?.title || "Untitled",
-        url: agentMap.pages.find(p => p.id === pageId)?.canonicalUrl || `https://docs.example.com/${pageId}`,
-        score: 0
-      };
-      
-      pageInfo.score += chunkScore;
-      if (matchedTermsCount === terms.length) {
-        pageInfo.score += 20; // bonus for all terms matching in the chunk
-      }
-      matchedPages.set(pageId, pageInfo);
-    }
-  }
-
-  const results = Array.from(matchedPages.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  if (results.length === 0) {
-    return `No search results found for query: "${query}"`;
-  }
-  return results.map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}`).join("\n\n");
-}
-
-async function resolveRawHtml(targetPagesDir, page) {
-  let files;
-  try {
-    files = await fs.promises.readdir(targetPagesDir);
-  } catch (err) {
-    return null;
-  }
-
-  const jsonFiles = files.filter(f => f.endsWith(".json"));
-
-  for (const jsonFile of jsonFiles) {
-    try {
-      const metadataPath = path.join(targetPagesDir, jsonFile);
-      const metadata = JSON.parse(await fs.promises.readFile(metadataPath, "utf8"));
-      
-      if (
-        metadata.title && page.title && 
-        metadata.title.toLowerCase().trim() === page.title.toLowerCase().trim()
-      ) {
-        const htmlFile = jsonFile.replace(".json", ".raw.html");
-        const htmlPath = path.join(targetPagesDir, htmlFile);
-        if (fs.existsSync(htmlPath)) {
-          return htmlPath;
-        }
-      }
-      
-      if (
-        metadata.sourceUrl && page.sourceUrl &&
-        metadata.sourceUrl.replace(/\/$/, "") === page.sourceUrl.replace(/\/$/, "")
-      ) {
-        const htmlFile = jsonFile.replace(".json", ".raw.html");
-        const htmlPath = path.join(targetPagesDir, htmlFile);
-        if (fs.existsSync(htmlPath)) {
-          return htmlPath;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  // Fuzzy fallback match by title
-  for (const jsonFile of jsonFiles) {
-    try {
-      const metadataPath = path.join(targetPagesDir, jsonFile);
-      const metadata = JSON.parse(await fs.promises.readFile(metadataPath, "utf8"));
-      
-      if (
-        metadata.title && page.title && 
-        (metadata.title.toLowerCase().includes(page.title.toLowerCase()) || 
-         page.title.toLowerCase().includes(metadata.title.toLowerCase()))
-      ) {
-        const htmlFile = jsonFile.replace(".json", ".raw.html");
-        const htmlPath = path.join(targetPagesDir, htmlFile);
-        if (fs.existsSync(htmlPath)) {
-          return htmlPath;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-  return null;
-}
-
-function cleanRawHtmlToText(html) {
-  // Strip head, scripts, styles, svgs
-  let clean = html
-    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "");
-  
-  // Convert basic HTML elements to markdown-like linebreaks
-  clean = clean
-    .replace(/<\/h[1-6]>/gi, "\n\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "\n- ")
-    .replace(/<\/li>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n");
-
-  // Strip all other HTML tags
-  clean = clean.replace(/<[^>]+>/g, " ");
-  // Collapse whitespace
-  clean = clean.replace(/[ \t]+/g, " ");
-  clean = clean.replace(/\n\s*\n+/g, "\n\n").trim();
-  
-  // Limit length to ~30k chars (around 8k tokens) to prevent rate limit/context crashes
-  if (clean.length > 30000) {
-    clean = clean.slice(0, 30000) + "\n\n[... content truncated by web fetch scraper ...]";
-  }
-  return clean;
-}
-
-// Add simulated web scraper navigation noise to markdown fallbacks
-function addWebScraperBoilerplate(markdown, pageTitle) {
-  const header = `[Web Search Scraper] Document: ${pageTitle || "Untitled Page"}
-Navigation Menu:
-- Home | Guides | Reference | API | Github | Community
-- Sidebar: Getting Started, Configuration, Installation, API Reference, Advanced Topics, Troubleshooting, Support
---------------------------------------------------------------------------------`;
-  const footer = `--------------------------------------------------------------------------------
-Footer: © 2026 Documentation Hub. Built with Docusaurus/VitePress.
-Related Links:
-- Support Channel | Discord | GitHub Issues | NPM Package`;
-  return `${header}\n\n${markdown}\n\n${footer}`;
-}
-
-async function performMockFetch(url, agentMap, taskName, repositoryRoot) {
-  if (!agentMap) return "Webpage fetch error: documentation map not loaded.";
-  const page = agentMap.pages.find(p => p.canonicalUrl === url || p.sourceUrl === url || `https://docs.example.com/${p.id}` === url);
-  if (!page) {
-    return `Error 404: Webpage not found at URL: ${url}`;
-  }
-
-  let targetFolder = taskName;
-  if (taskName === "fastify-validation") {
-    targetFolder = "fastify-crawl";
-  } else if (taskName === "nextjs-app-router") {
-    targetFolder = "nextjs-crawl";
-  }
-
-  const targetPagesDir = path.join(repositoryRoot, ".dogfood", targetFolder, "sources", "pages");
-  
-  // Try direct page ID file first
-  const dogfoodHtmlPath = path.join(targetPagesDir, `${page.id}.raw.html`);
-  try {
-    if (fs.existsSync(dogfoodHtmlPath)) {
-      const htmlContent = await fs.promises.readFile(dogfoodHtmlPath, "utf8");
-      return cleanRawHtmlToText(htmlContent);
-    }
-  } catch (err) {
-    // fallback
-  }
-
-  // Resolve by scanning metadata JSON files
-  const resolvedPath = await resolveRawHtml(targetPagesDir, page);
-  if (resolvedPath) {
-    try {
-      const htmlContent = await fs.promises.readFile(resolvedPath, "utf8");
-      return cleanRawHtmlToText(htmlContent);
-    } catch (err) {
-      // ignore
-    }
-  }
-
-  return addWebScraperBoilerplate(page.markdown, page.title);
-}
-
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
+const GENERATED_ARTIFACT_NAMES = new Set([
+  ".agentdocs",
+  "llms.txt",
+  "AGENTS.md",
+  "agent-map.json",
+  "chunks.jsonl",
+]);
+const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
+  "task.md",
+  "test.mjs",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lockb",
+]);
+const DOCS_DIR_NAME = "docs";
+const MAX_TOOL_RESULT_CHARS = 30000;
 
-// Simple MCP Client Implementation
 class McpClient {
   constructor(cwd, allowedTools = null) {
     this.cwd = cwd;
@@ -316,16 +61,12 @@ class McpClient {
       }
     });
 
-    // Wait a bit for server to start
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Send initialize request
-    const initResponse = await this.request("initialize", {
+    await delay(1000);
+    return this.request("initialize", {
       protocolVersion: "2025-03-26",
       capabilities: {},
-      clientInfo: { name: "eval-runner", version: "1.0.0" }
+      clientInfo: { name: "eval-runner", version: "2.0.0" },
     });
-    return initResponse;
   }
 
   async request(method, params = {}) {
@@ -336,13 +77,11 @@ class McpClient {
         this.pendingRequests.delete(id);
         reject(new Error(`MCP Request timeout: ${method}`));
       }, 5000);
-
       this.pendingRequests.set(id, (res) => {
         clearTimeout(timeout);
         resolve(res);
       });
-      
-      this.child.stdin.write(JSON.stringify(requestPayload) + "\n");
+      this.child.stdin.write(`${JSON.stringify(requestPayload)}\n`);
     });
   }
 
@@ -363,7 +102,75 @@ class McpClient {
   }
 }
 
-// LLM Clients
+class RawDocsCorpus {
+  constructor(root, mode) {
+    this.root = root;
+    this.mode = mode;
+    this.files = [];
+  }
+
+  async load() {
+    this.files = await collectTextFiles(this.root);
+  }
+
+  search(query, limit = 5) {
+    const normalized = normalizeQuery(query);
+    const terms = tokenize(normalized);
+    const results = this.files
+      .map((file) => {
+        const title = titleFor(file);
+        const haystack = `${title}\n${file.content}`.toLowerCase();
+        const score = scoreText(haystack, terms, normalized);
+        const snippet = snippetFor(file.content, terms);
+        return { file, title, score, snippet };
+      })
+      .filter((result) => result.score > 0)
+      .sort((left, right) => right.score - left.score || left.file.relativePath.localeCompare(right.file.relativePath))
+      .slice(0, limit);
+
+    if (results.length === 0) {
+      return `No raw documentation results found for query: "${query}"`;
+    }
+
+    if (this.mode === "web") {
+      return results.map((result, index) => [
+        `${index + 1}. ${result.title}`,
+        `   URL: ${urlFor(result.file.relativePath)}`,
+        `   Snippet: ${result.snippet}`,
+      ].join("\n")).join("\n\n");
+    }
+
+    return results.map((result, index) => [
+      `${index + 1}. ${result.title}`,
+      `   Path: ${toPosix(result.file.relativePath)}`,
+      `   Snippet: ${result.snippet}`,
+    ].join("\n")).join("\n\n");
+  }
+
+  readRawDoc(relativePath, maxChars = 12000) {
+    const safePath = normalizeRelativePath(relativePath);
+    const file = this.files.find((candidate) => toPosix(candidate.relativePath) === safePath);
+    if (!file) {
+      return `Raw documentation file not found: ${relativePath}`;
+    }
+    return truncate(file.content, maxChars, `raw documentation file ${safePath}`);
+  }
+
+  fetchWebpage(url) {
+    const parsed = parseDocsExampleUrl(url);
+    if (parsed === undefined) {
+      return `Webpage fetch error: URL is outside the deterministic docs corpus: ${url}`;
+    }
+    const file = this.files.find((candidate) => toPosix(candidate.relativePath) === parsed);
+    if (!file) {
+      return `Error 404: Webpage not found at URL: ${url}`;
+    }
+    const body = file.extension === ".html" ? cleanRawHtmlToText(file.content) : file.content;
+    const noisy = addWebScraperBoilerplate(body, titleFor(file));
+    return truncate(noisy, MAX_TOOL_RESULT_CHARS, `webpage ${url}`);
+  }
+}
+
 async function callAnthropic(messages, tools, system) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set.");
@@ -380,10 +187,10 @@ async function callAnthropic(messages, tools, system) {
       max_tokens: 4000,
       system,
       messages,
-      tools: tools.map(t => ({
+      tools: tools.map((t) => ({
         name: t.name,
         description: t.description,
-        input_schema: t.inputSchema || t.input_schema
+        input_schema: t.inputSchema || t.input_schema,
       })),
     }),
   });
@@ -402,225 +209,238 @@ async function callOpenAI(messages, tools, system, modelName = "gpt-4o") {
 
   const openAiMessages = [
     { role: "system", content: system },
-    ...messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === "string" ? m.content : m.content.map(c => c.text || "").join("\n"),
-      tool_calls: m.tool_calls,
-      name: m.name,
-      tool_call_id: m.tool_call_id
-    }))
+    ...messages.map((message) => ({
+      role: message.role,
+      content: typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) => part.text || "").join("\n"),
+      tool_calls: message.tool_calls,
+      name: message.name,
+      tool_call_id: message.tool_call_id,
+    })),
   ];
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: openAiMessages,
-      tools: tools.map(t => ({
-        type: "function",
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema || t.input_schema
-        }
-      })),
-    }),
+  const body = JSON.stringify({
+    model: modelName,
+    messages: openAiMessages,
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema || t.input_schema,
+      },
+    })),
+    seed: globalThis.__agentdocsEvalSeed,
   });
 
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body,
+    });
+
+    if (response.ok) {
+      return response.json();
+    }
+
     const text = await response.text();
+    if (response.status === 429 && attempt < 4) {
+      const waitSeconds = retryAfterSeconds(response, text) ?? Math.min(30, attempt * 5);
+      console.warn(`OpenAI rate limit hit. Retrying in ${waitSeconds}s (attempt ${attempt + 1}/4).`);
+      await delay(waitSeconds * 1000);
+      continue;
+    }
+
     throw new Error(`OpenAI API Error (${response.status}): ${text}`);
   }
-
-  return response.json();
 }
 
-// Runner
 async function main() {
   const args = process.argv.slice(2);
   const taskName = getArg(args, "--task") || "dummy-sdk";
-  const control = args.includes("--control");
+  const seed = Number(getArg(args, "--seed") || "1");
   const provider = getArg(args, "--provider") || (process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai");
   const modelName = getArg(args, "--model") || (provider === "openai" ? "gpt-4o" : "claude-3-5-sonnet-20241022");
   const maxCost = parseFloat(getArg(args, "--max-cost") || "1.00");
+  const requestedGroup = resolveGroup(args);
+  const mcpToolsArg = getArg(args, "--mcp-tools")
+    || (requestedGroup === "experimental-agentdocs" ? "query_docs,read_page" : null);
+  const keepSandbox = args.includes("--keep-sandbox");
+  const dryRun = args.includes("--dry-run");
+  globalThis.__agentdocsEvalSeed = seed;
 
-  const useWebSearch = args.includes("--web");
-  const mcpToolsArg = getArg(args, "--mcp-tools");
-
-  console.log(`Starting eval run. Task: ${taskName}, Control Group: ${control}, Web Search harness: ${useWebSearch}, Provider: ${provider}, Model: ${modelName}, Max Cost: $${maxCost}`);
+  console.log(`Starting eval run. Task: ${taskName}, Group: ${requestedGroup}, Provider: ${provider}, Model: ${modelName}, Seed: ${seed}, Max Cost: $${maxCost}`);
 
   const taskDir = path.join(repositoryRoot, "fixtures", "eval-tasks", taskName);
-  const sandboxDir = await mkdtemp(path.join(os.tmpdir(), `agentdocs-eval-sandbox-${taskName}-`));
-  console.log(`Sandbox directory: ${sandboxDir}`);
-
-  // Copy task files to sandbox
-  await cp(taskDir, sandboxDir, { recursive: true });
-
-  // Install dependencies in sandbox
-  try {
-    console.log("Installing sandbox dependencies...");
-    execSync("npm install", { cwd: sandboxDir, stdio: "inherit" });
-  } catch (err) {
-    console.warn("Failed to install sandbox dependencies:", err.message);
-  }
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), `agentdocs-eval-${taskName}-${requestedGroup}-`));
+  const workspaceDir = path.join(sandboxRoot, "workspace");
+  const corpusDir = path.join(sandboxRoot, "raw-docs-corpus");
+  const buildDir = path.join(sandboxRoot, "agentdocs-build");
+  console.log(`Sandbox root: ${sandboxRoot}`);
 
   let mcpClient = null;
   let mcpTools = [];
+  let cleanupHandled = false;
+  const docsTelemetry = { docsBytesReturned: 0, retrievalPayloadTokenEstimate: 0, byTool: {} };
 
-  // Generate agent-map.json by building first (so we can use it to map URLs and search mock pages)
-  console.log("Pre-building AgentDocs to generate documentation index...");
-  const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
   try {
-    execSync(`"${process.execPath}" "${cliPath}" --cwd "${sandboxDir}" build`, { stdio: "inherit" });
-  } catch (err) {
-    console.warn("Pre-build failed, mock index might be missing:", err.message);
-  }
-
-  let agentMap = null;
-  try {
-    agentMap = JSON.parse(await readFile(path.join(sandboxDir, ".agentdocs", "agent-map.json"), "utf8"));
-  } catch (err) {
-    console.warn("Could not load agent-map.json for web simulation:", err.message);
-  }
-
-  if (!control) {
-    console.log(`Experimental Group: Starting MCP server with tools: ${mcpToolsArg || "all"}...`);
-    mcpClient = new McpClient(sandboxDir, mcpToolsArg);
-    await mcpClient.start();
-    mcpTools = await mcpClient.listTools();
-    console.log(`Loaded ${mcpTools.length} MCP tools.`);
-  } else {
-    console.log(`Control Group: Skipping AgentDocs MCP context. Web Search harness: ${useWebSearch}`);
-    if (useWebSearch) {
-      // Remove local documentation folder and generated artifacts from workspace so agent MUST use web search
-      await rm(path.join(sandboxDir, "docs"), { recursive: true, force: true }).catch(() => {});
-      await rm(path.join(sandboxDir, ".agentdocs"), { recursive: true, force: true }).catch(() => {});
+    await prepareSandbox({ taskDir, workspaceDir, corpusDir, buildDir, group: requestedGroup });
+    const contaminationBefore = await checkContamination(workspaceDir, requestedGroup);
+    if (!contaminationBefore.passed) {
+      throw new Error(`Workspace contamination before run: ${contaminationBefore.violations.join("; ")}`);
     }
-  }
 
-  // Base sandbox tools
-  const baseTools = [
-    {
-      name: "write_file",
-      description: "Write content to a file in the workspace.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Relative path in sandbox" },
-          content: { type: "string", description: "File content" }
-        },
-        required: ["path", "content"]
-      }
-    },
-    {
-      name: "read_file",
-      description: "Read a file's content from the workspace.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Relative path in sandbox" }
-        },
-        required: ["path"]
-      }
-    },
-    {
-      name: "run_command",
-      description: "Run a shell command in the workspace to test your code. Use this to verify your changes.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          command: { type: "string", description: "Command to execute" }
-        },
-        required: ["command"]
-      }
+    if (!dryRun) {
+      installDependencies(workspaceDir);
     }
-  ];
+    const protectedFilesBefore = await snapshotProtectedFiles(workspaceDir, requestedGroup);
 
-  const searchTools = [];
-  if (useWebSearch) {
-    searchTools.push(
+    let rawCorpus = null;
+    if (requestedGroup === "control-local-raw" || requestedGroup === "control-web-raw") {
+      rawCorpus = new RawDocsCorpus(corpusDir, requestedGroup === "control-web-raw" ? "web" : "local");
+      await rawCorpus.load();
+      console.log(`Loaded ${rawCorpus.files.length} raw documentation file(s).`);
+    }
+
+    let agentdocsBuildHash = null;
+    if (requestedGroup === "experimental-agentdocs") {
+      agentdocsBuildHash = await buildAgentDocs(buildDir);
+      console.log(`Experimental Group: Starting MCP server with tools: ${mcpToolsArg || "all"}...`);
+      mcpClient = new McpClient(buildDir, mcpToolsArg);
+      await mcpClient.start();
+      mcpTools = await mcpClient.listTools();
+      console.log(`Loaded ${mcpTools.length} MCP tools.`);
+    }
+
+    const baseTools = workspaceTools();
+    const corpusTools = requestedGroup === "control-local-raw"
+      ? rawLocalTools()
+      : requestedGroup === "control-web-raw"
+        ? rawWebTools()
+        : [];
+    const allTools = [...baseTools, ...corpusTools, ...mcpTools];
+    const toolSchemaTokenEstimate = estimateTokens(JSON.stringify(allTools));
+    const taskDesc = await readFile(path.join(workspaceDir, "task.md"), "utf8");
+    const systemPrompt = systemPromptFor(requestedGroup);
+    const messages = [
       {
-        name: "web_search",
-        description: "Search the web for documentation pages related to a query. Returns a list of URLs and page titles.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Search query" }
-          },
-          required: ["query"]
-        }
+        role: "user",
+        content: `Here is your task:\n\n${taskDesc}\n\nPlease implement the solution now.`,
       },
-      {
-        name: "fetch_webpage",
-        description: "Fetch and download the raw contents of a webpage by URL.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "The full URL of the webpage to fetch" }
-          },
-          required: ["url"]
-        }
-      }
-    );
-  } else if (control) {
-    searchTools.push({
-      name: "grep",
-      description: "Search for a text pattern recursively in the workspace files, returning matching lines and filenames.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          pattern: { type: "string", description: "The text pattern or keyword to search for" }
-        },
-        required: ["pattern"]
-      }
+    ];
+
+    if (dryRun) {
+      const result = await finishRun({
+        taskName,
+        group: requestedGroup,
+        provider,
+        modelName,
+        seed,
+        passed: false,
+        turns: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        startTime: performance.now(),
+        mcpTools,
+        toolCallCounts: {},
+        turnsList: [],
+        testOutput: "Dry run completed without calling an LLM.",
+        workspaceDir,
+        sandboxRoot,
+        corpusDir,
+        buildDir,
+        toolSchemaTokenEstimate,
+        docsTelemetry,
+        protectedFilesBefore,
+        agentdocsBuildHash,
+        contaminationBefore,
+        dryRun,
+        keepSandbox,
+      });
+      cleanupHandled = true;
+      console.log(result);
+      return;
+    }
+
+    const runState = await runAgentLoop({
+      provider,
+      modelName,
+      messages,
+      allTools,
+      systemPrompt,
+      maxCost,
+      workspaceDir,
+      corpus: rawCorpus,
+      mcpClient,
+      docsTelemetry,
+      group: requestedGroup,
     });
-  }
 
-  const sandboxTools = [...baseTools, ...searchTools];
-  const allTools = [...sandboxTools, ...mcpTools];
+    const { passed, testOutput } = runFinalVerification(workspaceDir);
+    const result = await finishRun({
+      taskName,
+      group: requestedGroup,
+      provider,
+      modelName,
+      seed,
+      passed,
+      turns: runState.turns,
+      totalInputTokens: runState.totalInputTokens,
+      totalOutputTokens: runState.totalOutputTokens,
+      startTime: runState.startTime,
+      mcpTools,
+      toolCallCounts: runState.toolCallCounts,
+      turnsList: runState.turnsList,
+      testOutput,
+      workspaceDir,
+      sandboxRoot,
+      corpusDir,
+      buildDir,
+      toolSchemaTokenEstimate,
+      docsTelemetry,
+      protectedFilesBefore,
+      agentdocsBuildHash,
+      contaminationBefore,
+      dryRun,
+      keepSandbox,
+    });
+    cleanupHandled = true;
 
-  // Load task description
-  const taskDesc = await readFile(path.join(sandboxDir, "task.md"), "utf8");
-
-  let docInstruction = "";
-  if (!control) {
-    if (useWebSearch) {
-      docInstruction = `You have access to two sets of documentation tools:
-1. Standard web tools: 'web_search' and 'fetch_webpage' (fetching raw page content).
-2. AgentDocs MCP tools: 'search_docs' and 'get_page' (fetching clean, normalized doc chunks).
-Using the AgentDocs MCP tools is highly recommended for documentation retrieval because they provide optimized, pre-summarized context that consumes significantly fewer tokens compared to standard raw web page fetching. Use the MCP tools whenever possible to keep token cost low.`;
-    } else {
-      docInstruction = "You also have access to local documentation tools. Use them to read about how to implement the task correctly.";
+    console.log("\nEvaluation complete!");
+    console.log(result);
+  } finally {
+    if (mcpClient) {
+      await mcpClient.stop();
     }
-  } else if (useWebSearch) {
-    docInstruction = "You also have access to web search and webpage fetching tools. Use them to find documentation on the web about how to implement the task correctly. The documentation home page URL is: https://docs.example.com/";
-  } else {
-    docInstruction = "You also have access to a local grep tool to search through the files in the workspace.";
-  }
-
-  const systemPrompt = `You are a professional software engineer agent.
-Your objective is to complete the task defined in task.md.
-You have access to file-system tools and command-running tools.
-Always run tests to verify that your implementation is correct before finishing.
-${docInstruction}`;
-
-  const messages = [
-    {
-      role: "user",
-      content: `Here is your task:\n\n${taskDesc}\n\nPlease implement the solution now.`
+    if (!keepSandbox && !cleanupHandled) {
+      await rm(sandboxRoot, { recursive: true, force: true });
     }
-  ];
+  }
+}
 
+async function runAgentLoop({
+  provider,
+  modelName,
+  messages,
+  allTools,
+  systemPrompt,
+  maxCost,
+  workspaceDir,
+  corpus,
+  mcpClient,
+  docsTelemetry,
+  group,
+}) {
   let turns = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   const startTime = performance.now();
   let done = false;
-
   const turnsList = [];
   const toolCallCounts = {};
 
@@ -630,47 +450,43 @@ ${docInstruction}`;
     const turnStartTime = performance.now();
     let turnInputTokens = 0;
     let turnOutputTokens = 0;
-
     let response;
+
     try {
       if (provider === "anthropic") {
         const rawRes = await callAnthropic(messages, allTools, systemPrompt);
         turnInputTokens = rawRes.usage.input_tokens;
         turnOutputTokens = rawRes.usage.output_tokens;
-        totalInputTokens += turnInputTokens;
-        totalOutputTokens += turnOutputTokens;
-        
         response = {
-          content: rawRes.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
-          tool_calls: rawRes.content.filter(c => c.type === "tool_use").map(c => ({
+          content: rawRes.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
+          tool_calls: rawRes.content.filter((c) => c.type === "tool_use").map((c) => ({
             id: c.id,
             name: c.name,
-            arguments: c.input
-          }))
+            arguments: c.input,
+          })),
         };
       } else {
         const rawRes = await callOpenAI(messages, allTools, systemPrompt, modelName);
         turnInputTokens = rawRes.usage.prompt_tokens;
         turnOutputTokens = rawRes.usage.completion_tokens;
-        totalInputTokens += turnInputTokens;
-        totalOutputTokens += turnOutputTokens;
-
         const choice = rawRes.choices[0];
         response = {
           content: choice.message.content || "",
-          tool_calls: choice.message.tool_calls?.map(tc => ({
+          tool_calls: choice.message.tool_calls?.map((tc) => ({
             id: tc.id,
             name: tc.function.name,
-            arguments: JSON.parse(tc.function.arguments)
-          })) || []
+            arguments: JSON.parse(tc.function.arguments),
+          })) || [],
         };
       }
     } catch (err) {
-      console.error("LLM Call failed:", err);
-      break;
+      console.error("LLM call failed:", err);
+      throw err;
     }
 
-    const estimatedCost = (totalInputTokens / 1000000) * 3.0 + (totalOutputTokens / 1500000) * 15.0; // Approximation for Anthropic/OpenAI/Gemini blended average
+    totalInputTokens += turnInputTokens;
+    totalOutputTokens += turnOutputTokens;
+    const estimatedCost = estimateCost(totalInputTokens, totalOutputTokens);
     console.log(`Token Usage: ${totalInputTokens} input, ${totalOutputTokens} output. Estimated Cost: $${estimatedCost.toFixed(4)}`);
 
     for (const tc of response.tool_calls) {
@@ -683,7 +499,7 @@ ${docInstruction}`;
       inputTokens: turnInputTokens,
       outputTokens: turnOutputTokens,
       durationMs: turnDuration,
-      toolCalls: response.tool_calls.map(tc => ({ name: tc.name, args: tc.arguments }))
+      toolCalls: response.tool_calls.map((tc) => ({ name: tc.name, args: tc.arguments })),
     });
 
     if (estimatedCost > maxCost) {
@@ -695,34 +511,7 @@ ${docInstruction}`;
       console.log(`Agent: ${response.content}`);
     }
 
-    // Add assistant's response to history
-    if (provider === "anthropic") {
-      messages.push({
-        role: "assistant",
-        content: [
-          ...(response.content ? [{ type: "text", text: response.content }] : []),
-          ...response.tool_calls.map(tc => ({
-            type: "tool_use",
-            id: tc.id,
-            name: tc.name,
-            input: tc.arguments
-          }))
-        ]
-      });
-    } else {
-      messages.push({
-        role: "assistant",
-        content: response.content,
-        tool_calls: response.tool_calls.map(tc => ({
-          id: tc.id,
-          type: "function",
-          function: {
-            name: tc.name,
-            arguments: JSON.stringify(tc.arguments)
-          }
-        }))
-      });
-    }
+    pushAssistantMessage(provider, messages, response);
 
     if (response.tool_calls.length === 0) {
       console.log("Agent finished (no more tool calls).");
@@ -730,123 +519,622 @@ ${docInstruction}`;
       break;
     }
 
-    // Execute tool calls
     for (const tc of response.tool_calls) {
       console.log(`Tool Call: ${tc.name}(${JSON.stringify(tc.arguments)})`);
-      let resultText = "";
-      try {
-        if (tc.name === "write_file") {
-          const filePath = path.join(sandboxDir, tc.arguments.path);
-          await mkdir(path.dirname(filePath), { recursive: true });
-          await writeFile(filePath, tc.arguments.content, "utf8");
-          resultText = `Successfully wrote to ${tc.arguments.path}`;
-        } else if (tc.name === "read_file") {
-          const filePath = path.join(sandboxDir, tc.arguments.path);
-          resultText = await readFile(filePath, "utf8");
-        } else if (tc.name === "run_command") {
-          try {
-            const out = execSync(tc.arguments.command, { cwd: sandboxDir, encoding: "utf8", stdio: "pipe" });
-            resultText = out || "Command executed with no output.";
-          } catch (execErr) {
-            resultText = `Command failed:\nExit Code: ${execErr.status}\nStdout: ${execErr.stdout}\nStderr: ${execErr.stderr}`;
-          }
-        } else if (tc.name === "web_search") {
-          const query = tc.arguments.query;
-          resultText = performMockSearch(query, agentMap);
-        } else if (tc.name === "fetch_webpage") {
-          const url = tc.arguments.url;
-          resultText = await performMockFetch(url, agentMap, taskName, repositoryRoot);
-        } else if (tc.name === "grep") {
-          const pattern = tc.arguments.pattern;
-          const matches = recursiveGrep(sandboxDir, pattern, sandboxDir);
-          if (matches.length === 0) {
-            resultText = "No matches found.";
-          } else {
-            resultText = matches.slice(0, 100).join("\n");
-            if (matches.length > 100) {
-              resultText += `\n... truncated. Found ${matches.length} matches total.`;
-            }
-          }
-        } else {
-          // MCP tool call
-          const mcpResult = await mcpClient.callTool(tc.name, tc.arguments);
-          resultText = mcpResult.content.map(c => c.text).join("\n");
-        }
-      } catch (err) {
-        resultText = `Tool call execution error: ${err.message}`;
-      }
-
+      const resultText = await executeToolCall({
+        toolCall: tc,
+        workspaceDir,
+        corpus,
+        mcpClient,
+        docsTelemetry,
+        group,
+      });
       console.log(`Tool Result: ${resultText.slice(0, 100)}...`);
-
-      if (provider === "anthropic") {
-        messages.push({
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: tc.id,
-              content: resultText
-            }
-          ]
-        });
-      } else {
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          name: tc.name,
-          content: resultText
-        });
-      }
+      pushToolResult(provider, messages, tc, resultText);
     }
   }
 
-  // Run final CI verification
+  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts };
+}
+
+async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, group }) {
+  try {
+    let resultText = "";
+    const args = toolCall.arguments;
+    if (toolCall.name === "write_file") {
+      const filePath = resolveInside(workspaceDir, requiredString(args.path, "path"));
+      assertWritableWorkspacePath(workspaceDir, filePath, group);
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, requiredString(args.content, "content"), "utf8");
+      resultText = `Successfully wrote to ${args.path}`;
+    } else if (toolCall.name === "read_file") {
+      const filePath = resolveInside(workspaceDir, requiredString(args.path, "path"));
+      const content = await readFile(filePath, "utf8");
+      resultText = truncate(content, 30000, `file ${args.path}`);
+    } else if (toolCall.name === "run_command") {
+      resultText = runWorkspaceCommand(workspaceDir, requiredString(args.command, "command"), group);
+    } else if (toolCall.name === "search_raw_docs") {
+      resultText = corpus.search(requiredString(args.query, "query"), optionalLimit(args.limit, 5));
+      recordDocsPayload(docsTelemetry, toolCall.name, resultText);
+    } else if (toolCall.name === "read_raw_doc") {
+      resultText = corpus.readRawDoc(requiredString(args.path, "path"), optionalLimit(args.maxChars, 12000));
+      recordDocsPayload(docsTelemetry, toolCall.name, resultText);
+    } else if (toolCall.name === "web_search") {
+      resultText = corpus.search(requiredString(args.query, "query"), optionalLimit(args.limit, 5));
+      recordDocsPayload(docsTelemetry, toolCall.name, resultText);
+    } else if (toolCall.name === "fetch_webpage") {
+      resultText = corpus.fetchWebpage(requiredString(args.url, "url"));
+      recordDocsPayload(docsTelemetry, toolCall.name, resultText);
+    } else {
+      const mcpResult = await mcpClient.callTool(toolCall.name, args);
+      resultText = mcpResult.content.map((c) => c.text).join("\n");
+      recordDocsPayload(docsTelemetry, toolCall.name, resultText);
+    }
+    return resultText;
+  } catch (err) {
+    return `Tool call execution error: ${err.message}`;
+  }
+}
+
+async function prepareSandbox({ taskDir, workspaceDir, corpusDir, buildDir, group }) {
+  await mkdir(path.dirname(workspaceDir), { recursive: true });
+  await cp(taskDir, workspaceDir, { recursive: true });
+  await cp(taskDir, buildDir, { recursive: true });
+  const docsPath = path.join(taskDir, DOCS_DIR_NAME);
+  if (fs.existsSync(docsPath)) {
+    await cp(docsPath, corpusDir, { recursive: true });
+  } else {
+    await mkdir(corpusDir, { recursive: true });
+  }
+  const keepDocs = group === "experimental-agentdocs-local-coldstart";
+  await stripDocsAndGeneratedArtifacts(workspaceDir, keepDocs);
+  if (group !== "experimental-agentdocs") {
+    await stripDocsAndGeneratedArtifacts(buildDir, group === "experimental-agentdocs-local-coldstart");
+  }
+}
+
+async function stripDocsAndGeneratedArtifacts(root, keepDocs = false) {
+  if (!keepDocs) {
+    await rm(path.join(root, DOCS_DIR_NAME), { recursive: true, force: true });
+  }
+  await rm(path.join(root, ".agentdocs"), { recursive: true, force: true });
+  await rm(path.join(root, "llms.txt"), { force: true });
+  await rm(path.join(root, "AGENTS.md"), { force: true });
+}
+
+function installDependencies(workspaceDir) {
+  try {
+    console.log("Installing workspace dependencies...");
+    execSync("npm install", { cwd: workspaceDir, stdio: "inherit" });
+  } catch (err) {
+    console.warn("Failed to install workspace dependencies:", err.message);
+  }
+}
+
+async function buildAgentDocs(buildDir) {
+  const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  console.log("Building AgentDocs artifacts in hidden build workspace...");
+  execSync(`"${process.execPath}" "${cliPath}" --cwd "${buildDir}" build`, { stdio: "inherit" });
+  return hashPath(path.join(buildDir, ".agentdocs"));
+}
+
+function runFinalVerification(workspaceDir) {
   let passed = false;
   let testOutput = "";
   try {
-    const out = execSync("node test.mjs", { cwd: sandboxDir, encoding: "utf8", stdio: "pipe" });
+    const out = execSync("node test.mjs", { cwd: workspaceDir, encoding: "utf8", stdio: "pipe" });
     passed = true;
     testOutput = out;
   } catch (err) {
     console.log("CI check failed.");
     testOutput = `Test failed:\nStdout: ${err.stdout}\nStderr: ${err.stderr}`;
   }
+  return { passed, testOutput };
+}
 
+async function finishRun({
+  taskName,
+  group,
+  provider,
+  modelName,
+  seed,
+  passed,
+  turns,
+  totalInputTokens,
+  totalOutputTokens,
+  startTime,
+  mcpTools,
+  toolCallCounts,
+  turnsList,
+  testOutput,
+  workspaceDir,
+  sandboxRoot,
+  corpusDir,
+  buildDir,
+  toolSchemaTokenEstimate,
+  docsTelemetry,
+  protectedFilesBefore,
+  agentdocsBuildHash,
+  contaminationBefore,
+  dryRun = false,
+  keepSandbox,
+}) {
   const duration = Math.round(performance.now() - startTime);
-
-  // Clean up
-  if (mcpClient) {
-    await mcpClient.stop();
-  }
-  await rm(sandboxDir, { recursive: true, force: true });
-
-  const groupName = control ? (useWebSearch ? "control-web" : "control") : "experimental";
-
+  const contaminationAfter = await checkContamination(workspaceDir, group);
+  const protectedFilesAfter = await checkProtectedFileMutations(workspaceDir, protectedFilesBefore, group);
+  const finalCodeHash = await hashWorkspaceCode(workspaceDir);
+  const corpusHash = await hashPath(corpusDir);
   const result = {
+    schemaVersion: 2,
     task: taskName,
-    control,
-    web: useWebSearch,
+    group,
+    control: group !== "experimental-agentdocs",
+    web: group === "control-web-raw",
+    provider,
+    model: modelName,
+    seed,
+    dryRun,
     passed,
     turns,
     tokens: {
       input: totalInputTokens,
       output: totalOutputTokens,
-      total: totalInputTokens + totalOutputTokens
+      total: totalInputTokens + totalOutputTokens,
     },
+    toolSchemaTokenEstimate,
+    retrievalPayloadTokenEstimate: docsTelemetry.retrievalPayloadTokenEstimate,
+    docsBytesReturned: docsTelemetry.docsBytesReturned,
+    retrievalPayloadByTool: docsTelemetry.byTool,
     durationMs: duration,
-    mcpToolsLoaded: mcpTools.map(t => t.name),
+    mcpToolsLoaded: mcpTools.map((t) => t.name),
     toolCalls: toolCallCounts,
     turnsBreakdown: turnsList,
-    testOutput
+    finalCodeHash,
+    corpusHash,
+    agentdocsBuildHash,
+    contaminationChecks: {
+      before: contaminationBefore,
+      after: contaminationAfter,
+      protectedFiles: protectedFilesAfter,
+      passed: contaminationBefore.passed && contaminationAfter.passed && protectedFilesAfter.passed,
+    },
+    testOutput,
   };
 
   const resultsDir = path.join(repositoryRoot, ".dogfood");
   await mkdir(resultsDir, { recursive: true });
-  const outPath = path.join(resultsDir, `eval-result-${taskName}-${groupName}.json`);
-  await writeFile(outPath, JSON.stringify(result, null, 2), "utf8");
+  const outPath = path.join(resultsDir, `eval-result-${taskName}-${group}-seed-${seed}.json`);
+  await writeFile(outPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  console.log(`Saved result to ${outPath}`);
 
-  console.log(`\nEvaluation complete! Saved to ${outPath}`);
-  console.log(result);
+  if (!keepSandbox) {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  } else {
+    console.log(`Kept sandbox at ${sandboxRoot}`);
+  }
+  return result;
+}
+
+async function checkContamination(workspaceDir, group) {
+  const violations = [];
+  const entries = await collectEntries(workspaceDir);
+  for (const entry of entries) {
+    const base = path.basename(entry);
+    const relative = toPosix(path.relative(workspaceDir, entry));
+    if (group === "experimental-agentdocs-local-coldstart") {
+      // In local coldstart, the docs/ and generated .agentdocs/ are expected
+      continue;
+    }
+    if (base === DOCS_DIR_NAME || GENERATED_ARTIFACT_NAMES.has(base) || relative.startsWith(".agentdocs/")) {
+      violations.push(relative);
+    }
+    if (group !== "experimental-agentdocs" && /(?:^|\/)task-packs(?:\/|$)/.test(relative)) {
+      violations.push(relative);
+    }
+  }
+  return {
+    passed: violations.length === 0,
+    violations: [...new Set(violations)].sort(),
+  };
+}
+
+async function collectEntries(root) {
+  const results = [];
+  async function visit(dir) {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      results.push(full);
+      if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") {
+        await visit(full);
+      }
+    }
+  }
+  await visit(root);
+  return results;
+}
+
+function workspaceTools() {
+  return [
+    {
+      name: "write_file",
+      description: "Write content to a file in the implementation workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative path in the implementation workspace" },
+          content: { type: "string", description: "File content" },
+        },
+        required: ["path", "content"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "read_file",
+      description: "Read a file's content from the implementation workspace. Raw docs and AgentDocs artifacts are not in this workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative path in the implementation workspace" },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "run_command",
+      description: "Run a test or build command in the implementation workspace. Commands must stay inside the workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Command to execute" },
+        },
+        required: ["command"],
+        additionalProperties: false,
+      },
+    },
+  ];
+}
+
+function rawLocalTools() {
+  return [
+    {
+      name: "search_raw_docs",
+      description: "Search raw local documentation files. Results are uncompiled and not generated by AgentDocs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+          limit: { type: "integer", minimum: 1, maximum: 20, description: "Maximum results" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "read_raw_doc",
+      description: "Read a raw local documentation file by path returned from search_raw_docs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative raw docs path" },
+          maxChars: { type: "integer", minimum: 1000, maximum: 30000, description: "Maximum characters to return" },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+  ];
+}
+
+function rawWebTools() {
+  return [
+    {
+      name: "web_search",
+      description: "Search the deterministic raw documentation web corpus. Results are not generated by AgentDocs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+          limit: { type: "integer", minimum: 1, maximum: 20, description: "Maximum results" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "fetch_webpage",
+      description: "Fetch a raw webpage by URL returned from web_search.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "The full URL of the webpage to fetch" },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  ];
+}
+
+function systemPromptFor(group) {
+  const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  const docsInstruction = group === "experimental-agentdocs"
+    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Use those documentation tools for implementation context before coding."
+    : group === "experimental-agentdocs-local-coldstart"
+      ? `CRITICAL REQUIREMENT: The AgentDocs context layer is NOT compiled yet. You MUST compile it in Turn 1 before doing anything else.
+To do this, you MUST immediately call run_command in Turn 1 with the following commands:
+1. "node ${toPosix(cliPath)} ingest ./docs" to ingest the raw documentation.
+2. "node ${toPosix(cliPath)} build" to build the context layer.
+
+Do NOT try to read the .agentdocs/ folder or implement any code until you have successfully run these two compilation commands. Once compiled, use read_file to inspect the generated ".agentdocs/llms.txt" and ".agentdocs/AGENTS.md" to guide your implementation. Note that task pack links in llms.txt are relative to the ".agentdocs" directory (e.g. read them as ".agentdocs/task-packs/schema-validation.md").`
+      : group === "control-web-raw"
+        ? "You have access to web_search and fetch_webpage over a raw documentation corpus. Use those web tools to find documentation before coding. The documentation home page URL is: https://docs.example.com/"
+        : "You have access to search_raw_docs and read_raw_doc over raw local documentation files. Use those tools to find documentation before coding.";
+
+  return `You are a professional software engineer agent.
+Your objective is to complete the task defined in task.md.
+You have access to file-system tools and command-running tools.
+Always run tests to verify that your implementation is correct before finishing.
+${docsInstruction}`;
+}
+
+async function collectTextFiles(root) {
+  const files = [];
+  async function visit(dir) {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (["node_modules", ".git", ".agentdocs", "dist", ".vitepress"].includes(entry.name)) {
+          continue;
+        }
+        await visit(fullPath);
+      } else if (entry.isFile() && isTextLike(fullPath)) {
+        try {
+          const content = await readFile(fullPath, "utf8");
+          files.push({
+            absolutePath: fullPath,
+            relativePath: path.relative(root, fullPath),
+            extension: path.extname(fullPath).toLowerCase(),
+            content,
+          });
+        } catch {
+          // Skip unreadable files.
+        }
+      }
+    }
+  }
+  await visit(root);
+  return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+function isTextLike(filePath) {
+  return [
+    ".md",
+    ".mdx",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".html",
+    ".htm",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".json",
+  ].includes(path.extname(filePath).toLowerCase());
+}
+
+function scoreText(value, terms, query) {
+  if (terms.length === 0) return 0;
+  let score = value.includes(query.trim()) ? 50 : 0;
+  for (const term of terms) {
+    const matches = value.split(term).length - 1;
+    score += matches;
+    if (value.includes(`# ${term}`)) score += 10;
+  }
+  return score;
+}
+
+function snippetFor(content, terms) {
+  const compact = content.replace(/\s+/g, " ").trim();
+  if (terms.length === 0) return truncate(compact, 240, "snippet");
+  const lower = compact.toLowerCase();
+  const index = terms
+    .map((term) => lower.indexOf(term))
+    .filter((position) => position >= 0)
+    .sort((a, b) => a - b)[0] ?? 0;
+  const start = Math.max(0, index - 90);
+  return truncate(compact.slice(start, start + 260), 260, "snippet");
+}
+
+function titleFor(file) {
+  const heading = /^#\s+(.+)$/m.exec(file.content)?.[1];
+  if (heading) return heading.trim();
+  return path.basename(file.relativePath, path.extname(file.relativePath)).replace(/[_-]+/g, " ");
+}
+
+function cleanRawHtmlToText(html) {
+  let clean = html
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "");
+  clean = clean
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n");
+  clean = clean.replace(/<[^>]+>/g, " ");
+  clean = clean.replace(/[ \t]+/g, " ");
+  return clean.replace(/\n\s*\n+/g, "\n\n").trim();
+}
+
+function addWebScraperBoilerplate(markdown, pageTitle) {
+  const header = `[Web Search Scraper] Document: ${pageTitle || "Untitled Page"}
+Navigation Menu:
+- Home | Guides | Reference | API | GitHub | Community
+- Sidebar: Getting Started, Configuration, Installation, API Reference, Advanced Topics, Troubleshooting, Support
+--------------------------------------------------------------------------------`;
+  const footer = `--------------------------------------------------------------------------------
+Footer: Copyright 2026 Documentation Hub.
+Related Links:
+- Support Channel | GitHub Issues | Package Registry`;
+  return `${header}\n\n${markdown}\n\n${footer}`;
+}
+
+function runWorkspaceCommand(workspaceDir, command, group) {
+  assertWorkspaceCommand(command, group);
+  try {
+    const out = execSync(command, { cwd: workspaceDir, encoding: "utf8", stdio: "pipe" });
+    return out || "Command executed with no output.";
+  } catch (execErr) {
+    return `Command failed:\nExit Code: ${execErr.status}\nStdout: ${execErr.stdout}\nStderr: ${execErr.stderr}`;
+  }
+}
+
+function assertWorkspaceCommand(command, group) {
+  const lower = command.toLowerCase();
+  const forbidden = group === "experimental-agentdocs-local-coldstart"
+    ? ["..", "raw-docs-corpus", "agentdocs-build"]
+    : ["..", ".agentdocs", "raw-docs-corpus", "agentdocs-build", "agent-map.json", "chunks.jsonl", "task-packs"];
+  const hit = forbidden.find((item) => lower.includes(item));
+  if (hit) {
+    throw new Error(`Command rejected because it references forbidden path/context marker: ${hit}`);
+  }
+}
+
+function resolveInside(root, relativePath) {
+  const resolved = path.resolve(root, relativePath);
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Path escapes implementation workspace: ${relativePath}`);
+  }
+  return resolved;
+}
+
+function assertWritableWorkspacePath(workspaceDir, filePath, group) {
+  const relative = toPosix(path.relative(workspaceDir, filePath));
+  if (isProtectedWorkspacePath(relative, group)) {
+    throw new Error(`write_file rejected protected benchmark path: ${relative}`);
+  }
+}
+
+function isProtectedWorkspacePath(relativePath, group) {
+  const normalized = toPosix(relativePath).replace(/^\.\//, "");
+  const base = path.posix.basename(normalized);
+  if (PROTECTED_WORKSPACE_FILE_NAMES.has(base)) {
+    return true;
+  }
+  if (group === "experimental-agentdocs-local-coldstart") {
+    return false;
+  }
+  return GENERATED_ARTIFACT_NAMES.has(base)
+    || normalized === DOCS_DIR_NAME
+    || normalized.startsWith(`${DOCS_DIR_NAME}/`)
+    || normalized === ".agentdocs"
+    || normalized.startsWith(".agentdocs/");
+}
+
+function normalizeRelativePath(value) {
+  const normalized = toPosix(path.normalize(value));
+  if (normalized.startsWith("../") || normalized === ".." || path.isAbsolute(value)) {
+    throw new Error(`Path escapes raw docs corpus: ${value}`);
+  }
+  return normalized.replace(/^\.\//, "");
+}
+
+function urlFor(relativePath) {
+  return `https://docs.example.com/${encodeURI(toPosix(relativePath))}`;
+}
+
+function parseDocsExampleUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== "https://docs.example.com") return undefined;
+    return decodeURI(parsed.pathname.replace(/^\/+/, ""));
+  } catch {
+    return undefined;
+  }
+}
+
+function pushAssistantMessage(provider, messages, response) {
+  if (provider === "anthropic") {
+    messages.push({
+      role: "assistant",
+      content: [
+        ...(response.content ? [{ type: "text", text: response.content }] : []),
+        ...response.tool_calls.map((tc) => ({
+          type: "tool_use",
+          id: tc.id,
+          name: tc.name,
+          input: tc.arguments,
+        })),
+      ],
+    });
+  } else {
+    messages.push({
+      role: "assistant",
+      content: response.content,
+      tool_calls: response.tool_calls.map((tc) => ({
+        id: tc.id,
+        type: "function",
+        function: {
+          name: tc.name,
+          arguments: JSON.stringify(tc.arguments),
+        },
+      })),
+    });
+  }
+}
+
+function pushToolResult(provider, messages, toolCall, resultText) {
+  if (provider === "anthropic") {
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolCall.id,
+          content: resultText,
+        },
+      ],
+    });
+  } else {
+    messages.push({
+      role: "tool",
+      tool_call_id: toolCall.id,
+      name: toolCall.name,
+      content: resultText,
+    });
+  }
+}
+
+function resolveGroup(args) {
+  const explicit = getArg(args, "--group");
+  if (explicit) {
+    if (!["experimental-agentdocs", "experimental-agentdocs-local-coldstart", "control-local-raw", "control-web-raw"].includes(explicit)) {
+      throw new Error("--group must be experimental-agentdocs, experimental-agentdocs-local-coldstart, control-local-raw, or control-web-raw");
+    }
+    return explicit;
+  }
+  if (args.includes("--control") && args.includes("--web")) return "control-web-raw";
+  if (args.includes("--control")) return "control-local-raw";
+  return "experimental-agentdocs";
 }
 
 function getArg(args, key) {
@@ -857,7 +1145,154 @@ function getArg(args, key) {
   return null;
 }
 
-main().catch(err => {
+function requiredString(value, name) {
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string.`);
+  }
+  return value;
+}
+
+function optionalLimit(value, fallback) {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? Math.max(1, Math.min(parsed, 30000)) : fallback;
+}
+
+function normalizeQuery(query) {
+  return query.toLowerCase().replace(/site:\S+/g, "").replace(/[^a-z0-9\s./:@-]/g, " ").trim();
+}
+
+function tokenize(value) {
+  return [...new Set(value.toLowerCase().match(/[a-z0-9][a-z0-9_./:@-]*/g) ?? [])]
+    .filter((term) => term.length > 1);
+}
+
+function truncate(value, maxChars, label) {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n\n[... ${label} truncated by eval harness ...]`;
+}
+
+function recordDocsPayload(telemetry, toolName, text) {
+  const bytes = Buffer.byteLength(text, "utf8");
+  const tokens = estimateTokens(text);
+  telemetry.docsBytesReturned += bytes;
+  telemetry.retrievalPayloadTokenEstimate += tokens;
+  telemetry.byTool[toolName] ??= { calls: 0, docsBytesReturned: 0, retrievalPayloadTokenEstimate: 0 };
+  telemetry.byTool[toolName].calls += 1;
+  telemetry.byTool[toolName].docsBytesReturned += bytes;
+  telemetry.byTool[toolName].retrievalPayloadTokenEstimate += tokens;
+}
+
+function estimateTokens(value) {
+  return Math.ceil(value.length / 4);
+}
+
+function estimateCost(inputTokens, outputTokens) {
+  return (inputTokens / 1000000) * 3.0 + (outputTokens / 1500000) * 15.0;
+}
+
+function retryAfterSeconds(response, text) {
+  const header = response.headers.get("retry-after");
+  if (header !== null) {
+    const parsed = Number(header);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.ceil(parsed);
+    }
+  }
+  const match = /try again in ([0-9.]+)s/i.exec(text);
+  if (match !== null) {
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.ceil(parsed) + 1;
+    }
+  }
+  return undefined;
+}
+
+function toPosix(value) {
+  return value.split(path.sep).join("/");
+}
+
+async function snapshotProtectedFiles(workspaceDir, group) {
+  const entries = await collectEntries(workspaceDir);
+  const snapshot = {};
+  for (const entry of entries) {
+    let itemStat;
+    try {
+      itemStat = await stat(entry);
+    } catch {
+      continue;
+    }
+    if (!itemStat.isFile()) continue;
+    const relative = toPosix(path.relative(workspaceDir, entry));
+    if (isProtectedWorkspacePath(relative, group)) {
+      snapshot[relative] = await hashFile(entry);
+    }
+  }
+  return snapshot;
+}
+
+async function checkProtectedFileMutations(workspaceDir, before, group) {
+  const after = await snapshotProtectedFiles(workspaceDir, group);
+  const paths = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  const violations = paths.filter((relative) => before[relative] !== after[relative]);
+  return {
+    passed: violations.length === 0,
+    violations,
+  };
+}
+
+async function hashWorkspaceCode(workspaceDir) {
+  const files = (await collectTextFiles(workspaceDir))
+    .filter((file) => !file.relativePath.startsWith("node_modules"));
+  const hash = createHash("sha256");
+  for (const file of files) {
+    if (["task.md", "package-lock.json"].includes(path.basename(file.relativePath))) continue;
+    hash.update(toPosix(file.relativePath));
+    hash.update("\0");
+    hash.update(file.content);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+async function hashFile(filePath) {
+  return createHash("sha256").update(await readFile(filePath)).digest("hex");
+}
+
+async function hashPath(root) {
+  const hash = createHash("sha256");
+  async function visit(itemPath) {
+    let itemStat;
+    try {
+      itemStat = await stat(itemPath);
+    } catch {
+      return;
+    }
+    if (itemStat.isDirectory()) {
+      const entries = (await readdir(itemPath)).sort();
+      for (const entry of entries) {
+        if (entry === "node_modules" || entry === ".git") continue;
+        await visit(path.join(itemPath, entry));
+      }
+      return;
+    }
+    if (!itemStat.isFile()) return;
+    const relative = toPosix(path.relative(root, itemPath));
+    hash.update(relative);
+    hash.update("\0");
+    hash.update(await readFile(itemPath));
+    hash.update("\0");
+  }
+  await visit(root);
+  return hash.digest("hex");
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

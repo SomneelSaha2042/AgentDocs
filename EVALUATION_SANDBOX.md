@@ -1,49 +1,93 @@
 # Active Evaluation Sandbox
 
-This document explains how to run active agent evaluations to benchmark AgentDocs against a control group and compute production-readiness metrics.
+This document explains how to run active agent evaluations that compare
+AgentDocs against clean control groups.
 
-## Architecture Overview
+## Isolation Model
 
-To test the actual value of AgentDocs, the evaluation harness runs a standardized coding task in two modes:
-1. **Control Group:** The agent implements the task using only standard filesystem tools (no documentation tools or MCP server).
-2. **Experimental Group:** The agent implements the task with access to the `agentdocs serve-mcp` server.
+Each run creates three separate areas under a temporary sandbox:
+
+- `workspace`: implementation files, tests, `package.json`, and `task.md`.
+- `raw-docs-corpus`: the fixture's original `docs/` tree, hidden from normal
+  file tools.
+- `agentdocs-build`: a hidden full fixture copy used only by the experimental
+  AgentDocs MCP server.
+
+The agent's `read_file`, `write_file`, and `run_command` tools operate inside
+`workspace`. Control groups cannot read `.agentdocs`, `agent-map.json`,
+`chunks.jsonl`, task packs, generated `llms.txt`, or generated `AGENTS.md`.
+
+## Groups
+
+Use explicit `--group` values for new runs:
+
+```bash
+node scripts/eval-runner.mjs --task octokit-pagination --group experimental-agentdocs --seed 1
+node scripts/eval-runner.mjs --task octokit-pagination --group control-local-raw --seed 1
+node scripts/eval-runner.mjs --task octokit-pagination --group control-web-raw --seed 1
+```
+
+Group behavior:
+
+- `experimental-agentdocs`: exposes AgentDocs MCP tools backed by hidden
+  generated artifacts. By default the runner limits MCP to
+  `search_docs,get_page`; pass `--mcp-tools` to benchmark a different surface.
+- `control-local-raw`: exposes `search_raw_docs` and `read_raw_doc` over the
+  hidden raw docs corpus.
+- `control-web-raw`: exposes `web_search` and `fetch_webpage` over the same raw
+  corpus, with web-fetch-like page noise.
+
+Legacy flags still map to clean groups:
+
+```bash
+node scripts/eval-runner.mjs --task octokit-pagination --control
+node scripts/eval-runner.mjs --task octokit-pagination --control --web
+```
+
+## Pilot Benchmark
+
+For the first objective pass, run three seeds per task and group:
+
+```bash
+$tasks = @("dummy-sdk", "agentdocs-config", "aws-js-v3", "fastify-validation", "kubernetes-deployment", "nextjs-app-router", "octokit-pagination")
+$groups = @("experimental-agentdocs", "control-local-raw", "control-web-raw")
+$seeds = 1,2,3
+
+foreach ($task in $tasks) {
+  foreach ($group in $groups) {
+    foreach ($seed in $seeds) {
+      node scripts/eval-runner.mjs --task $task --group $group --seed $seed --max-cost 1.00
+    }
+  }
+  node scripts/aggregate-metrics.mjs $task
+}
+```
+
+Use `--model` to pin a model. Use `--max-cost` as a per-run circuit breaker.
+
+## Dry Run
+
+Dry runs exercise sandbox setup, raw corpus loading, contamination checks, and
+result writing without installing dependencies or calling an LLM:
+
+```bash
+node scripts/eval-runner.mjs --task octokit-pagination --group control-local-raw --seed 101 --dry-run
+```
+
+Aggregates ignore dry-run result files.
 
 ## Telemetry Captured
 
-The evaluation runner captures:
-- **Task Success Rate Delta:** Did the agent produce code that passed the task's CI validation with AgentDocs vs. without?
-- **Turns Saved:** Did using task-specific context reduce the number of agent turns needed to reach a passing implementation?
-- **Token Usage Delta:** Did AgentDocs reduce the prompt token budget?
-- **Time Delta:** Total run execution time differences.
+Each result JSON records:
 
----
+- task, group, model, provider, and seed;
+- pass/fail, turns, duration, and token usage;
+- tool schema token estimate;
+- retrieval payload token estimate;
+- docs bytes returned by docs/MCP tools;
+- tool call counts and per-turn breakdowns;
+- final code hash, raw corpus hash, and AgentDocs build hash;
+- contamination checks before and after the run.
 
-## Setup & Running
-
-### Step 1: Run Control Group
-Set your API key (either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) and run the control trial.
-```bash
-# PowerShell
-$env:OPENAI_API_KEY="your-api-key"
-node scripts/eval-runner.mjs --task dummy-sdk --control
-
-# Bash
-export OPENAI_API_KEY="your-api-key"
-node scripts/eval-runner.mjs --task dummy-sdk --control
-```
-
-By default, the runner uses the model `gpt-4o` if `OPENAI_API_KEY` is present, or `claude-3-5-sonnet-20241022` if `ANTHROPIC_API_KEY` is present. You can override this using the `--provider` option (e.g., `--provider anthropic`).
-
-### Step 2: Run Experimental Group
-Run the runner again without the `--control` flag to execute the task with AgentDocs MCP server context:
-```bash
-node scripts/eval-runner.mjs --task dummy-sdk
-```
-
-### Step 3: Aggregate Results
-After running both trials, execute the metrics aggregator to generate the comparative delta:
-```bash
-node scripts/aggregate-metrics.mjs dummy-sdk
-```
-
-This will print out the final benchmark results (e.g. Success Rate Delta, Turns Saved, Tokens Saved) and save the detailed breakdown to `.dogfood/eval-summary-dummy-sdk.json`.
+The aggregator reports medians and success proportions by group. Treat
+single-run results as smoke checks only; use the seeded pilot for claims.

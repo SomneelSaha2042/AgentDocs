@@ -45,7 +45,11 @@ These targets benchmarked the active evaluation sandbox harness under three dist
 
 ### Key Observations from Simulated Web Search
 - **Realistic Search Fragility**: The initial search query parser did not handle multi-word inputs well. Hardening `performMockSearch` to use tokenized keyword search and keyword intersection scoring was necessary to let the agent find pages using normal search phrases (e.g., `"Octokit pagination example"`), mimicking a realistic search engine.
-- **Token Efficiency**: In tasks like `aws-js-v3`, the AgentDocs MCP integration saved **40% of tokens** and **2 turns** compared to the web-searching control group, demonstrating the efficiency of serving clean, pre-summarized task packs over fetching raw pages.
+- **Token Efficiency**: Historical single-run tasks like `aws-js-v3` suggested
+  token and turn savings from serving compact MCP context instead of broad raw
+  retrieval. These numbers are now treated as directional because the original
+  control-web harness reused AgentDocs-compiled routing data; clean isolated
+  reruns are required for publishable deltas.
 
 ## June 23, 2026 Parser Format Expansion Rerun
 

@@ -50,6 +50,9 @@ Core belief:
 7. **Schema-valid artifacts**  
    Any generated JSON/JSONL artifact must validate against the repo schemas before being written as a successful build.
 
+8. **No evaluation gaming**  
+   Do not add hardcoded heuristic checks, scoring bonuses/penalties, or custom routing/logic targeting specific evaluation/benchmark tasks, packages, or domains (e.g. Octokit, AWS SDK, Kubernetes, Fastify, Next.js). The context routing, scoring, and generation engine must remain generic, deterministic, and rely entirely on organic doc content analysis and generic parameters (such as token specifics or length-based specificity).
+
 ## Preferred implementation stack
 
 Use TypeScript first.

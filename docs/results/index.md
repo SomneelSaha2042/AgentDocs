@@ -75,13 +75,22 @@ an agent could receive plausible but unsafe guidance.
 
 To measure the real-world impact of AgentDocs, we created an automated active evaluation sandbox (`scripts/eval-runner.mjs`). This harness clones mock versions of target documentation, spawns a coding agent (using `gpt-4o` / `gpt-4o-mini`), launches the AgentDocs MCP server in the Experimental group (or leaves it disabled for the Control group), and tests the agent's ability to implement complex API tasks.
 
-The sandbox proved that AgentDocs directly improves agent success rates while dramatically reducing token costs:
+The first sandbox runs were useful directional evidence, but they were not a
+final comparative benchmark. The original web-control path reused
+AgentDocs-compiled `agent-map.json` for mock search/fetch behavior, which meant
+the control group could indirectly benefit from AgentDocs normalization and
+routing. The harness now isolates the implementation workspace, raw docs corpus,
+and hidden AgentDocs build output so clean reruns can measure:
 
-* **Preventing Task Failures (+100% Success Delta):** In complex tasks like `fastify-validation` and `octokit-pagination`, standard agents without documentation context hit turn limits (10 turns) and failed. The Experimental agents equipped with AgentDocs completed the tasks successfully.
-* **Massive Token Savings (Up to 74% Saved):** In standard agents, recursive `grep` calls pull massive text snippets that bloat the agent's prompt history. By replacing directory sweeps with optimized MCP queries, AgentDocs cut token consumption by **74.4%** on Octokit pagination and **72%** on AWS SDK v3 client pagination.
-* **Lower Turn Counts:** AgentDocs saved up to 5 turns per task by delivering clear, pre-summarized task packs.
+- AgentDocs MCP versus raw local-docs search/read;
+- AgentDocs MCP versus raw web-style search/fetch;
+- success rate, turns, total tokens, tool-schema tokens, and retrieval payload
+  tokens across seeded runs.
 
-Detailed sandbox comparison results are summarized in the [Benchmark Summary](./benchmark-summary.md).
+The historical June 26 numbers remain useful for debugging task design and
+token overhead, but publishable success and token-savings claims should wait for
+the clean seeded pilot. Detailed benchmark status is summarized in the
+[Benchmark Summary](./benchmark-summary.md).
 
 ## Results at a glance
 
@@ -157,7 +166,7 @@ findings with the latest summary.
 | June 20, 2026 | Routing improvements | Added deterministic route-handler, query-invalidation, and schema-validation task families with offline exact-route fixture checks. |
 | June 20, 2026 | Full Phase 5 dogfood rerun | Reran nine documented prepared targets and populated routing metrics. Fastify schema validation, TanStack React invalidation, and Next.js App Router routing passed; Hono quickstart routing remains open. |
 | June 23, 2026 | Parser format expansion | Integrated Sphinx/reST and AsciiDoc format normalizers, transclusion resolution, and include-gap readiness doctor auditing. Verified against django, cpython, spring-framework, and airflow dogfood targets. |
-| June 26, 2026 | Active Evaluation Sandbox | Implemented budget circuit breakers, optimized get_page MCP payloads (cutting token bloat in half), and benchmarked 7 tasks, proving up to 74% token savings and 100% success rate improvements. |
+| June 26, 2026 | Active Evaluation Sandbox | Implemented budget circuit breakers, optimized get_page MCP payloads, benchmarked 7 tasks, and then identified control-group contamination that required a cleaner isolated harness before making comparative claims. |
 
 Read the [evaluation history](./history.md) for the run-by-run table and the
 workflow-layer findings.
