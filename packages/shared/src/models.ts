@@ -481,6 +481,76 @@ export const SearchResponseSchema = z
   })
   .strict();
 
+export const QueryDocsResponseSchema = z
+  .object({
+    goal: z.string().min(1),
+    task: z.string().min(1).optional(),
+    answer: z.string().min(1),
+    confidence: z.enum(["high", "medium", "low"]),
+    steps: z.array(
+      z.object({
+        title: z.string().min(1),
+        text: z.string().min(1),
+        evidence: z.array(EvidenceSchema).min(1),
+      }).strict(),
+    ),
+    codeExamples: z.array(
+      z.object({
+        language: z.string().optional(),
+        value: z.string().min(1),
+        evidence: z.array(EvidenceSchema).min(1),
+      }).strict(),
+    ),
+    gotchas: z.array(
+      z.object({
+        text: z.string().min(1),
+        severity: z.enum(["info", "warning", "critical"]),
+        evidence: z.array(EvidenceSchema).min(1),
+      }).strict(),
+    ),
+    citations: z.array(
+      z.object({
+        id: z.string().min(1),
+        pageId: z.string().min(1).optional(),
+        headingId: z.string().min(1).optional(),
+        codeBlockId: z.string().min(1).optional(),
+        sourceUrl: z.string().optional(),
+        repoPath: z.string().min(1).optional(),
+        quote: z.string().optional(),
+      }).strict(),
+    ),
+    followUpRefs: z.array(
+      z.object({
+        type: z.enum(["chunk", "page", "task_pack"]),
+        ref: z.string().min(1),
+        pageId: z.string().min(1).optional(),
+        chunkId: z.string().min(1).optional(),
+        title: z.string().min(1),
+        sourceUrl: z.string().optional(),
+        repoPath: z.string().min(1).optional(),
+      }).strict(),
+    ),
+    warnings: z.array(z.string().min(1)),
+    estimatedTokens: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const ReadPageResponseSchema = z
+  .object({
+    section: z.object({
+      pageId: z.string().min(1),
+      chunkId: z.string().min(1).optional(),
+      title: z.string().min(1),
+      headingPath: z.array(z.string()),
+      sourceUrl: z.string().optional(),
+      repoPath: z.string().min(1).optional(),
+      text: z.string(),
+      truncated: z.boolean(),
+      evidence: z.array(EvidenceSchema).min(1),
+    }).strict(),
+  })
+  .strict();
+
 export const GoalBundleSchema = z
   .object({
     summary: z.string().min(1),
@@ -860,6 +930,8 @@ export type SearchDocument = z.infer<typeof SearchDocumentSchema>;
 export type SearchIndexFallback = z.infer<typeof SearchIndexFallbackSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+export type QueryDocsResponse = z.infer<typeof QueryDocsResponseSchema>;
+export type ReadPageResponse = z.infer<typeof ReadPageResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
 export type TryResult = z.infer<typeof TryResultSchema>;

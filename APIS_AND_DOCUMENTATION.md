@@ -1089,6 +1089,8 @@ The MCP server reads from generated artifacts and the SQLite index.
 Implemented tools:
 
 ```txt
+query_docs
+read_page
 search_docs
 get_page
 get_task_pack
@@ -1102,6 +1104,80 @@ get_version_policy
 get_code_examples
 find_code_examples
 get_related_pages
+```
+
+#### `query_docs`
+
+Preferred first-call interface for implementation goals. It returns compact,
+extractive, evidence-linked task context without dumping full pages.
+
+Input:
+
+```json
+{
+  "goal": "implement pagination with Octokit",
+  "task": "pagination",
+  "facets": {
+    "runtime": "node"
+  },
+  "limit": 5
+}
+```
+
+Output:
+
+```json
+{
+  "goal": "implement pagination with Octokit",
+  "task": "pagination",
+  "answer": "Use the Pagination task context for this goal.",
+  "confidence": "medium",
+  "steps": [],
+  "codeExamples": [],
+  "gotchas": [],
+  "citations": [],
+  "followUpRefs": [],
+  "warnings": [],
+  "estimatedTokens": 420
+}
+```
+
+Every step, code example, gotcha, and citation must have source evidence.
+Unsupported steps are omitted rather than invented.
+
+#### `read_page`
+
+Reads a bounded source section by page or chunk ID. `chunkId` may also be a
+cited code block ID returned by `query_docs`. By default it returns the matching
+chunk/section, not the full normalized page. Full pages are available only when
+`fullPage` is explicitly true.
+
+Input:
+
+```json
+{
+  "pageId": "page_123",
+  "chunkId": "chunk_456",
+  "heading": "Pagination",
+  "maxChars": 4000,
+  "fullPage": false
+}
+```
+
+Output:
+
+```json
+{
+  "section": {
+    "pageId": "page_123",
+    "chunkId": "chunk_456",
+    "title": "Pagination",
+    "headingPath": ["Guides", "Pagination"],
+    "text": "...",
+    "truncated": false,
+    "evidence": []
+  }
+}
 ```
 
 #### `search_docs`

@@ -34,6 +34,8 @@ export {
   ReadinessCategorySchema,
   ReadinessCheckResultSchema,
   ReadinessReportSchema,
+  QueryDocsResponseSchema,
+  ReadPageResponseSchema,
   SearchDocumentSchema,
   SearchIndexFallbackSchema,
   SearchResponseSchema,
@@ -73,6 +75,8 @@ export type {
   ReadinessCategory,
   ReadinessCheckResult,
   ReadinessReport,
+  QueryDocsResponse,
+  ReadPageResponse,
   SearchDocument,
   SearchIndexFallback,
   SearchResponse,
@@ -85,3 +89,11 @@ export type {
   TaskStep,
   TryResult,
 } from "./models.js";
+export {
+  TaskContextAssembler,
+} from "./task-context.js";
+export type {
+  QueryDocsOptions,
+  ReadPageOptions,
+  TaskContextAssemblerOptions,
+} from "./task-context.js";

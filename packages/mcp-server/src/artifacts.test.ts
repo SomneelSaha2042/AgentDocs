@@ -33,6 +33,22 @@ describe("ArtifactService", () => {
       .toMatchObject({ pageId: "page_setup", relationship: "links_to" });
   });
 
+  it("does not use free-form query_docs task text as a task-pack search filter", async () => {
+    const out = await writeFixtureArtifacts();
+    const service = new ArtifactService({ cwd: out, out: "." });
+
+    const result = await service.queryDocs(
+      "authenticate requests",
+      "Configure a client that sends an API key with every request",
+      undefined,
+      3,
+    );
+
+    expect(result.task).toBe("authentication");
+    expect(result.steps[0]?.text).toContain("API key");
+    expect(result.steps[0]?.evidence[0]?.pageId).toBe("page_auth");
+  });
+
   it("serves only allowlisted and validated resources", async () => {
     const out = await writeFixtureArtifacts();
     const service = new ArtifactService({ cwd: out, out: "." });

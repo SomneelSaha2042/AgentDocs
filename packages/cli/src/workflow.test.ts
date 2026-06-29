@@ -124,7 +124,7 @@ doctor:
         "node", "agentdocs", "--cwd", cwd, "--json", "handoff", "authenticate with api key",
       ]);
     })));
-    expect(handoff.mcp.suggestedTools).toContain("get_task_context");
+    expect(handoff.mcp.suggestedTools).toContain("query_docs");
     expect(handoff.topSources.length).toBeGreaterThan(0);
 
     const verification = ContextVerificationSchema.parse(JSON.parse(await captureStdout(async () => {

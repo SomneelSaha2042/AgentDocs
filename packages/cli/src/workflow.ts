@@ -22,7 +22,7 @@ import { minimatch } from "minimatch";
 import { buildContextBundle } from "./context.js";
 
 export const PERSISTENT_AGENT_PROMPT =
-  "Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.";
+  "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.";
 
 type ConfiguredSource = AgentDocsConfig["sources"][number];
 
@@ -243,7 +243,7 @@ export async function buildHandoffBundle(context: WorkflowContext, goal: string)
     mcp: {
       command: mcpCommand(context.out),
       prompt: PERSISTENT_AGENT_PROMPT,
-      suggestedTools: ["get_task_context", "verify_task_context", "search_docs", "find_code_examples"],
+      suggestedTools: ["query_docs", "read_page", "verify_task_context", "search_docs"],
       resources: bundle.readFirst,
     },
     warnings,
@@ -383,7 +383,8 @@ ${context.config?.name ?? "Unknown project"}${context.config?.version === undefi
 ## First Steps
 
 - Start the MCP server with: \`${mcpCommand(context.out)}\`
-- Use \`get_task_context\` before reading broad search results.
+- Use \`query_docs\` once before reading broad search results.
+- Use \`read_page\` only when the query response cites a page or chunk that needs more detail.
 - Use \`verify_task_context\` before implementing with retrieved context.
 
 ## Persistent Agent Prompt

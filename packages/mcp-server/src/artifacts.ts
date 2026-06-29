@@ -11,6 +11,7 @@ import {
   HandoffBundleSchema,
   ManifestSchema,
   StatusReportSchema,
+  TaskContextAssembler,
   type AgentMap,
   type ContextVerification,
   type DocPage,
@@ -83,6 +84,62 @@ export class ArtifactService {
       facets,
     });
     return response;
+  }
+
+  async queryDocs(
+    goal: string,
+    task?: string,
+    facets?: Record<string, string>,
+    limit = 5,
+  ) {
+    validateContextLimit(limit);
+    const map = await this.loadAgentMap();
+    const taskPackId = task === undefined
+      ? undefined
+      : map.taskPacks.some((pack) => pack.id === task)
+        ? task
+        : undefined;
+    const searchQuery = task === undefined || taskPackId !== undefined
+      ? goal
+      : `${goal}\n${task}`;
+    const search = await this.searchDocs(searchQuery, Math.max(limit, 8), taskPackId, facets);
+    return new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal,
+      task,
+      facets,
+      limit,
+      search,
+    });
+  }
+
+  async readPage(options: {
+    pageId?: string;
+    chunkId?: string;
+    heading?: string;
+    maxChars?: number;
+    fullPage?: boolean;
+  }) {
+    if (options.pageId !== undefined) validateId(options.pageId, "pageId");
+    if (options.chunkId !== undefined) validateId(options.chunkId, "chunkId");
+    if (options.pageId === undefined && options.chunkId === undefined) {
+      throw new McpArtifactError("pageId or chunkId is required.", "INVALID_ARGUMENT");
+    }
+    const maxChars = options.maxChars ?? 4000;
+    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 50000) {
+      throw new McpArtifactError("maxChars must be an integer from 1 to 50000.", "INVALID_ARGUMENT");
+    }
+    try {
+      const map = await this.loadAgentMap();
+      return new TaskContextAssembler({ agentMap: map }).readPage(options);
+    } catch (error) {
+      if (error instanceof Error && /was not found/.test(error.message)) {
+        throw new McpArtifactError(error.message, "NOT_FOUND");
+      }
+      if (error instanceof Error && /is required/.test(error.message)) {
+        throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
+      }
+      throw error;
+    }
   }
 
   async getPage(pageId: string): Promise<DocPage> {
@@ -198,8 +255,8 @@ export class ArtifactService {
       setupCommands: setup.commands,
       mcp: {
         command: "agentdocs serve-mcp",
-        prompt: "Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
-        suggestedTools: ["get_task_context", "verify_task_context", "search_docs", "find_code_examples"],
+        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
+        suggestedTools: ["query_docs", "read_page", "verify_task_context", "search_docs"],
         resources: start.readFirst,
       },
       warnings: [
@@ -617,6 +674,12 @@ function validateId(value: string, name: string): void {
 function validateLimit(limit: number): void {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new McpArtifactError("limit must be an integer from 1 to 100.", "INVALID_ARGUMENT");
+  }
+}
+
+function validateContextLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
+    throw new McpArtifactError("limit must be an integer from 1 to 3.", "INVALID_ARGUMENT");
   }
 }
 

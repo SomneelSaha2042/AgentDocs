@@ -141,7 +141,7 @@ developer stays in control of where it is installed.
 The persistent prompt is:
 
 ```txt
-Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
 ```
 
 The MCP server is still read-only. New workflow tools expose richer built
@@ -149,6 +149,8 @@ artifact behavior, but they do not crawl, execute commands from docs, or read
 arbitrary files:
 
 - `list_available_tasks`
+- `query_docs`
+- `read_page`
 - `get_task_context`
 - `verify_task_context`
 - `explain_warning`

@@ -40,7 +40,7 @@ context verification, setup commands, version policy, code examples, and related
 pages. Prefer this flow inside an agent:
 
 ```txt
-Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
 ```
 
 For multi-session work:

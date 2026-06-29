@@ -43,7 +43,7 @@ describe("context CLI", () => {
     try {
       await createProgram().exitOverride().parseAsync([
         "node", "agentdocs", "--cwd", REPOSITORY_ROOT, "--out", output,
-        "--json", "context", "EXAMPLE_API_KEY",
+        "--json", "context", "timeoutMs",
       ]);
     } finally {
       write.mockRestore();

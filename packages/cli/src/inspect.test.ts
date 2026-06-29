@@ -87,6 +87,6 @@ describe("inspectAgentMap", () => {
       id: "missing",
       out: output,
       target: "task-pack",
-    })).rejects.toThrowError("Available task packs: installation, quickstart.");
+    })).rejects.toThrowError("Available task packs: configuration, installation, quickstart.");
   });
 });
