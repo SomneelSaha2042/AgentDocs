@@ -27,12 +27,16 @@ Reuse the built artifacts without crawling again:
 ```bash
 agentdocs status
 agentdocs handoff "configure authentication"
+agentdocs setup-agent --client codex
+agentdocs serve-mcp
 agentdocs verify-context --task "configure authentication"
 ```
 
 Use `context` only when you want the smaller compatibility bundle. `handoff` is
 the normal agent workflow because it includes freshness, gotchas, top source
-pages, setup commands, and MCP suggestions.
+pages, setup commands, and MCP suggestions. The human workflow output calls out
+the selected task pack, read-first context, warnings, freshness, and the exact
+`--out` path to use when launching MCP.
 
 ## Maintained Configuration
 

@@ -30,6 +30,8 @@ agentdocs --help
 agentdocs try ./docs --goal "implement authentication"
 agentdocs handoff "implement authentication"
 agentdocs setup-agent --client codex
+agentdocs serve-mcp
+agentdocs verify-context --task "implement authentication"
 agentdocs status
 agentdocs build --help
 agentdocs build --check
@@ -86,3 +88,6 @@ Search JSON includes evidence-linked facets and deterministic
 for the earlier compact bundle shape. `status`, `rebuild --changed`, and `watch`
 use deterministic source fingerprints for local/repo sources and a website TTL
 for crawled sources.
+
+`serve-mcp --tools <csv>` restricts the MCP tool surface. Disallowed tools are
+hidden from `tools/list` and rejected if a client calls them directly.

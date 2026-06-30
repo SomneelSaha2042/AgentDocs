@@ -129,6 +129,14 @@ Crawl: ${result.crawl.discovery}, scope ${result.crawl.scope}
 Requests: ${result.crawl.attempted} attempted, ${result.crawl.collected} collected, ${result.crawl.skipped} skipped, ${result.crawl.failed} failed
 Extraction: ${result.crawl.usable ?? result.crawl.collected} usable, ${result.crawl.unusable ?? 0} unusable, ${result.crawl.duplicateContent ?? 0} duplicate
 ${result.crawl.warnings.length === 0 ? "" : `Warnings:\n${result.crawl.warnings.map((warning) => `- ${warning}`).join("\n")}\n`}`;
+  const selectedTaskPack = result.context.selectedTaskPack === undefined
+    ? "Selected task pack: none"
+    : `Selected task pack: ${result.context.selectedTaskPack.id} (${result.context.selectedTaskPack.confidence} confidence)`;
+  const warnings = [
+    ...(result.crawl?.warnings.map((warning) => `- ${warning}`) ?? []),
+    ...result.context.goalBundle.warnings.map((warning) => `- ${warning.code}: ${warning.key}=${warning.values.join(",")}`),
+    ...result.context.search.warnings.map((warning) => `- ${warning.code}: ${warning.key}=${warning.values.join(",")}`),
+  ];
   const evidence = result.context.search.results.length === 0
     ? "- No matching search evidence found."
     : result.context.search.results.slice(0, 3).map((item) => {
@@ -147,8 +155,13 @@ Readiness: ${result.readiness.score}/100
 Best context for goal "${result.context.goal}":
 ${result.context.readFirst.map((resource) => `- ${resource}`).join("\n")}
 
+${selectedTaskPack}
+
 Top source evidence:
 ${evidence}
+
+Warnings:
+${warnings.length === 0 ? "- No context warnings." : warnings.join("\n")}
 
 Next:
 1. Run: ${result.next.command}

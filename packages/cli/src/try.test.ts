@@ -48,6 +48,8 @@ describe("try CLI", () => {
     expect(result.context.search.results.length).toBeGreaterThan(0);
     expect(formatTryResult(result)).toContain(`Best context for goal "install the SDK":
 - agentdocs://task-packs/installation.md`);
+    expect(formatTryResult(result)).toContain("Selected task pack: installation");
+    expect(formatTryResult(result)).toContain("Warnings:");
     expect(formatTryResult(result)).toContain(
       "1. Run: agentdocs --out .agentdocs serve-mcp",
     );

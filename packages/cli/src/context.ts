@@ -40,6 +40,15 @@ export function formatContextBundle(bundle: ContextBundle): string {
   const rules = bundle.rules.length === 0
     ? "- No task-specific rules found."
     : bundle.rules.map((rule) => `- ${rule}`).join("\n");
+  const selectedTaskPack = bundle.selectedTaskPack === undefined
+    ? "Selected task pack: none"
+    : `Selected task pack: ${bundle.selectedTaskPack.id} (${bundle.selectedTaskPack.confidence} confidence)`;
+  const warnings = bundle.goalBundle.warnings.length === 0 && bundle.search.warnings.length === 0
+    ? "- No context warnings."
+    : [
+        ...bundle.goalBundle.warnings.map((warning) => `- ${warning.code}: ${warning.key}=${warning.values.join(",")}`),
+        ...bundle.search.warnings.map((warning) => `- ${warning.code}: ${warning.key}=${warning.values.join(",")}`),
+      ].join("\n");
   const evidence = bundle.search.results.length === 0
     ? "- No matching source evidence found."
     : bundle.search.results.map((result) => {
@@ -60,6 +69,8 @@ export function formatContextBundle(bundle: ContextBundle): string {
 
 ${bundle.summary}
 
+${selectedTaskPack}
+
 ## Goal bundle
 Confidence: ${bundle.goalBundle.confidence}
 
@@ -70,6 +81,9 @@ ${bundle.readFirst.map((resource) => `- ${resource}`).join("\n")}
 
 ## Rules
 ${rules}
+
+## Warnings
+${warnings}
 
 ## Task pack
 ${taskPack}

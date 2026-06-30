@@ -428,12 +428,14 @@ Starts a local MCP server over stdio.
 ```bash
 agentdocs serve-mcp
 agentdocs serve-mcp --out .agentdocs
+agentdocs serve-mcp --tools query_docs,read_page,verify_task_context
 ```
 
 Behavior:
 
 - reads generated artifacts;
 - exposes tools/resources;
+- when `--tools` is supplied, exposes and permits only those tool names;
 - does not crawl;
 - does not write unless a future explicit tool supports it;
 - does not execute commands from docs.
@@ -441,6 +443,8 @@ Behavior:
 The current v1 path implements the required MCP JSON-RPC surface directly over stdio. Tool
 errors return structured `code` and `message` fields. Resource and tool
 arguments are validated and cannot be used as arbitrary filesystem paths.
+Disallowed allowlisted tool calls return a structured `TOOL_NOT_ALLOWED` tool
+error before artifact access.
 
 ## 3. Configuration file
 
@@ -1428,6 +1432,8 @@ agentdocs://pages/{pageId}.md
 - MCP tools must not crawl the web.
 - MCP tools must not read arbitrary files outside `.agentdocs`.
 - MCP tools must not expose secrets from local config.
+- MCP tool allowlists must be enforced when tools are called, not only when
+  tools are listed.
 - MCP tool outputs should include source URLs/paths where possible.
 
 ## 8. Readiness checks

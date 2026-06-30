@@ -260,7 +260,10 @@ export function formatHandoffBundle(bundle: HandoffBundle): string {
   const warnings = bundle.warnings.length === 0
     ? "- No context warnings."
     : bundle.warnings.map((warning) => `- ${warning}`).join("\n");
-  return `AgentDocs handoff: ${bundle.goal}\n\nFreshness: ${bundle.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n${bundle.context.summary}\n\nRead first:\n${bundle.context.readFirst.map((resource) => `- ${resource}`).join("\n")}\n\nTop source pages:\n${sources}\n\nGotchas:\n${gotchas}\n\nMCP:\n- Command: ${bundle.mcp.command}\n- Tools: ${bundle.mcp.suggestedTools.join(", ")}\n- Prompt: ${bundle.mcp.prompt}\n\nWarnings:\n${warnings}\n`;
+  const selectedTaskPack = bundle.selectedTaskPack === undefined
+    ? "Selected task pack: none"
+    : `Selected task pack: ${bundle.selectedTaskPack.id} (${bundle.selectedTaskPack.confidence} confidence)`;
+  return `AgentDocs handoff: ${bundle.goal}\n\nFreshness: ${bundle.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n${bundle.context.summary}\n${selectedTaskPack}\n\nRead first:\n${bundle.context.readFirst.map((resource) => `- ${resource}`).join("\n")}\n\nTop source pages:\n${sources}\n\nGotchas:\n${gotchas}\n\nMCP:\n- Command: ${bundle.mcp.command}\n- Tools: ${bundle.mcp.suggestedTools.join(", ")}\n- Prompt: ${bundle.mcp.prompt}\n\nWarnings:\n${warnings}\n`;
 }
 
 export async function verifyContext(
@@ -366,7 +369,7 @@ export function formatContextVerification(result: ContextVerification): string {
   const issues = result.issues.length === 0
     ? "- No issues found."
     : result.issues.map((issue) => `- ${issue.severity.toUpperCase()} ${issue.code}: ${issue.message}`).join("\n");
-  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nIssues:\n${issues}\n`;
+  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nFreshness: ${result.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n\nIssues:\n${issues}\n`;
 }
 
 async function writeAgentBrief(context: WorkflowContext): Promise<void> {

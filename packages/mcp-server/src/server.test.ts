@@ -4,6 +4,39 @@ import { createMcpRequestHandler } from "./server.js";
 import { writeFixtureArtifacts } from "./test-fixture.js";
 
 describe("AgentDocs MCP protocol", () => {
+  it("enforces tool allowlists when tools are called", async () => {
+    const out = await writeFixtureArtifacts();
+    const handle = createMcpRequestHandler({
+      allowedTools: ["query_docs", "read_page"],
+      cwd: out,
+      out: ".",
+      version: "test-version",
+    });
+
+    const tools = await request(handle, 1, "tools/list");
+    expect((tools.result as { tools: { name: string }[] }).tools.map((tool) => tool.name).sort())
+      .toEqual(["query_docs", "read_page"]);
+
+    const disallowed = await request(handle, 2, "tools/call", {
+      name: "get_page",
+      arguments: { pageId: "page_missing" },
+    });
+    expect(disallowed.result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        code: "TOOL_NOT_ALLOWED",
+        message: 'Tool "get_page" is not allowed by this MCP server configuration.',
+      },
+    });
+    expect(JSON.stringify(disallowed)).not.toContain("NOT_FOUND");
+
+    const allowed = await request(handle, 3, "tools/call", {
+      name: "query_docs",
+      arguments: { goal: "authentication", limit: 3 },
+    });
+    expect(JSON.stringify(allowed)).toContain("Do not expose API keys");
+  });
+
   it("exposes tools, resources, successful calls, and structured errors", async () => {
     const out = await writeFixtureArtifacts();
     const handle = createMcpRequestHandler({ cwd: out, out: ".", version: "test-version" });

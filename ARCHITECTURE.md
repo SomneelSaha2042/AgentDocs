@@ -113,10 +113,14 @@ agentdocs verify-context --task "implement authentication"
 agentdocs status
 ```
 
-`context`, `handoff`, `verify-context`, and several MCP tools assemble context
-through shared models in `packages/shared`, but the Phase 2 plan still needs to
-ensure CLI and MCP delegate all selection, warning, citation, and confidence
-behavior to one shared context module.
+`try`, `context`, `handoff`, `setup-agent`, `status`, and `verify-context`
+format existing shared result shapes for the golden workflow. Human output now
+surfaces read-first resources, selected task packs, freshness, warnings, and
+the configured MCP launch command where relevant. `context`, `handoff`,
+`verify-context`, and several MCP tools assemble context through shared models
+in `packages/shared`, but the Phase 2 plan still needs to ensure CLI and MCP
+delegate all selection, warning, citation, and confidence behavior to one shared
+context module.
 
 ## Generated Artifacts
 
@@ -216,11 +220,9 @@ get_related_pages
 ```
 
 Resources include the generated top-level artifacts, task packs, and page
-content through `agentdocs://` URIs.
-
-Known product gap: `serve-mcp --tools` currently filters `tools/list`, but
-`tools/call` dispatch still calls tools by name without checking the allowlist.
-Phase 1 must enforce allowlists at call time.
+content through `agentdocs://` URIs. `serve-mcp --tools` filters `tools/list`
+and rejects disallowed `tools/call` requests before tool dispatch with a
+structured `TOOL_NOT_ALLOWED` tool error.
 
 ## Readiness Scoring
 
@@ -297,11 +299,28 @@ The sampled baseline also exposed a context-routing weakness: the goal
 retrieved read-first pages were MCP/workflow related. This is not a Phase 0
 blocker, but it is evidence for Phase 1/2 workflow and context-brain work.
 
+## Phase 1 Workflow UX
+
+The Phase 1 proof was captured in `docs/results/v1-phase-1-golden-workflow.md`.
+
+Verified workflow target:
+
+```bash
+node packages/cli/dist/agentdocs.js --out .agentdocs-phase1-proof2 try fixtures/basic-docs --goal "create a client"
+node packages/cli/dist/agentdocs.js --out .agentdocs-phase1-proof2 handoff "create a client"
+node packages/cli/dist/agentdocs.js --out .agentdocs-phase1-proof2 setup-agent --client codex
+node packages/cli/dist/agentdocs.js --out .agentdocs-phase1-proof2 verify-context --task "create a client"
+node packages/cli/dist/agentdocs.js --out .agentdocs-phase1-proof2 status
+```
+
+Observed output includes selected task-pack labels, read-first resources,
+freshness, context warnings, verification issues, and custom `--out` MCP launch
+commands.
+
 ## Known Gaps
 
 - OpenAPI sources are represented in schemas/config but are not implemented as
   an ingestion path.
-- MCP tool allowlists are not enforced at `tools/call` time.
 - Context selection is partly shared but still needs Phase 2 consolidation so
   CLI and MCP outputs agree for the same goal.
 - Default generated task families still include domain-shaped names such as

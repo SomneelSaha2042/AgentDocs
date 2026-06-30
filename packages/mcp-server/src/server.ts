@@ -179,7 +179,7 @@ async function dispatch(
       return { tools: filteredTools };
     }
     case "tools/call":
-      return callTool(service, request.params);
+      return callTool(service, request.params, options?.allowedTools);
     case "resources/list":
       return { resources: RESOURCES };
     case "resources/templates/list":
@@ -194,8 +194,15 @@ async function dispatch(
 async function callTool(
   service: ArtifactService,
   params?: Record<string, unknown>,
+  allowedTools?: string[],
 ): Promise<unknown> {
   const name = requiredString(params?.name, "name");
+  if (allowedTools !== undefined && !allowedTools.includes(name)) {
+    return toolError({
+      code: "TOOL_NOT_ALLOWED",
+      message: `Tool "${name}" is not allowed by this MCP server configuration.`,
+    });
+  }
   const args = isRecord(params?.arguments) ? params.arguments : {};
   try {
     let result: unknown;
@@ -298,6 +305,14 @@ async function callTool(
       structuredContent: structured,
     };
   }
+}
+
+function toolError(structured: { code: string; message: string }) {
+  return {
+    isError: true,
+    content: [{ type: "text", text: JSON.stringify(structured) }],
+    structuredContent: structured,
+  };
 }
 
 function toolResult(name: string, result: unknown) {

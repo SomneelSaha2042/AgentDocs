@@ -40,6 +40,10 @@ records the first expanded exact-route checks. The
 [Full Dogfood Rerun Phase 5](./full-dogfood-rerun-phase-5.md) note records
 the latest prepared-target results.
 
+The v1 product-push checkpoints are recorded separately in the
+[Phase 0 baseline](./v1-phase-0-baseline.md) and
+[Phase 1 golden workflow](./v1-phase-1-golden-workflow.md) notes.
+
 ## What the runs proved
 
 ### Useful context is measurable

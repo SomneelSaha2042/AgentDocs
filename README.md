@@ -111,6 +111,9 @@ Reuse the built context without crawling again:
 ```bash
 agentdocs status
 agentdocs handoff "implement authentication"
+agentdocs setup-agent --client codex
+agentdocs serve-mcp
+agentdocs verify-context --task "implement authentication"
 ```
 
 `handoff` is the recommended multi-session command. It wraps the compact
@@ -118,7 +121,8 @@ agentdocs handoff "implement authentication"
 setup commands, and MCP tool/resource suggestions, so an agent can start from
 current, scoped, evidence-backed context instead of raw search results. The
 older `agentdocs context "<goal>"` command remains available for the smaller
-bundle.
+bundle. Human output for the workflow highlights read-first resources, selected
+task evidence, freshness, warnings, and the exact MCP command to launch.
 
 For a maintained project configuration, start from the repository whose docs
 you want to compile:
@@ -251,7 +255,9 @@ agentdocs serve-mcp
 The server provides read-only tools for search, pages, task packs, task handoff,
 context verification, setup commands, version policy, code examples, and related
 pages. It cannot crawl, execute documentation commands, or read arbitrary
-filesystem paths.
+filesystem paths. When `serve-mcp --tools` is used to restrict exposed tools,
+the allowlist is enforced both when listing tools and when a client attempts to
+call a hidden tool.
 
 For multi-session work, run `agentdocs status` before starting. Reuse existing
 artifacts when fresh, or run `agentdocs rebuild --changed` after local docs

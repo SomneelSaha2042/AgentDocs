@@ -53,4 +53,6 @@ agentdocs rebuild --changed
 ```
 
 The server reads only validated built artifacts. It cannot crawl, execute code,
-or provide arbitrary filesystem access.
+or provide arbitrary filesystem access. Tool allowlists configured with
+`serve-mcp --tools query_docs,read_page` are enforced when tools are listed and
+when clients call tools directly.
