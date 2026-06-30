@@ -50,7 +50,8 @@ A developer wants to use a library, framework, SDK, API, or internal platform wi
 Primary workflow:
 
 ```bash
-agentdocs build https://docs.example.com
+agentdocs try https://docs.example.com --goal "implement webhook verification"
+agentdocs setup-agent
 agentdocs serve-mcp
 ```
 
@@ -84,7 +85,7 @@ AGENTS.md
 
 A docs or platform team wants to check whether internal docs are usable by AI coding agents. They want repeatable CI checks, readiness scoring, and artifact generation.
 
-This is not the first target persona for the open-source MVP, but the product should be designed so this path remains possible.
+This is not the first target persona for v1, but the product should be designed so this path remains possible.
 
 ## 6. Jobs to be done
 
@@ -112,20 +113,20 @@ When my docs evolve, I want a repeatable scanner that tells me whether agents wi
    Agents do not need arbitrary search snippets. They need compact bundles for tasks such as quickstart, authentication, webhooks, migration, pagination, deployment, and debugging.
 
 4. **Portable over hosted**  
-   The MVP should be a local CLI with static outputs and a local MCP server. No account, cloud dependency, or hosted backend is required.
+   v1 should be a local CLI with static outputs and a local MCP server. No account, cloud dependency, or hosted backend is required.
 
 5. **Works with existing docs**  
    AgentDocs should run on Docusaurus, Mintlify, GitBook, ReadMe, Nextra, custom markdown, static HTML, local docs folders, and repos over time. The first version may support a smaller set.
 
 6. **No docs rewrite in v0**  
-   AgentDocs creates an agent-facing layer on top of docs. It does not modify or rewrite the source docs in the MVP.
+   AgentDocs creates an agent-facing layer on top of docs. It does not modify or rewrite the source docs.
 
 7. **Security-conscious by default**  
    The tool must treat external docs, crawled content, and MCP tool descriptions as untrusted input. Generated instructions must not silently execute arbitrary commands from docs.
 
 ## 8. Non-goals
 
-The MVP is not:
+v1 is not:
 
 - a chatbot over docs;
 - a full RAG platform;
@@ -144,11 +145,20 @@ The MVP is not:
 
 Primary user interface.
 
-Required commands for MVP:
+Required commands for v1:
 
 ```bash
+agentdocs try <url-or-path>
+agentdocs context <goal>
+agentdocs handoff <goal>
+agentdocs setup-agent
+agentdocs status
+agentdocs rebuild --changed
+agentdocs watch
+agentdocs verify-context --task <goal>
 agentdocs init
 agentdocs crawl <source>
+agentdocs ingest <path>
 agentdocs build
 agentdocs doctor
 agentdocs search <query>
@@ -198,18 +208,18 @@ agentdocs://task-packs/{task}.md
 agentdocs://pages/{pageId}.md
 ```
 
-## 10. MVP scope
+## 10. v1 scope
 
 ### 10.1 Inputs
 
-MVP inputs:
+v1 inputs:
 
 - one public docs URL;
-- local markdown directory;
-- optional OpenAPI file;
+- local markdown, MDX, reST, text, AsciiDoc, or repository docs directory where supported by the normalizer;
+- OpenAPI config is recognized but must either be implemented minimally before v1 or rejected early with a clear unsupported-source message;
 - optional package metadata from local `package.json`.
 
-Not required in MVP:
+Not required in v1:
 
 - authentication for private docs;
 - PDFs;
@@ -220,7 +230,7 @@ Not required in MVP:
 
 ### 10.2 Outputs
 
-MVP outputs:
+v1 outputs:
 
 - normalized pages;
 - page/chunk metadata;
@@ -237,7 +247,7 @@ MVP outputs:
 
 ### 10.3 Deterministic extraction targets
 
-The MVP should extract:
+v1 should extract:
 
 - page titles;
 - heading hierarchy;
@@ -248,7 +258,7 @@ The MVP should extract:
 - environment variables;
 - shell commands;
 - HTTP methods and routes;
-- OpenAPI operations;
+- OpenAPI operations only if Phase 4 implements OpenAPI ingestion before v1;
 - warning/admonition blocks;
 - deprecated markers;
 - version strings;
@@ -264,7 +274,7 @@ Acceptance criteria:
 
 - Creates config in current directory.
 - Does not overwrite existing config without confirmation or `--force`.
-- Includes commented examples for website, local markdown, repo, and OpenAPI sources.
+- Includes commented examples for website, local markdown, and repo sources. OpenAPI examples must be included only when OpenAPI ingestion is implemented; otherwise config validation must fail early with an actionable unsupported-source message.
 
 ### FR2: Crawl docs source
 
@@ -438,7 +448,7 @@ Task packs must not claim unsupported behavior. If evidence is weak, the pack sh
 - Deterministic tests pass offline.
 - Build can be rerun idempotently.
 - Generated artifacts validate against schemas.
-- The MVP has no required LLM dependency.
+- v1 has no required LLM dependency.
 
 ### Production value metrics
 
@@ -491,16 +501,17 @@ Mitigation: Start with sitemap/static/markdown support. Add Playwright fallback 
 
 Mitigation: Keep v0 deterministic. Optional enrichment must include evidence links and validation.
 
-## 17. MVP definition of done
+## 17. v1 definition of done
 
-The MVP is done when a developer can run:
+v1 is done when a developer can run:
 
 ```bash
-agentdocs init
-agentdocs crawl https://docs.example.com
-agentdocs build
-agentdocs doctor
+agentdocs try https://docs.example.com --goal "implement authentication"
+agentdocs handoff "implement authentication"
+agentdocs setup-agent
 agentdocs serve-mcp
+agentdocs verify-context --task "implement authentication"
+agentdocs status
 ```
 
 And receive:
@@ -512,6 +523,11 @@ AGENTS.md
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
 .agentdocs/index.sqlite
+.agentdocs/agent-brief.md
+.agentdocs/state/build-state.json
 ```
+
+The generated context must be compact, evidence-linked, deterministic, and
+consistent between CLI and MCP surfaces for the same implementation goal.
 
 With no required LLM API key, no hosted account, and repeatable offline search after build.

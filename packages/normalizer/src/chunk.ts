@@ -126,6 +126,11 @@ function splitSection(lines: string[], maxTokens: number): string[] {
       current.push(block);
       continue;
     }
+    if (shouldAttachShortIntroToOversizedCode(current, block, maxTokens)) {
+      chunks.push(candidate);
+      current = [];
+      continue;
+    }
     chunks.push(serializeBlocks(current));
     current = estimateTokens(block.text) <= maxTokens || block.kind === "code" ? [block] : [];
     if (current.length === 0) {
@@ -136,6 +141,20 @@ function splitSection(lines: string[], maxTokens: number): string[] {
     chunks.push(serializeBlocks(current));
   }
   return chunks.filter((chunk) => chunk.length > 0);
+}
+
+function shouldAttachShortIntroToOversizedCode(
+  current: Block[],
+  block: Block,
+  maxTokens: number,
+): boolean {
+  if (block.kind !== "code" || estimateTokens(block.text) <= maxTokens) {
+    return false;
+  }
+  if (current.length === 0 || current.some((candidate) => candidate.kind === "code")) {
+    return false;
+  }
+  return estimateTokens(serializeBlocks(current)) <= maxTokens;
 }
 
 function toBlocks(lines: string[]): Block[] {

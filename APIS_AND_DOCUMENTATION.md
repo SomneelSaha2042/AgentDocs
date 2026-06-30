@@ -241,22 +241,26 @@ Supported inputs:
 ```txt
 .md
 .mdx
+.rst
+.txt, when detected as reST-like docs
+.adoc
+.asciidoc
 ```
 
 Local and repo ingestion also records source coverage for docs-like files in
-the configured scope. Supported files are `.md` and `.mdx`. Unsupported
-docs-like files are counted, not parsed: `.rst`, likely Sphinx/reST `.txt`,
-`.adoc`, and `.asciidoc`. The ingest manifest reports compiled, degraded,
-skipped, failed, supported, unsupported, and coverage-ratio counts so a tiny
-Markdown subset in a larger reST or AsciiDoc corpus is not treated as full
-coverage.
+the configured scope. The ingest manifest reports compiled, degraded, skipped,
+failed, supported, unsupported, and coverage-ratio counts so a tiny supported
+slice in a larger docs corpus is not treated as full coverage.
 
 MDX ingestion is tolerant by default. Strict parsing is attempted first. On
 failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
 file-level diagnostics. `--strict` disables this fallback.
 
-OpenAPI ingestion is planned for Phase 10.
+OpenAPI ingestion is a v1 contract gap tracked in `BUILD_PLAN.md` Phase 4.
+Until that phase is completed, OpenAPI config/source support must either be
+implemented minimally or rejected early with an actionable unsupported-source
+message.
 
 ### 2.4 `agentdocs build`
 
@@ -389,7 +393,9 @@ agentdocs inspect task-pack <id>
 
 `task-pack <id>` explains why a generated task pack exists using its validated
 confidence, required pages, steps, related entities, and source evidence.
-Additional inspect targets are planned.
+Current inspect targets cover generated entities, links, and task-pack
+explanations. New inspect targets should be added only when they expose product
+debugging value that is not already visible through existing workflow commands.
 
 ### 2.8 `agentdocs export`
 
@@ -432,7 +438,7 @@ Behavior:
 - does not write unless a future explicit tool supports it;
 - does not execute commands from docs.
 
-The MVP implements the required MCP JSON-RPC surface directly over stdio. Tool
+The current v1 path implements the required MCP JSON-RPC surface directly over stdio. Tool
 errors return structured `code` and `message` fields. Resource and tool
 arguments are validated and cannot be used as arbitrary filesystem paths.
 
@@ -471,8 +477,10 @@ sources:
     exclude:
       - "**/drafts/**"
 
-  - type: openapi
-    path: ./openapi.yaml
+  # OpenAPI is tracked as a v1 contract-closure item. Include this only after
+  # the installed AgentDocs build documents OpenAPI ingestion as supported.
+  # - type: openapi
+  #   path: ./openapi.yaml
 
 output:
   dir: .agentdocs
@@ -554,6 +562,10 @@ type RepoSource = {
   exclude?: string[];
 };
 ```
+
+`OpenApiSource` exists in the configuration contract so v1 can close the source
+support gap without reshaping config. Builds must not silently accept OpenAPI
+sources unless the installed version implements deterministic OpenAPI ingestion.
 
 ### 4.1.1 Missing metric reason
 
@@ -1015,7 +1027,7 @@ type BuildState = {
 
 ## 6. SQLite index
 
-MVP database file:
+v1 database file:
 
 ```txt
 .agentdocs/index.sqlite

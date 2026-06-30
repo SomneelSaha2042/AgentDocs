@@ -73,6 +73,34 @@ Follow-up prose after the example.
     expect(chunks.some((chunk) => chunk.text.includes("Follow-up prose"))).toBe(true);
   });
 
+  it("keeps short setup prose attached to an oversized code example", () => {
+    const code = Array.from({ length: 60 }, (_, index) =>
+      `const item${index} = await client.items.get("${index}");`,
+    ).join("\n");
+    const page = normalizeMarkdown({
+      repoPath: "intro-code.md",
+      markdown: `# Setup
+
+Create the client before calling the API.
+
+\`\`\`ts
+${code}
+\`\`\`
+
+After the example, handle errors separately.
+`,
+    });
+
+    const chunks = chunkMarkdownByHeading(page, { maxTokens: 25 });
+    const codeChunk = chunks.find((chunk) => chunk.text.includes("const item0"));
+
+    expect(codeChunk?.text).toContain("Create the client before calling the API.");
+    expect(codeChunk?.text).toContain("const item59");
+    expect(codeChunk?.tokenEstimate).toBeGreaterThan(25);
+    expect(chunks.find((chunk) => chunk.text.includes("handle errors separately"))?.text)
+      .not.toContain("const item0");
+  });
+
   it("does not split unterminated fenced code blocks mid-example", () => {
     const code = Array.from({ length: 40 }, (_, index) =>
       `export const route${index} = "/v1/routes/${index}";`,

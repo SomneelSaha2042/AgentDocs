@@ -181,22 +181,37 @@ function sanitizeMdx(markdown: string): {
 } {
   const lines = markdown.split(/\r?\n/);
   let fence: string | undefined;
+  let inJsxTag = false;
   let omitted = 0;
   const warnings = new Set<string>();
   const sanitized = lines.map((line) => {
-    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
     if (fence === undefined && fenceMatch !== null) {
-      fence = fenceMatch[1]![0];
+      fence = fenceMatch[1]!;
       return line;
     }
     if (fence !== undefined) {
-      if (fenceMatch?.[1]?.[0] === fence) fence = undefined;
+      if (isClosingFence(fence, line)) fence = undefined;
       return line;
     }
     if (/^\s*(?:import|export)\b/.test(line)) {
       omitted += line.length;
       warnings.add("Omitted top-level MDX import/export declarations.");
       return "<!-- AgentDocs omitted MDX import/export -->";
+    }
+    if (inJsxTag) {
+      omitted += line.length;
+      warnings.add("Omitted MDX JSX tags outside fenced code.");
+      if (line.includes(">")) {
+        inJsxTag = false;
+      }
+      return "<!-- AgentDocs omitted MDX JSX tag -->";
+    }
+    if (isMultilineJsxTagStart(line)) {
+      omitted += line.length;
+      warnings.add("Omitted MDX JSX tags outside fenced code.");
+      inJsxTag = true;
+      return "<!-- AgentDocs omitted MDX JSX tag -->";
     }
     let value = line.replace(/<\/?[A-Za-z][^>]*>/g, (match) => {
       omitted += match.length;
@@ -215,6 +230,18 @@ function sanitizeMdx(markdown: string): {
     omittedCharacterRatio: markdown.length === 0 ? 0 : omitted / markdown.length,
     warnings: [...warnings].sort(compareStrings),
   };
+}
+
+function isClosingFence(openingFence: string, line: string): boolean {
+  const closingFence = line.match(/^\s*(`{3,}|~{3,})\s*$/)?.[1];
+  return closingFence !== undefined
+    && closingFence[0] === openingFence[0]
+    && closingFence.length >= openingFence.length;
+}
+
+function isMultilineJsxTagStart(line: string): boolean {
+  const trimmed = line.trim();
+  return /^<\/?[A-Za-z][\w.:-]*(?:\s|$)/.test(trimmed) && !trimmed.includes(">");
 }
 
 function errorMessage(error: unknown): string {

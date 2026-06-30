@@ -37,8 +37,10 @@ Use AgentDocs when:
 
 > **Usable beta:** AgentDocs is published on npm as
 > `@somneelsaha/agentdocs` and can be installed today with Node.js 20 or later.
-> MVP phases 0-9, the June 2026 hardening work, and the agent workflow layer
-> are implemented for real-repository testing.
+> The core compile, audit, search, handoff, freshness, and MCP workflows are
+> implemented for real-repository testing. The active build plan now focuses on
+> v1 product hardening: tighter context selection, generic compiler behavior,
+> source contract closure, and publishable proof runs.
 >
 > It is still beta software: OpenAPI Ingestion is not implemented, and large or
 > unusual docs sites may need scoped crawl settings. Local and repo ingestion
@@ -385,9 +387,10 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 
 ## Current Limitations
 
-- OpenAPI ingestion is recognized but not implemented.
-- Additional inspect targets beyond entities, links, and task-pack explanations
-  are planned.
+- OpenAPI ingestion is recognized in the config contract but is a v1
+  contract-closure item; unsupported builds must fail early with a clear
+  message.
+- Inspect currently covers entities, links, and task-pack explanations.
 - Broken-link checks validate generated heading fragments for collected pages;
   custom framework anchors may still require review.
 - The crawler is intended for public, statically accessible documentation.

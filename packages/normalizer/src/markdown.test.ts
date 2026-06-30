@@ -187,6 +187,34 @@ const literal = <Component value={expression} />
       .toEqual(page);
   });
 
+  it("keeps readable multiline MDX component text during fallback", () => {
+    const markdown = `# Tabs
+
+<Steps
+  items={[
+    "Install",
+    "Configure",
+  ]}
+>
+Install the package, then configure the client.
+</Steps>
+
+{unfinished(
+
+\`\`\`tsx
+const literal = <Widget options={{ mode: "strict" }} />
+\`\`\`
+`;
+
+    const page = normalizeMarkdown({ markdown, format: "mdx", repoPath: "docs/tabs.mdx" });
+
+    expect(page.normalization.mode).toBe("mdx-fallback");
+    expect(page.markdown).toContain("Install the package, then configure the client.");
+    expect(page.markdown).toContain("AgentDocs omitted MDX JSX");
+    expect(page.markdown).toContain("AgentDocs omitted MDX expression");
+    expect(page.codeBlocks[0]?.value).toContain("<Widget options={{ mode: \"strict\" }} />");
+  });
+
   it("fails malformed MDX when strict mode is requested", () => {
     expect(() => normalizeMarkdown({
       markdown: "# Broken\n\n{unfinished(\n",
