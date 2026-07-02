@@ -1,8 +1,5 @@
 import { ArtifactService } from "@agentdocs/mcp-server";
-import {
-  ContextBundleSchema,
-  type ContextBundle,
-} from "@agentdocs/shared";
+import { type ContextBundle } from "@agentdocs/shared";
 
 export type ContextOptions = {
   cwd: string;
@@ -11,29 +8,8 @@ export type ContextOptions = {
 };
 
 export async function buildContextBundle(options: ContextOptions): Promise<ContextBundle> {
-  const service = new ArtifactService({ cwd: options.cwd, out: options.out });
-  const start = await service.getAgentStartContext(options.goal);
-  const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/
-    .exec(start.readFirst[0] ?? "")?.[1];
-  const selected = taskId === undefined ? undefined : await service.getTaskPack(taskId);
-  const search = await service.searchDocs(options.goal, 5);
-  return ContextBundleSchema.parse({
-    goal: options.goal,
-    summary: start.summary,
-    readFirst: start.readFirst,
-    rules: start.rules,
-    goalBundle: start.goalBundle,
-    selectedTaskPack: selected === undefined
-      ? undefined
-      : {
-          id: selected.id,
-          title: selected.title,
-          confidence: selected.confidence,
-          markdown: selected.markdown,
-        },
-    supportingResources: start.supportingResources,
-    search,
-  });
+  return new ArtifactService({ cwd: options.cwd, out: options.out })
+    .getContextBundle(options.goal);
 }
 
 export function formatContextBundle(bundle: ContextBundle): string {

@@ -185,6 +185,58 @@ describe("TaskContextAssembler", () => {
     expect(result.followUpRefs.length).toBeGreaterThan(0);
   });
 
+  it("builds context, handoff, query, and verification from one decision", () => {
+    const map = fixtureMap();
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const search = {
+      query: "authenticate requests with an API key",
+      results: [{
+        title: "Authentication",
+        repoPath: "docs/auth.md",
+        headingPath: ["Authentication"],
+        snippet: "Use an API key for authentication.",
+        score: 10,
+        pageId: "page_auth",
+        chunkId: "chunk_auth",
+        facets: [],
+      }],
+      warnings: [{ code: "context_conflict" as const, key: "version", values: ["v1", "v2"] }],
+    };
+    map.taskPacks[0]!.confidence = "low";
+    map.pages[0]!.codeBlocks = [];
+    map.taskPacks[0]!.gotchas.push({
+      text: "Deprecated client setup is still documented.",
+      severity: "warning",
+      evidence: [{ source: "heading", pageId: "page_auth", headingId: "heading_auth", repoPath: "docs/auth.md" }],
+    });
+
+    const decision = assembler.buildContextDecision({ goal: "authenticate requests with an API key", search });
+    const context = assembler.buildContextBundle({
+      goal: "authenticate requests with an API key",
+      search,
+      selectedTaskPackMarkdown: "# Task: Authentication\n",
+    });
+    const handoff = assembler.buildHandoffBundle({
+      goal: "authenticate requests with an API key",
+      search,
+      selectedTaskPackMarkdown: "# Task: Authentication\n",
+      setupCommands: ["npm install @example/sdk"],
+    });
+    const verification = assembler.verifyContext({ goal: "authenticate requests with an API key", search });
+
+    expect(decision.selectedTaskPack?.id).toBe("authentication");
+    expect(context.selectedTaskPack?.id).toBe(decision.selectedTaskPack?.id);
+    expect(handoff.selectedTaskPack?.id).toBe(decision.selectedTaskPack?.id);
+    expect(decision.query.task).toBe(decision.selectedTaskPack?.id);
+    expect(handoff.warnings).toEqual(decision.warnings);
+    expect(handoff.warnings).toContain("No canonical code examples found.");
+    expect(verification.issues.map((issue) => issue.code)).toEqual(decision.verification.issues.map((issue) => issue.code));
+    expect(verification.issues.map((issue) => issue.code)).toContain("weak_evidence");
+    expect(verification.issues.map((issue) => issue.code)).toContain("deprecated_evidence");
+    expect(verification.issues.map((issue) => issue.code)).toContain("mixed_search_context");
+    expect(verification.issues.map((issue) => issue.code)).toContain("no_canonical_code_examples");
+  });
+
   it("lets source-ranked chunks override broad task-pack boilerplate", () => {
     const map = fixtureMap();
     map.pages.push({

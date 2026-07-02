@@ -41,8 +41,9 @@ records the first expanded exact-route checks. The
 the latest prepared-target results.
 
 The v1 product-push checkpoints are recorded separately in the
-[Phase 0 baseline](./v1-phase-0-baseline.md) and
-[Phase 1 golden workflow](./v1-phase-1-golden-workflow.md) notes.
+[Phase 0 baseline](./v1-phase-0-baseline.md),
+[Phase 1 golden workflow](./v1-phase-1-golden-workflow.md), and
+[Phase 2 one context brain](./v1-phase-2-one-context-brain.md) notes.
 
 ## What the runs proved
 

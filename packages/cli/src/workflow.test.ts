@@ -137,6 +137,7 @@ doctor:
     expect(handoff.mcp.suggestedTools).toContain("query_docs");
     expect(handoff.mcp.command).toBe("agentdocs --out .agentdocs serve-mcp");
     expect(handoff.selectedTaskPack?.id).toBe("authentication");
+    expect(handoff.context.selectedTaskPack?.id).toBe(handoff.selectedTaskPack?.id);
     expect(handoff.topSources.length).toBeGreaterThan(0);
 
     const humanHandoff = await captureStdout(async () => {
@@ -155,6 +156,7 @@ doctor:
     })));
     expect(["pass", "warn", "fail"]).toContain(verification.status);
     expect(verification.freshness?.state).toBe("fresh");
+    expect(verification.issues.map((issue) => issue.code)).not.toContain("missing_task_pack");
 
     const humanVerification = await captureStdout(async () => {
       await createProgram().exitOverride().parseAsync([

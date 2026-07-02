@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-06-30 during the Phase 0 baseline pass.
+Verified on 2026-07-01 during the Phase 2 one-context-brain pass.
 
 ## Product Shape
 
@@ -116,11 +116,9 @@ agentdocs status
 `try`, `context`, `handoff`, `setup-agent`, `status`, and `verify-context`
 format existing shared result shapes for the golden workflow. Human output now
 surfaces read-first resources, selected task packs, freshness, warnings, and
-the configured MCP launch command where relevant. `context`, `handoff`,
-`verify-context`, and several MCP tools assemble context through shared models
-in `packages/shared`, but the Phase 2 plan still needs to ensure CLI and MCP
-delegate all selection, warning, citation, and confidence behavior to one shared
-context module.
+the configured MCP launch command where relevant. `context`, `handoff`, and
+`verify-context` delegate context selection and verification through
+`ArtifactService` into the shared `TaskContextAssembler` decision path.
 
 ## Generated Artifacts
 
@@ -186,15 +184,12 @@ FTS5. Otherwise it writes a deterministic lexical fallback index to the same
 `index.sqlite` path.
 
 `packages/shared/src/task-context.ts` contains the current
-`TaskContextAssembler`. It selects a relevant task pack, ranks chunks, extracts
-steps/code examples/gotchas/citations, estimates token size, and builds
-`query_docs` style responses. `packages/cli/src/context.ts` and
-`packages/cli/src/workflow.ts` format context and handoff outputs on top of
-shared models.
-
-Known product gap: Phase 2 must remove or reduce remaining duplicated
-selection/verification logic between CLI and MCP adapters so the same goal gets
-the same task pack, warnings, citations, and confidence across surfaces.
+`TaskContextAssembler`. It owns the shared context decision path for task-pack
+selection, read-first resources, warnings, verification issues, citations,
+confidence, context bundles, handoff bundles, and `query_docs` style responses.
+`packages/mcp-server/src/artifacts.ts` remains the artifact-loading and search
+adapter over built files. It supplies a search callback to the shared assembler;
+CLI and MCP surfaces format or expose the shared result shapes.
 
 ## MCP Surface
 
@@ -317,12 +312,22 @@ Observed output includes selected task-pack labels, read-first resources,
 freshness, context warnings, verification issues, and custom `--out` MCP launch
 commands.
 
+## Phase 2 One Context Brain
+
+The Phase 2 proof was captured in
+`docs/results/v1-phase-2-one-context-brain.md`.
+
+The shared `TaskContextAssembler` now builds a single context decision used by
+CLI `context`, CLI `handoff`, CLI `verify-context`, MCP `query_docs`, MCP
+`get_task_context`, and MCP `verify_task_context`. The hardening-fixture proof
+confirmed matching selected task packs and warnings across CLI and MCP for
+`quickstart`, `build App Router POST route handler`, and `implement React
+mutation invalidation`.
+
 ## Known Gaps
 
 - OpenAPI sources are represented in schemas/config but are not implemented as
   an ingestion path.
-- Context selection is partly shared but still needs Phase 2 consolidation so
-  CLI and MCP outputs agree for the same goal.
 - Default generated task families still include domain-shaped names such as
   `route-handlers`, `query-invalidation`, and `schema-validation`; Phase 3 must
   ensure defaults stay generic and do not violate the no-evaluation-gaming

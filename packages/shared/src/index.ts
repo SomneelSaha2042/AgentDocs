@@ -93,7 +93,14 @@ export {
   TaskContextAssembler,
 } from "./task-context.js";
 export type {
+  ContextBundleOptions,
+  ContextDecision,
+  ContextDecisionOptions,
+  ContextSearch,
+  ContextSearchOptions,
+  HandoffBundleOptions,
   QueryDocsOptions,
   ReadPageOptions,
+  ResolveContextDecisionOptions,
   TaskContextAssemblerOptions,
 } from "./task-context.js";

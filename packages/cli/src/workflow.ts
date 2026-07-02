@@ -6,8 +6,6 @@ import { ArtifactService } from "@agentdocs/mcp-server";
 import {
   AgentSetupSnippetSchema,
   BuildStateSchema,
-  ContextVerificationSchema,
-  HandoffBundleSchema,
   StatusReportSchema,
   type AgentDocsConfig,
   type AgentSetupSnippet,
@@ -19,7 +17,6 @@ import {
 } from "@agentdocs/shared";
 import { minimatch } from "minimatch";
 
-import { buildContextBundle } from "./context.js";
 
 export const PERSISTENT_AGENT_PROMPT =
   "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.";
@@ -219,34 +216,10 @@ export function formatStatusReport(report: StatusReport): string {
 
 export async function buildHandoffBundle(context: WorkflowContext, goal: string): Promise<HandoffBundle> {
   const service = new ArtifactService({ cwd: context.cwd, out: context.out });
-  const bundle = await buildContextBundle({ cwd: context.cwd, goal, out: context.out });
   const freshness = await readStatusReport(context);
-  const setup = await service.getSetupCommands();
-  const taskPack = bundle.selectedTaskPack === undefined
-    ? undefined
-    : await service.getTaskPack(bundle.selectedTaskPack.id);
-  const warnings = [
-    freshness.state === "fresh" ? undefined : `Freshness ${freshness.state}: ${freshness.summary}`,
-    ...bundle.goalBundle.warnings.map((warning) => `${warning.code}: ${warning.key}=${warning.values.join(",")}`),
-    ...(taskPack?.context.conflicts.map((conflict) => `context_conflict: ${conflict.key}=${conflict.values.join(",")}`) ?? []),
-    taskPack?.confidence === "low" ? "Task-pack evidence is weak." : undefined,
-  ].filter((item): item is string => item !== undefined);
-  return HandoffBundleSchema.parse({
-    schemaVersion: 1,
-    goal,
-    context: bundle,
+  return service.getTaskContext(goal, undefined, {
     freshness,
-    selectedTaskPack: bundle.selectedTaskPack,
-    topSources: bundle.search.results.slice(0, 5),
-    gotchas: taskPack?.gotchas.map((gotcha) => gotcha.text) ?? bundle.goalBundle.gotchas,
-    setupCommands: setup.commands,
-    mcp: {
-      command: mcpCommand(context.out),
-      prompt: PERSISTENT_AGENT_PROMPT,
-      suggestedTools: ["query_docs", "read_page", "verify_task_context", "search_docs"],
-      resources: bundle.readFirst,
-    },
-    warnings,
+    mcpCommand: mcpCommand(context.out),
   });
 }
 
@@ -273,96 +246,7 @@ export async function verifyContext(
 ): Promise<ContextVerification> {
   const service = new ArtifactService({ cwd: context.cwd, out: context.out });
   const freshness = await readStatusReport(context);
-  const start = await service.getAgentStartContext(task, facets);
-  const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
-  const pack = taskId === undefined ? undefined : await service.getTaskPack(taskId);
-  const search = await service.searchDocs(task, 8, taskId, facets);
-  const issues: ContextVerification["issues"] = [];
-  if (freshness.state !== "fresh") {
-    issues.push({
-      code: "stale_context",
-      severity: freshness.state === "stale" ? "critical" : "warning",
-      message: freshness.summary,
-      evidence: [],
-    });
-  }
-  if (pack === undefined) {
-    issues.push({
-      code: "missing_task_pack",
-      severity: "critical",
-      message: "No matching task pack was found for this task.",
-      evidence: [],
-    });
-  } else {
-    if (pack.confidence === "low") {
-      issues.push({
-        code: "weak_evidence",
-        severity: "warning",
-        message: `Task pack "${pack.id}" has low confidence.`,
-        evidence: pack.evidence,
-      });
-    }
-    for (const conflict of pack.context.conflicts) {
-      issues.push({
-        code: "mixed_context",
-        severity: "critical",
-        message: `Task pack mixes ${conflict.key} values: ${conflict.values.join(", ")}.`,
-        evidence: conflict.evidence,
-      });
-    }
-    for (const [key, value] of Object.entries(facets ?? {})) {
-      const values = pack.context.facets[key] ?? [];
-      if (values.length > 0 && !values.includes(value)) {
-        issues.push({
-          code: "preferred_context_mismatch",
-          severity: "critical",
-          message: `Task pack does not match requested ${key}=${value}.`,
-          evidence: pack.evidence,
-        });
-      }
-    }
-    if (pack.requiredPages.length === 0) {
-      issues.push({
-        code: "missing_canonical_source",
-        severity: "critical",
-        message: "Task pack has no required source pages.",
-        evidence: pack.evidence,
-      });
-    }
-    for (const gotcha of pack.gotchas.filter((item) => /deprecated/i.test(item.text))) {
-      issues.push({
-        code: "deprecated_evidence",
-        severity: "warning",
-        message: gotcha.text,
-        evidence: gotcha.evidence,
-      });
-    }
-  }
-  for (const warning of search.warnings) {
-    issues.push({
-      code: "mixed_search_context",
-      severity: "warning",
-      message: `Search results mix ${warning.key} values: ${warning.values.join(", ")}.`,
-      evidence: [],
-    });
-  }
-  const status = issues.some((issue) => issue.severity === "critical")
-    ? "fail"
-    : issues.length > 0
-      ? "warn"
-      : "pass";
-  return ContextVerificationSchema.parse({
-    schemaVersion: 1,
-    task,
-    status,
-    summary: status === "pass"
-      ? "Context is safe to use for this task."
-      : status === "fail"
-        ? "Context has critical issues. Stop and refresh or narrow context before using it."
-        : "Context has warnings. Review before using it.",
-    issues,
-    freshness,
-  });
+  return service.verifyTaskContext(task, facets, freshness);
 }
 
 export function formatContextVerification(result: ContextVerification): string {
