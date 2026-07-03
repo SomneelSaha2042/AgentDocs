@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-01 during the Phase 2 one-context-brain pass.
+Verified on 2026-07-03 during the Phase 3 generic compiler hardening pass.
 
 ## Product Shape
 
@@ -30,7 +30,7 @@ The repository is a strict TypeScript pnpm workspace with these packages:
 | `@agentdocs/crawler` | Deterministic public website crawling, sitemap/link discovery, scope handling, raw HTML snapshots, and normalized Markdown page output. |
 | `@agentdocs/normalizer` | Markdown/MDX/HTML/reST/AsciiDoc normalization, heading/link/code extraction, context facets, deterministic entity extraction helpers, and heading-aware chunking. |
 | `@agentdocs/graph` | Entity and relationship graph construction from normalized pages, links, extracted entities, and evidence. |
-| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, task packs, manifest, agent map, chunks JSONL, and artifact validation. |
+| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, generic task packs with Markdown diagnostics, manifest, agent map, chunks JSONL, and artifact validation. |
 | `@agentdocs/indexer` | Offline search index creation and querying. Uses Node SQLite/FTS5 when available and a deterministic lexical fallback otherwise. |
 | `@agentdocs/doctor` | Agent-readiness checks, scoring, JSON report, and Markdown report generation. |
 | `@agentdocs/mcp-server` | JSON-RPC stdio MCP surface over built artifacts and the local search index. |
@@ -140,10 +140,10 @@ reports/agent-readiness.json
 ```
 
 Build-owned JSON and JSONL artifacts are schema-validated before a successful
-build is reported. Generated `llms.txt` and generated `AGENTS.md` stay inside
-the output directory for local builds so source documentation is not silently
-overwritten.
-
+build is reported. Task-pack diagnostics are rendered into generated Markdown
+without changing the `TaskPack` schema in `agent-map.json`. Generated
+`llms.txt` and generated `AGENTS.md` stay inside the output directory for local
+builds so source documentation is not silently overwritten.
 ## Data Contracts
 
 The canonical schemas live in `packages/shared/src/models.ts`. They cover:
@@ -324,14 +324,31 @@ confirmed matching selected task packs and warnings across CLI and MCP for
 `quickstart`, `build App Router POST route handler`, and `implement React
 mutation invalidation`.
 
+## Phase 3 Generic Compiler Hardening
+
+The Phase 3 proof was captured in
+`docs/results/v1-phase-3-generic-compiler-hardening.md`.
+
+Default task-pack families are now generic: `quickstart`, `installation`,
+`authentication`, `configuration`, `webhooks`, `pagination`, `errors`,
+`migration`, `deployment`, `api-usage`, and `testing`. Domain-shaped IDs such
+as `route-handlers`, `query-invalidation`, and `schema-validation` are no
+longer built-ins and are generated only when provided through configured
+`tasks`.
+
+Task-pack ranking still starts from family keywords or configured task queries,
+then uses generic evidence signals such as implementation verbs, HTTP routes,
+request/response/schema terms, mutation/update terms, CLI commands, imports,
+environment variables, loops/cursors, warnings, and deprecations. High
+confidence requires implementation-shaped prose plus relevant code or command
+evidence. Task-pack Markdown includes diagnostics for selected evidence,
+code/command evidence, weak evidence, and context conflicts; `agent-map.json`
+keeps the existing schema.
+
 ## Known Gaps
 
 - OpenAPI sources are represented in schemas/config but are not implemented as
   an ingestion path.
-- Default generated task families still include domain-shaped names such as
-  `route-handlers`, `query-invalidation`, and `schema-validation`; Phase 3 must
-  ensure defaults stay generic and do not violate the no-evaluation-gaming
-  rule.
 - The current `inspect` command covers generated entities, links, and task-pack
   explanations; broader inspect targets in older product text should be treated
   as not implemented unless verified.

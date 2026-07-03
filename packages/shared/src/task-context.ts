@@ -392,15 +392,13 @@ export class TaskContextAssembler {
 
         // Title/ID direct match bonus
         const titleTokens = tokenize(pack.title.toLowerCase());
-        const titleBonus = allTerms.some((t) =>
-          t === pack.id.toLowerCase()
-          || titleTokens.includes(t)
-          || (t.length >= 4 && (
+        const exactTitleMatch = allTerms.some((t) => t === pack.id.toLowerCase() || titleTokens.includes(t));
+        const fuzzyTitleMatch = allTerms.some((t) =>
+          t.length >= 4 && (
             pack.id.toLowerCase().startsWith(t)
             || titleTokens.some((token) => token.startsWith(t) || t.startsWith(token))
-          ))
-        ) ? 10 : 0;
-
+          ));
+        const titleBonus = exactTitleMatch ? 40 : fuzzyTitleMatch ? 10 : 0;
         // Penalty for generic packs when query has specific API terms
         const hasSpecificTerms = allTerms.some((t) => t.length >= 10);
         const packHasSpecificMatch = allTerms.some((q) => 

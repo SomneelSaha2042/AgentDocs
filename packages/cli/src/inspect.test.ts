@@ -63,6 +63,8 @@ describe("inspectAgentMap", () => {
     expect(result.target === "task-pack" && result.taskPack.id).toBe("quickstart");
     expect(result.target === "task-pack" && result.requiredPages.length).toBeGreaterThan(0);
     expect(formatInspectResult(result)).toContain("Generation evidence");
+    expect(formatInspectResult(result)).toContain("Code/command evidence");
+    expect(formatInspectResult(result)).toContain("Weak evidence reason");
     expect(formatInspectResult(result)).toContain("guides/setup.md");
   });
 
@@ -87,6 +89,6 @@ describe("inspectAgentMap", () => {
       id: "missing",
       out: output,
       target: "task-pack",
-    })).rejects.toThrowError("Available task packs: configuration, installation, quickstart.");
+    })).rejects.toThrowError("Available task packs: api-usage, configuration, installation, quickstart.");
   });
 });

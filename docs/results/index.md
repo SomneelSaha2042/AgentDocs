@@ -14,7 +14,7 @@ versioned docs, multi-framework docs, and its own documentation.
 > expansion metrics were captured on June 19, 2026. A full Phase 5 dogfood
 > rerun populated routing metrics on June 20, 2026. A parser format expansion
 > rerun was verified on June 23, 2026. Active evaluation sandbox benchmarks
-> were run on June 26, 2026.
+> were run on June 26, 2026. The v1 Phase 3 generic compiler hardening proof was recorded on July 3, 2026.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
@@ -42,9 +42,9 @@ the latest prepared-target results.
 
 The v1 product-push checkpoints are recorded separately in the
 [Phase 0 baseline](./v1-phase-0-baseline.md),
-[Phase 1 golden workflow](./v1-phase-1-golden-workflow.md), and
-[Phase 2 one context brain](./v1-phase-2-one-context-brain.md) notes.
-
+[Phase 1 golden workflow](./v1-phase-1-golden-workflow.md),
+[Phase 2 one context brain](./v1-phase-2-one-context-brain.md), and
+[Phase 3 generic compiler hardening](./v1-phase-3-generic-compiler-hardening.md) notes.
 ## What the runs proved
 
 ### Useful context is measurable
@@ -132,6 +132,10 @@ How to read the table:
 - **Routing accuracy** reports explicit task-pack routing expectations when a
   run declares them. Historical rows may not have this metric.
 
+Phase 3 generic compiler hardening supersedes the older default task-family
+interpretation in this table: route, schema-validation, and query-invalidation
+evidence now routes to generic packs such as `api-usage` unless those
+project-specific IDs are configured explicitly.
 | Target | Source corpus | Pipeline regression | Task-context verification | Agent implementation | Readiness audit | Repeat build | Main operational finding |
 | --- | --- | --- | --- | --- | ---: | --- | --- |
 | AgentDocs | Local docs | <span class="status-badge status-pass-badge">Passed</span> | `1/1` | <span class="status-badge status-pass-badge">Passed</span> | `79/100` conditional | <span class="status-badge status-pass-badge">Stable</span> | Setup routing now selects installation; self-dogfood task remains passed |

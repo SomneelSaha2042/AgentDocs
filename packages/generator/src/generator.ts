@@ -72,24 +72,7 @@ const TASK_FAMILIES: TaskFamily[] = [
     description: "Configure the project using documented options and environment variables.",
     keywords: ["config", "configuration", "option", "environment", "env var", "api_key"],
   },
-  {
-    id: "route-handlers",
-    title: "Route handlers",
-    description: "Implement documented route handlers using router and runtime evidence.",
-    keywords: ["route handler", "route handlers", "api route", "post route", "get route"],
-  },
-  {
-    id: "query-invalidation",
-    title: "Query invalidation",
-    description: "Invalidate queries after mutations using framework-specific evidence.",
-    keywords: ["query invalidation", "invalidate query", "invalidate queries", "mutation invalidation"],
-  },
-  {
-    id: "schema-validation",
-    title: "Schema validation",
-    description: "Implement documented schema validation using version-specific evidence.",
-    keywords: ["schema validation", "json schema", "validate schema", "schema route"],
-  },
+
   {
     id: "webhooks",
     title: "Webhooks",
@@ -124,6 +107,21 @@ const TASK_FAMILIES: TaskFamily[] = [
     description: "Deploy using available source evidence.",
     keywords: ["deploy", "deployment", "production", "hosting"],
   },
+  {
+    id: "api-usage",
+    title: "API usage",
+    description: "Use documented APIs, routes, requests, responses, schemas, and update flows.",
+    keywords: [
+      "api usage", "endpoint", "route", "request", "response", "http",
+      "schema", "validation", "validate", "mutation", "update", "invalidate", "invalidation",
+    ],
+  },
+  {
+    id: "testing",
+    title: "Testing",
+    description: "Test documented behavior using source-backed commands and examples.",
+    keywords: ["testing", "unit test", "integration test", "test command", "assert", "mock"],
+  },
 ];
 
 type TaskShapeSignal = {
@@ -145,25 +143,58 @@ type ScoredCodeExample = {
   value: string;
 };
 
+type TaskPackDiagnostics = {
+  codeEvidenceStatus: string;
+  contextConflicts: string[];
+  selectedEvidence: string[];
+  weakEvidenceReason?: string;
+};
+
+type GeneratedTaskPack = {
+  diagnostics: TaskPackDiagnostics;
+  pack: TaskPack;
+};
+
 const TASK_SHAPE_SIGNALS: TaskShapeSignal[] = [
   {
-    families: ["schema-validation", "route-handlers"],
-    label: "Route + body schema",
-    bonus: 6,
+    families: ["api-usage", "webhooks"],
+    label: "HTTP route or endpoint evidence",
+    bonus: 5,
     match: ({ text, headingPath, pageTitle, codeBlocks }) => {
       const heading = `${pageTitle} ${headingPath.join(" ")}`.toLowerCase();
       const body = text.toLowerCase();
-      
-      const hasRouteTerm = /\b(?:route|handler|router|endpoint|api)\b/i.test(heading) || /\b(?:route|handler|router|endpoint|api)\b/i.test(body);
-      const hasBodyOrSchemaTerm = /\b(?:body|request|schema|json|post|put|patch)\b/i.test(heading) || /\b(?:body|request|schema|json)\b/i.test(body);
-      
-      if (!hasRouteTerm || !hasBodyOrSchemaTerm) return false;
-      
+      const hasRouteTerm = /\b(?:route|handler|router|endpoint|api|http|request|response)\b/i.test(heading)
+        || /\b(?:route|handler|router|endpoint|api|http|request|response)\b/i.test(body);
+      if (!hasRouteTerm) return false;
       return codeBlocks.some((block) => {
+        const routes = block.extracted?.httpRoutes ?? [];
         const val = block.value.toLowerCase();
-        return /\b(?:post|put|patch)\b/i.test(val) 
-          || /\b\w+\.(?:post|put|patch)\b/i.test(val);
+        return routes.length > 0
+          || /\b(?:get|post|put|patch|delete|head|options)\s*\(/i.test(val)
+          || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(val)
+          || /\b(?:get|post|put|patch|delete|head|options)\s+\/[\w./:*-]*/i.test(val);
       });
+    },
+  },
+  {
+    families: ["api-usage", "configuration", "testing"],
+    label: "Request/response or schema evidence",
+    bonus: 3,
+    match: ({ text, headingPath, pageTitle, codeBlocks }) => {
+      const value = `${pageTitle} ${headingPath.join(" ")} ${text}`.toLowerCase();
+      const hasSchemaOrIo = /\b(?:request|response|body|payload|schema|json|validate|validation|validator)\b/i.test(value);
+      if (!hasSchemaOrIo) return false;
+      return codeBlocks.length > 0 || /\b(?:create|build|implement|use|call|send|return|verify|test)\b/i.test(value);
+    },
+  },
+  {
+    families: ["api-usage"],
+    label: "Mutation or update flow evidence",
+    bonus: 3,
+    match: ({ text, codeBlocks }) => {
+      const value = `${text}\n${codeBlocks.map((block) => block.value).join("\n")}`;
+      return /\b(?:mutation|mutate|update|invalidate|refresh|refetch|write|delete|create)\b/i.test(value)
+        && /\b(?:after|then|when|on success|success|complete|call|use)\b/i.test(value);
     },
   },
   {
@@ -189,7 +220,7 @@ const TASK_SHAPE_SIGNALS: TaskShapeSignal[] = [
     },
   },
   {
-    families: ["authentication", "quickstart"],
+    families: ["authentication", "quickstart", "api-usage"],
     label: "Auth initialization",
     bonus: 4,
     match: ({ codeBlocks }) => {
@@ -210,7 +241,7 @@ const TASK_SHAPE_SIGNALS: TaskShapeSignal[] = [
     },
   },
   {
-    families: ["installation", "quickstart"],
+    families: ["installation", "quickstart", "api-usage"],
     label: "Install + import",
     bonus: 3,
     match: ({ text, codeBlocks }) => {
@@ -242,15 +273,17 @@ export function generateStaticArtifacts(
     keywords: task.queries,
     requiredFacets: task.requiredFacets,
   }))];
-  const taskPacks = families
+  const generatedTaskPacks = families
     .map((family) => generateTaskPack(
       family,
       inputMap,
       options.preferredFacets ?? {},
       options.exclusiveKeys ?? [],
     ))
-    .filter((pack): pack is TaskPack => pack !== undefined)
-    .sort((left, right) => compareStrings(left.id, right.id));
+    .filter((pack): pack is GeneratedTaskPack => pack !== undefined)
+    .sort((left, right) => compareStrings(left.pack.id, right.pack.id));
+  const taskPacks = generatedTaskPacks.map(({ pack }) => pack);
+  const diagnosticsByTask = new Map(generatedTaskPacks.map(({ pack, diagnostics }) => [pack.id, diagnostics]));
   validateTaskPackReferences(taskPacks, inputMap);
   const agentMap = AgentMapSchema.parse({ ...inputMap, taskPacks });
   const manifest = ManifestSchema.parse({
@@ -268,7 +301,7 @@ export function generateStaticArtifacts(
     sourceCoverage: options.sourceCoverage,
   });
   const taskPackMarkdown = Object.fromEntries(
-    taskPacks.map((pack) => [pack.id, renderTaskPack(pack, agentMap)]),
+    taskPacks.map((pack) => [pack.id, renderTaskPack(pack, agentMap, diagnosticsByTask.get(pack.id))]),
   );
   const linkedTaskPacks = options.linkTaskPacks === false ? [] : taskPacks;
   const contextRules = Object.entries(options.preferredFacets ?? {})
@@ -289,7 +322,7 @@ function generateTaskPack(
   agentMap: AgentMap,
   preferredFacets: Record<string, string>,
   exclusiveKeys: string[],
-): TaskPack | undefined {
+): GeneratedTaskPack | undefined {
   const requestedFacets = {
     ...preferredFacets,
     ...(family.requiredFacets ?? {}),
@@ -307,6 +340,7 @@ function generateTaskPack(
         chunk,
         score,
         shapeScore,
+        shapeLabels: taskShapeLabels(family, chunk, agentMap),
         facetScore: facetSelectionScore(chunk.facets, requestedFacets),
       };
     })
@@ -392,16 +426,20 @@ function generateTaskPack(
   const context = taskContext(ranked.map(({ chunk }) => chunk.facets), exclusiveKeys);
   const hasImplementationEvidence = ranked.some((candidate) => candidate.shapeScore > 0)
     || selectedExamples.some((example) => example.implementationEvidence);
-  const baseConfidence = strongest >= 6 && requiredPages.length >= 2 && hasImplementationEvidence && codeExamples.length > 0
+  const hasImplementationProse = ranked.some(({ chunk }) => hasImplementationShapedProse(chunk.text));
+  const hasCodeOrCommandEvidence = selectedExamples.some((example) => example.implementationEvidence)
+    || codeExamples.some((example) => hasCommandOrCodeEvidence(example));
+  const baseConfidence = strongest >= 6 && requiredPages.length >= 2 && hasImplementationEvidence && hasImplementationProse && hasCodeOrCommandEvidence
     ? "high"
     : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
       ? "medium"
       : "low";
-  return TaskPackSchema.parse({
+  const confidence = context.conflicts.length > 0 && baseConfidence === "high" ? "medium" : baseConfidence;
+  const pack = TaskPackSchema.parse({
     id: family.id,
     title: family.title,
     description: family.description,
-    confidence: context.conflicts.length > 0 && baseConfidence === "high" ? "medium" : baseConfidence,
+    confidence,
     requiredPages,
     relatedEntities,
     steps,
@@ -410,6 +448,29 @@ function generateTaskPack(
     evidence,
     context,
   });
+  return {
+    pack,
+    diagnostics: {
+      selectedEvidence: stableUniqueInOrder(ranked.flatMap((candidate) => candidate.shapeLabels)).slice(0, 6),
+      codeEvidenceStatus: codeExamples.length === 0
+        ? "No relevant code or command evidence selected."
+        : hasCodeOrCommandEvidence
+          ? `Selected ${codeExamples.length} relevant code/command example(s).`
+          : `Selected ${codeExamples.length} example(s), but none proved implementation commands or API usage.`,
+      weakEvidenceReason: confidence === "high"
+        ? undefined
+        : weakEvidenceReason({
+            codeExamples,
+            contextConflicts: context.conflicts.length,
+            hasCodeOrCommandEvidence,
+            hasImplementationEvidence,
+            hasImplementationProse,
+            requiredPages: requiredPages.length,
+            strongest,
+          }),
+      contextConflicts: context.conflicts.map((conflict) => `${conflict.key}=${conflict.values.join("|")}`),
+    },
+  };
 }
 
 function facetSelectionScore(
@@ -626,7 +687,7 @@ ${agentMap.pages.map((page) => `- ${page.title}: ${sourceReference(page)}`).join
 `;
 }
 
-function renderTaskPack(pack: TaskPack, agentMap: AgentMap): string {
+function renderTaskPack(pack: TaskPack, agentMap: AgentMap, diagnostics?: TaskPackDiagnostics): string {
   return `# Task: ${pack.title}
 
 Confidence: ${pack.confidence}${pack.confidence === "low" ? "\n\nEvidence is weak. Requires manual review." : ""}
@@ -658,6 +719,10 @@ ${linesOrFallback(pack.gotchas.map((gotcha) => `- ${gotcha.severity.toUpperCase(
 ## Source evidence
 
 ${pack.evidence.map((item) => `- ${evidenceReference(item)}`).join("\n")}
+
+## Diagnostics
+
+${renderTaskPackDiagnostics(diagnostics)}
 `;
 }
 
@@ -784,6 +849,17 @@ function getSiblingHeadingCodeBlocks(agentMap: AgentMap, chunk: Chunk): CodeBloc
     arraysEqual(headingPathFor(page, block.sourceHeadingId), chunk.headingPath));
 }
 
+function taskShapeLabels(family: TaskFamily, chunk: Chunk, agentMap: AgentMap): string[] {
+  const page = agentMap.pages.find((p) => p.id === chunk.pageId);
+  if (!page) return [];
+  const codeBlocks = getChunkCodeBlocks(agentMap, chunk);
+  return TASK_SHAPE_SIGNALS
+    .filter((signal) => signal.families.length === 0 || signal.families.includes(family.id))
+    .filter((signal) => signal.bonus > 0)
+    .filter((signal) => signal.match({ text: chunk.text, headingPath: chunk.headingPath, pageTitle: page.title, codeBlocks }))
+    .map((signal) => signal.label);
+}
+
 function taskShapeScore(family: TaskFamily, chunk: Chunk, agentMap: AgentMap): number {
   const page = agentMap.pages.find((p) => p.id === chunk.pageId);
   if (!page) return 0;
@@ -868,12 +944,20 @@ function codeBlockImplementationScore(block: CodeBlock, family: TaskFamily): num
     if (imports.length > 0 || /\b(?:import|require)\b/i.test(block.value)) score += 1;
   }
 
-  if (family.id === "route-handlers" || family.id === "schema-validation") {
+  if (family.id === "api-usage" || family.id === "webhooks") {
     const hasRoute = httpRoutes.length > 0
       || /\b(?:get|post|put|patch|delete|head|options)\s*\(/i.test(block.value)
-      || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(block.value);
+      || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(block.value)
+      || /\b(?:get|post|put|patch|delete|head|options)\s+\/[\w./:*-]*/i.test(block.value);
     if (hasRoute) score += 3;
-    if (family.id === "schema-validation" && /\b(?:schema|json|body|validate|validator)\b/i.test(block.value)) score += 2;
+  }
+
+  if (family.id === "api-usage" || family.id === "configuration" || family.id === "testing") {
+    if (/\b(?:schema|json|body|payload|request|response|validate|validation|validator)\b/i.test(block.value)) score += 2;
+  }
+
+  if (family.id === "api-usage") {
+    if (/\b(?:mutation|mutate|update|invalidate|refresh|refetch|write|delete|create)\b/i.test(block.value)) score += 2;
   }
 
   if (family.id === "pagination") {
@@ -890,5 +974,54 @@ function codeBlockImplementationScore(block: CodeBlock, family: TaskFamily): num
     if (envVars.length > 0 || /\b(?:process\.env|config|configure|option)\b/i.test(block.value)) score += 3;
   }
 
+  if (family.id === "testing") {
+    if (/\b(?:test|expect|assert|mock|fixture|verify)\b/i.test(block.value)) score += 2;
+  }
+
   return score;
+}
+
+function renderTaskPackDiagnostics(diagnostics: TaskPackDiagnostics | undefined): string {
+  if (diagnostics === undefined) return "No generation diagnostics recorded.";
+  return [
+    diagnostics.selectedEvidence.length === 0
+      ? "- Selected evidence signals: lexical task evidence only."
+      : `- Selected evidence signals: ${diagnostics.selectedEvidence.join(", ")}.`,
+    `- Code/command evidence: ${diagnostics.codeEvidenceStatus}`,
+    diagnostics.weakEvidenceReason === undefined
+      ? "- Weak evidence reason: none."
+      : `- Weak evidence reason: ${diagnostics.weakEvidenceReason}`,
+    diagnostics.contextConflicts.length === 0
+      ? "- Context conflicts: none."
+      : `- Context conflicts: ${diagnostics.contextConflicts.join(", ")}.`,
+  ].join("\n");
+}
+
+function hasImplementationShapedProse(value: string): boolean {
+  const prose = value.replace(/```[\s\S]*?```/g, " ");
+  return /\b(?:create|build|implement|configure|install|use|call|send|return|handle|verify|test|deploy|migrate|update|paginate|authenticate)\b/i.test(prose);
+}
+
+function hasCommandOrCodeEvidence(value: string): boolean {
+  return /\b(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(value)
+    || /\b(?:import|require|function|class|const|let|var|new\s+\w+|create\w*|await|return)\b/i.test(value)
+    || /\b(?:get|post|put|patch|delete|head|options)\s*(?:\(|\/[\w./:*-]*)/i.test(value)
+    || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(value);
+}
+
+function weakEvidenceReason(options: {
+  codeExamples: string[];
+  contextConflicts: number;
+  hasCodeOrCommandEvidence: boolean;
+  hasImplementationEvidence: boolean;
+  hasImplementationProse: boolean;
+  requiredPages: number;
+  strongest: number;
+}): string {
+  if (options.contextConflicts > 0) return "Context conflicts prevented high confidence.";
+  if (!options.hasImplementationProse) return "Selected evidence is mostly conceptual rather than implementation-shaped.";
+  if (!options.hasImplementationEvidence) return "No generic implementation evidence signal was selected.";
+  if (!options.hasCodeOrCommandEvidence || options.codeExamples.length === 0) return "No relevant code or command evidence supported the task.";
+  if (options.requiredPages < 2) return "Only one required source page supported the task.";
+  return `Top evidence score ${options.strongest} did not satisfy the high-confidence threshold.`;
 }

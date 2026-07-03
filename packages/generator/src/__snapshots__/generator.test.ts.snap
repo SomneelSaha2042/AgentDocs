@@ -99,6 +99,13 @@ No warning or deprecation evidence found.
 ## Source evidence
 
 - setup.md (heading_setup)
+
+## Diagnostics
+
+- Selected evidence signals: Basic usage example.
+- Code/command evidence: Selected 1 relevant code/command example(s).
+- Weak evidence reason: Only one required source page supported the task.
+- Context conflicts: none.
 ",
     "quickstart": "# Task: Quickstart
 
@@ -133,6 +140,13 @@ No warning or deprecation evidence found.
 ## Source evidence
 
 - setup.md (heading_setup)
+
+## Diagnostics
+
+- Selected evidence signals: Basic usage example.
+- Code/command evidence: Selected 1 relevant code/command example(s).
+- Weak evidence reason: Only one required source page supported the task.
+- Context conflicts: none.
 ",
   },
 }

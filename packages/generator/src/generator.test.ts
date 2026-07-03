@@ -219,40 +219,53 @@ pnpm add @example/sdk
     expect(generated.taskPacks.some((pack) => pack.id === "pagination")).toBe(true);
   });
 
-  it("generates a route-handlers pack from route handler evidence", () => {
-    const markdown = "# Route Handlers\n\nCreate a POST route handler in the App Router.";
-    const generated = generateStaticArtifacts({
-      project: { name: "Next Fixture", slug: "next-fixture" },
-      agentMap: singlePageMap("Route Handlers", markdown),
-      preferredFacets: { router: "app" },
-      exclusiveKeys: ["router"],
-    });
+  it("keeps domain-shaped route, invalidation, and schema packs out of defaults", () => {
+    const maps = [
+      singlePageMap("Route Handlers", "# Route Handlers\n\nCreate a POST route handler in the App Router."),
+      singlePageMap("Query invalidation", "# Query invalidation\n\nInvalidate a query after a mutation."),
+      singlePageMap("Schema validation", "# Schema validation\n\nBuild a route with JSON schema validation."),
+    ];
 
-    expect(generated.taskPacks.some((pack) => pack.id === "route-handlers")).toBe(true);
+    for (const [index, agentMap] of maps.entries()) {
+      const generated = generateStaticArtifacts({
+        project: { name: `Domain Fixture ${index}`, slug: `domain-fixture-${index}` },
+        agentMap,
+      });
+      expect(generated.taskPacks.map((pack) => pack.id)).not.toContain("route-handlers");
+      expect(generated.taskPacks.map((pack) => pack.id)).not.toContain("query-invalidation");
+      expect(generated.taskPacks.map((pack) => pack.id)).not.toContain("schema-validation");
+    }
   });
 
-  it("generates a query-invalidation pack from mutation invalidation evidence", () => {
-    const markdown = "# React query invalidation\n\nInvalidate a React query after a mutation.";
+  it("routes generic HTTP, schema, and mutation evidence to API usage by default", () => {
     const generated = generateStaticArtifacts({
-      project: { name: "Query Fixture", slug: "query-fixture" },
-      agentMap: singlePageMap("React query invalidation", markdown),
-      preferredFacets: { framework: "react" },
-      exclusiveKeys: ["framework"],
+      project: { name: "Generic API Fixture", slug: "generic-api-fixture" },
+      agentMap: singlePageMap(
+        "API usage",
+        "# API usage\n\nCreate a route, validate the request body schema, return a response, and invalidate cached data after a mutation.",
+      ),
     });
 
-    expect(generated.taskPacks.some((pack) => pack.id === "query-invalidation")).toBe(true);
+    expect(generated.taskPacks.some((pack) => pack.id === "api-usage")).toBe(true);
   });
 
-  it("generates a schema-validation pack from schema validation evidence", () => {
-    const markdown = "# Schema validation\n\nBuild a Fastify v5 route with JSON schema validation.";
+  it("preserves domain-shaped IDs when explicitly configured", () => {
+    const markdown = "# Implementation guides\n\nCreate a route handler, validate request schema, and invalidate a query after a mutation.";
     const generated = generateStaticArtifacts({
-      project: { name: "Fastify Fixture", slug: "fastify-fixture" },
-      agentMap: singlePageMap("Schema validation", markdown),
-      preferredFacets: { version: "v5" },
-      exclusiveKeys: ["version"],
+      project: { name: "Configured Tasks", slug: "configured-tasks" },
+      agentMap: singlePageMap("Route handlers query invalidation schema validation", markdown),
+      tasks: [
+        { id: "route-handlers", title: "Route handlers", queries: ["route handler", "route handlers"], requiredFacets: {} },
+        { id: "query-invalidation", title: "Query invalidation", queries: ["query invalidation", "invalidate"], requiredFacets: {} },
+        { id: "schema-validation", title: "Schema validation", queries: ["schema validation", "request schema"], requiredFacets: {} },
+      ],
     });
 
-    expect(generated.taskPacks.some((pack) => pack.id === "schema-validation")).toBe(true);
+    expect(generated.taskPacks.map((pack) => pack.id)).toEqual(expect.arrayContaining([
+      "route-handlers",
+      "query-invalidation",
+      "schema-validation",
+    ]));
   });
 
   it("does not advertise task-pack files when links are disabled", () => {
@@ -303,7 +316,7 @@ pnpm add @example/sdk
     expect(generated.agentsMd).not.toContain("task-packs/");
   });
 
-  it("schema-validation pack prefers route body schema over compiler customization", () => {
+  it("api-usage pack prefers route body schema over compiler customization", () => {
     const pageAId = "page_validation_overview";
     const pageBId = "page_compiler";
     const pageCId = "page_route";
@@ -409,7 +422,7 @@ pnpm add @example/sdk
       project: { name: "Schema Test", slug: "schema-test" }
     });
 
-    const pack = generated.taskPacks.find((p) => p.id === "schema-validation");
+    const pack = generated.taskPacks.find((p) => p.id === "api-usage");
     expect(pack).toBeDefined();
     if (!pack) throw new Error("pack is undefined");
     expect(pack.requiredPages).toContain(pageCId);
@@ -460,7 +473,7 @@ pnpm add @example/sdk
       project: { name: "Concept Test", slug: "concept-test" }
     });
 
-    const pack = generated.taskPacks.find((p) => p.id === "schema-validation");
+    const pack = generated.taskPacks.find((p) => p.id === "api-usage");
     expect(pack).toBeDefined();
     expect(pack?.confidence).not.toBe("high");
   });
@@ -527,9 +540,11 @@ pnpm add @example/sdk
       project: { name: "Routes", slug: "routes" },
     });
 
-    const pack = generated.taskPacks.find((p) => p.id === "route-handlers");
+    const pack = generated.taskPacks.find((p) => p.id === "api-usage");
     expect(pack).toBeDefined();
     expect(pack?.steps[0]?.evidence[0]?.quote).toContain("fastify.post");
+    expect(generated.taskPackMarkdown["api-usage"]).toContain("## Diagnostics");
+    expect(generated.taskPackMarkdown["api-usage"]).toContain("HTTP route or endpoint evidence");
   });
 
   it("does not include unrelated page code examples when ranked chunks do not contain them", () => {
