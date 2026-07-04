@@ -701,8 +701,11 @@ async function collectConfiguredSources(
       }
       continue;
     }
+    const unsupportedSource = source as { type: string };
     throw new BuildError(
-      `Configured ${source.type} sources are not implemented yet. Remove the source or use a supported local_markdown, repo, or website source.`,
+      unsupportedSource.type === "openapi"
+        ? "OpenAPI ingestion is planned but not supported in this build. Use local_markdown, repo, or website sources."
+        : `Configured ${unsupportedSource.type} sources are not implemented yet. Remove the source or use a supported local_markdown, repo, or website source.`,
     );
   }
 }

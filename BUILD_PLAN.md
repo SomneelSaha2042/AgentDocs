@@ -202,20 +202,14 @@ Make advertised source support match implemented behavior exactly.
 
 - Local markdown, repo, and website behavior is documented in root docs and
   CLI docs using current implementation details.
-- OpenAPI support is closed one way:
-  - preferred v1 path: implement minimal deterministic local OpenAPI 3 JSON/YAML
-    ingestion; or
-  - if that is deferred, reject OpenAPI config at validation/collection time
-    with a clear "planned, not supported in this build" error.
+- OpenAPI support is closed by deferring ingestion and rejecting OpenAPI config/source attempts at validation or collection time with a clear "planned, not supported in this build" error.
 - Parser diagnostics explain weak context causes such as degraded MDX,
   missing pages, sparse headings, stripped components, or no task-shaped
   evidence.
 
 ### Product proof
 
-Run an ingestion/build target that demonstrates the chosen OpenAPI behavior. If
-implemented, search for an operation and verify it appears as cited evidence. If
-deferred, show that config validation fails early with a clear message.
+Run ingestion/build targets that demonstrate the deferred OpenAPI behavior: configured OpenAPI sources and direct OpenAPI file ingestion fail early with clear messages, while supported markdown/repo/website sources still build.
 
 ### Gate
 

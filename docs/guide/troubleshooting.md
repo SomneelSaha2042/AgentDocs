@@ -64,7 +64,7 @@ agent-facing subset.
 
 ## Current Beta Limitations
 
-- OpenAPI ingestion is planned. Repository sources reuse local ingestion and
+- OpenAPI ingestion is planned as a future opt-in adapter and is rejected early in this build. Repository sources reuse local ingestion and
   do not clone remote repositories.
 - Broken-link checks validate generated heading fragments for collected pages.
   Custom HTML or framework-specific manual anchors may still require review.

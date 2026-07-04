@@ -50,6 +50,9 @@ const RepoSourceSchema = z
   })
   .strict();
 
+const OPENAPI_UNSUPPORTED_MESSAGE =
+  "OpenAPI ingestion is planned but not supported in this build. Use local_markdown, repo, or website sources.";
+
 export const AgentDocsConfigSchema = z
   .object({
     name: z.string().min(1),
@@ -143,7 +146,18 @@ export const AgentDocsConfigSchema = z
       .strict()
       .default({}),
   })
-  .strict();
+  .strict()
+  .superRefine((config, ctx) => {
+    config.sources.forEach((source, index) => {
+      if (source.type === "openapi") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: OPENAPI_UNSUPPORTED_MESSAGE,
+          path: ["sources", index, "type"],
+        });
+      }
+    });
+  });
 
 export type AgentDocsConfig = z.infer<typeof AgentDocsConfigSchema>;
 

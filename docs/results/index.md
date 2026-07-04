@@ -14,7 +14,7 @@ versioned docs, multi-framework docs, and its own documentation.
 > expansion metrics were captured on June 19, 2026. A full Phase 5 dogfood
 > rerun populated routing metrics on June 20, 2026. A parser format expansion
 > rerun was verified on June 23, 2026. Active evaluation sandbox benchmarks
-> were run on June 26, 2026. The v1 Phase 3 generic compiler hardening proof was recorded on July 3, 2026.
+> were run on June 26, 2026. The v1 Phase 3 generic compiler hardening proof was recorded on July 3, 2026. The v1 Phase 4 ingestion contract closure proof was recorded on July 4, 2026.
 
 The goal was not to produce flattering readiness scores. The goal was to learn
 whether AgentDocs can give a coding agent useful, scoped, reproducible context
@@ -43,8 +43,9 @@ the latest prepared-target results.
 The v1 product-push checkpoints are recorded separately in the
 [Phase 0 baseline](./v1-phase-0-baseline.md),
 [Phase 1 golden workflow](./v1-phase-1-golden-workflow.md),
-[Phase 2 one context brain](./v1-phase-2-one-context-brain.md), and
-[Phase 3 generic compiler hardening](./v1-phase-3-generic-compiler-hardening.md) notes.
+[Phase 2 one context brain](./v1-phase-2-one-context-brain.md),
+[Phase 3 generic compiler hardening](./v1-phase-3-generic-compiler-hardening.md), and
+[Phase 4 ingestion contract closure](./v1-phase-4-ingestion-contract-closure.md) notes.
 ## What the runs proved
 
 ### Useful context is measurable

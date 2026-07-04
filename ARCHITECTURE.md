@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-03 during the Phase 3 generic compiler hardening pass.
+Verified on 2026-07-04 during the Phase 4 ingestion contract closure pass.
 
 ## Product Shape
 
@@ -73,10 +73,7 @@ can compile them. Website crawling supports same-origin public HTML
 documentation, scoped discovery, sitemap discovery, raw snapshots, Markdown
 alternatives, and useful-page diagnostics.
 
-OpenAPI is present in the config and data contracts but is not implemented as
-an ingestion path. Phase 4 of `BUILD_PLAN.md` must either add minimal
-deterministic local OpenAPI ingestion or reject OpenAPI sources early with an
-actionable unsupported-source error.
+OpenAPI is present in the data contracts as a future evidence type but is not implemented as an ingestion path. Configured `type: openapi` sources and direct OpenAPI file ingestion attempts are rejected early with an actionable unsupported-source error so schemas cannot leak into generic context.
 
 ## Public CLI Surface
 
@@ -158,8 +155,7 @@ The canonical schemas live in `packages/shared/src/models.ts`. They cover:
 
 Stable IDs are derived deterministically from source identity, heading/content
 location, and content hashes. Evidence-linked outputs should point back to
-source pages, headings, code blocks, links, config, or OpenAPI data when that
-source type is implemented.
+source pages, headings, code blocks, links, or config. OpenAPI evidence is reserved for a future opt-in adapter.
 
 ## Normalization Notes
 
@@ -345,10 +341,15 @@ evidence. Task-pack Markdown includes diagnostics for selected evidence,
 code/command evidence, weak evidence, and context conflicts; `agent-map.json`
 keeps the existing schema.
 
+## Phase 4 Ingestion Contract Closure
+
+The Phase 4 proof is captured in `docs/results/v1-phase-4-ingestion-contract-closure.md`.
+
+The supported v1 source contract is now explicit: configured sources support `local_markdown`, `repo`, and `website`. Local/repo collection compiles Markdown, MDX, reST-like text, and AsciiDoc through the normalizer. OpenAPI ingestion is deferred and rejected early through config validation or direct ingest detection, which keeps API schemas out of default context until an opt-in adapter exists.
+
 ## Known Gaps
 
-- OpenAPI sources are represented in schemas/config but are not implemented as
-  an ingestion path.
+- OpenAPI ingestion is deferred to a future opt-in adapter. Current builds reject configured OpenAPI sources and direct OpenAPI file ingestion early instead of silently compiling schemas into generic context.
 - The current `inspect` command covers generated entities, links, and task-pack
   explanations; broader inspect targets in older product text should be treated
   as not implemented unless verified.

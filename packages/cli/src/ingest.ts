@@ -50,6 +50,9 @@ export class IngestError extends Error {
   override readonly name = "IngestError";
 }
 
+const OPENAPI_UNSUPPORTED_MESSAGE =
+  "OpenAPI ingestion is planned but not supported in this build. Use markdown, MDX, reST, AsciiDoc, repo, or website sources.";
+
 type SourceFileFormat = "markdown" | "mdx" | "rst" | "restText" | "adoc" | "asciidoc";
 
 type SourceFile = {
@@ -530,6 +533,9 @@ async function discoverSourceFiles(
     }
     const classified = await classifySourceFile(sourcePath, sourceRoot ?? path.dirname(sourcePath));
     if (classified === undefined) {
+      if (await isLikelyOpenApiFile(sourcePath)) {
+        throw new IngestError(OPENAPI_UNSUPPORTED_MESSAGE);
+      }
       throw new IngestError(`Unsupported input file: ${sourcePath}`);
     }
     return [classified];
@@ -689,6 +695,16 @@ function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
         sourceType: options.sourceType,
       });
   }
+}
+
+async function isLikelyOpenApiFile(filePath: string): Promise<boolean> {
+  const extension = path.extname(filePath).toLowerCase();
+  if (![".json", ".yaml", ".yml"].includes(extension)) {
+    return false;
+  }
+  const text = (await readFile(filePath, "utf8")).slice(0, 16_384);
+  return /(?:^|[\n{,])\s*["']?openapi["']?\s*[:=]\s*["']?3\./i.test(text)
+    || /(?:^|[\n{,])\s*["']?swagger["']?\s*[:=]\s*["']?2\./i.test(text);
 }
 
 async function isLikelyRestTextFile(filePath: string, sourceRoot: string): Promise<boolean> {

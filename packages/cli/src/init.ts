@@ -26,9 +26,8 @@ sources:
   #   exclude:
   #     - /blog/**
 
-  # OpenAPI source example:
-  # - type: openapi
-  #   path: ./openapi.yaml
+  # OpenAPI ingestion is planned but not supported in this build.
+  # OpenAPI sources are rejected early instead of being converted into noisy generic context.
 
   # Repository source example:
   # - type: repo

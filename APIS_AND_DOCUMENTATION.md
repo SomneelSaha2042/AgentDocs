@@ -257,10 +257,7 @@ failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
 file-level diagnostics. `--strict` disables this fallback.
 
-OpenAPI ingestion is a v1 contract gap tracked in `BUILD_PLAN.md` Phase 4.
-Until that phase is completed, OpenAPI config/source support must either be
-implemented minimally or rejected early with an actionable unsupported-source
-message.
+OpenAPI ingestion is deferred in this build. Configured OpenAPI sources and direct OpenAPI file ingestion attempts fail early with an actionable unsupported-source message instead of producing generic chunks. OpenAPI files encountered inside mixed docs directories are not compiled into context.
 
 ### 2.4 `agentdocs build`
 
@@ -481,10 +478,8 @@ sources:
     exclude:
       - "**/drafts/**"
 
-  # OpenAPI is tracked as a v1 contract-closure item. Include this only after
-  # the installed AgentDocs build documents OpenAPI ingestion as supported.
-  # - type: openapi
-  #   path: ./openapi.yaml
+  # OpenAPI ingestion is planned as a future opt-in adapter. This build rejects
+  # OpenAPI sources early instead of compiling schemas into generic context.
 
 output:
   dir: .agentdocs
@@ -567,9 +562,7 @@ type RepoSource = {
 };
 ```
 
-`OpenApiSource` exists in the configuration contract so v1 can close the source
-support gap without reshaping config. Builds must not silently accept OpenAPI
-sources unless the installed version implements deterministic OpenAPI ingestion.
+`OpenApiSource` is reserved for a future opt-in adapter. This build rejects OpenAPI sources during config validation or direct source collection with an actionable unsupported-source message.
 
 ### 4.1.1 Missing metric reason
 

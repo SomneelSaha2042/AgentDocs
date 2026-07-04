@@ -42,7 +42,7 @@ Use AgentDocs when:
 > v1 product hardening: tighter context selection, generic compiler behavior,
 > source contract closure, and publishable proof runs.
 >
-> It is still beta software: OpenAPI Ingestion is not implemented, and large or
+> It is still beta software: OpenAPI ingestion is deferred and rejected early, and large or
 > unusual docs sites may need scoped crawl settings. Local and repo ingestion
 > compiles Markdown/MDX, Sphinx/reST (including Django-style `.txt` files), and
 > AsciiDoc/Antora formats, with deterministic transclusion and skip telemetry.
@@ -393,9 +393,7 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 
 ## Current Limitations
 
-- OpenAPI ingestion is recognized in the config contract but is a v1
-  contract-closure item; unsupported builds must fail early with a clear
-  message.
+- OpenAPI ingestion is deferred to a future opt-in adapter; this build rejects configured OpenAPI sources and direct OpenAPI file ingestion early with a clear message.
 - Inspect currently covers entities, links, and task-pack explanations.
 - Broken-link checks validate generated heading fragments for collected pages;
   custom framework anchors may still require review.

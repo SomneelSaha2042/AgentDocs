@@ -216,7 +216,7 @@ v1 inputs:
 
 - one public docs URL;
 - local markdown, MDX, reST, text, AsciiDoc, or repository docs directory where supported by the normalizer;
-- OpenAPI config is recognized but must either be implemented minimally before v1 or rejected early with a clear unsupported-source message;
+- OpenAPI config is recognized and rejected early in this build with a clear unsupported-source message; ingestion is deferred to a future opt-in adapter;
 - optional package metadata from local `package.json`.
 
 Not required in v1:
@@ -258,7 +258,7 @@ v1 should extract:
 - environment variables;
 - shell commands;
 - HTTP methods and routes;
-- OpenAPI operations only if Phase 4 implements OpenAPI ingestion before v1;
+- no OpenAPI operations in v1 unless a future opt-in adapter is implemented;
 - warning/admonition blocks;
 - deprecated markers;
 - version strings;
@@ -274,7 +274,7 @@ Acceptance criteria:
 
 - Creates config in current directory.
 - Does not overwrite existing config without confirmation or `--force`.
-- Includes commented examples for website, local markdown, and repo sources. OpenAPI examples must be included only when OpenAPI ingestion is implemented; otherwise config validation must fail early with an actionable unsupported-source message.
+- Includes commented examples for website, local markdown, and repo sources. OpenAPI examples are omitted until OpenAPI ingestion is implemented; config validation fails early with an actionable unsupported-source message.
 
 ### FR2: Crawl docs source
 
