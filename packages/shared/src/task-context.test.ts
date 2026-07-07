@@ -701,6 +701,72 @@ describe("TaskContextAssembler routing from product-proof signals", () => {
 
     expect(result.warnings.some((warning) => warning.startsWith("ambiguous_task_selection"))).toBe(true);
   });
+
+  it("warns and verifies intent mismatch when search evidence selects a different available pack", () => {
+    const map = genericRoutingFixtureMap();
+    map.taskPacks = map.taskPacks.filter((pack) => pack.id === "errors");
+    const errorsPack = map.taskPacks[0]!;
+    errorsPack.description =
+      "Configure authentication credentials and credential policies while debugging failures.";
+    errorsPack.steps[0]!.description =
+      "Configure authentication credentials, tokens, policies, and secrets when debugging failures.";
+    const search = {
+      query: "configure authentication and credentials",
+      results: [{
+        title: "Errors and debugging",
+        repoPath: "docs/errors.md",
+        headingPath: ["Errors and debugging"],
+        snippet: "Debug failures by reading error messages.",
+        score: 20,
+        pageId: "page_errors",
+        chunkId: "chunk_errors",
+        facets: [],
+      }],
+      warnings: [],
+    };
+    const assembler = new TaskContextAssembler({ agentMap: map });
+
+    const result = assembler.queryDocs({
+      goal: "configure authentication and credentials",
+      search,
+    });
+    const verification = assembler.verifyContext({
+      goal: "configure authentication and credentials",
+      search,
+    });
+
+    expect(result.task).toBe("errors");
+    expect(result.warnings.some((warning) => warning.startsWith("intent_evidence_mismatch"))).toBe(true);
+    expect(verification.issues.map((issue) => issue.code)).toContain("intent_evidence_mismatch");
+  });
+
+  it("falls back to source-ranked context when no task packs exist", () => {
+    const map = genericRoutingFixtureMap();
+    map.taskPacks = [];
+
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "configure environment variables",
+    });
+
+    expect(result.task).toBeUndefined();
+    expect(result.steps[0]?.title).toBe("Environment configuration");
+    expect(result.warnings).not.toContain("intent_evidence_mismatch");
+  });
+
+  it("keeps errors/debugging packs from winning create-and-deploy goals", () => {
+    const map = genericRoutingFixtureMap();
+    const errorsPack = map.taskPacks.find((pack) => pack.id === "errors")!;
+    errorsPack.description =
+      "Create, deploy, and configure production applications while troubleshooting every failure.";
+    errorsPack.steps[0]!.description =
+      "Create, deploy, configure, and publish production applications while debugging errors and failures.";
+
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "create and deploy the app to production hosting",
+    });
+
+    expect(result.task).toBe("deployment");
+  });
 });
 
 function genericRoutingFixtureMap(): AgentMap {
