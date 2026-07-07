@@ -324,7 +324,8 @@ async function main() {
         ? rawWebTools()
         : [];
     const allTools = [...baseTools, ...corpusTools, ...mcpTools];
-    const toolSchemaTokenEstimate = estimateTokens(JSON.stringify(allTools));
+    const toolSchemaMetrics = toolSchemaMetricsFor({ baseTools, corpusTools, mcpTools });
+    const toolSchemaTokenEstimate = toolSchemaMetrics.totalToolSchemaTokenEstimate;
     const taskDesc = await readFile(path.join(workspaceDir, "task.md"), "utf8");
     const systemPrompt = systemPromptFor(requestedGroup);
     const messages = [
@@ -355,6 +356,7 @@ async function main() {
         corpusDir,
         buildDir,
         toolSchemaTokenEstimate,
+        toolSchemaMetrics,
         docsTelemetry,
         protectedFilesBefore,
         agentdocsBuildHash,
@@ -402,6 +404,7 @@ async function main() {
       corpusDir,
       buildDir,
       toolSchemaTokenEstimate,
+      toolSchemaMetrics,
       docsTelemetry,
       protectedFilesBefore,
       agentdocsBuildHash,
@@ -652,6 +655,7 @@ async function finishRun({
   corpusDir,
   buildDir,
   toolSchemaTokenEstimate,
+  toolSchemaMetrics,
   docsTelemetry,
   protectedFilesBefore,
   agentdocsBuildHash,
@@ -682,6 +686,13 @@ async function finishRun({
       total: totalInputTokens + totalOutputTokens,
     },
     toolSchemaTokenEstimate,
+    toolSchemaMetrics,
+    hotTokenEstimates: hotTokenEstimatesFor({
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      turns,
+      docsToolSchemaTokenEstimate: toolSchemaMetrics.docsToolSchemaTokenEstimate,
+    }),
     retrievalPayloadTokenEstimate: docsTelemetry.retrievalPayloadTokenEstimate,
     docsBytesReturned: docsTelemetry.docsBytesReturned,
     retrievalPayloadByTool: docsTelemetry.byTool,
@@ -860,6 +871,39 @@ function rawWebTools() {
       },
     },
   ];
+}
+
+function toolSchemaMetricsFor({ baseTools, corpusTools, mcpTools }) {
+  const toolSchemaByTool = Object.fromEntries(
+    [...baseTools, ...corpusTools, ...mcpTools]
+      .map((tool) => [tool.name, estimateTokens(JSON.stringify(tool))])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+  const baseToolSchemaTokenEstimate = sumToolSchemaTokens(baseTools, toolSchemaByTool);
+  const rawDocsToolSchemaTokenEstimate = sumToolSchemaTokens(corpusTools, toolSchemaByTool);
+  const docsToolSchemaTokenEstimate = sumToolSchemaTokens(mcpTools, toolSchemaByTool);
+  return {
+    baseToolSchemaTokenEstimate,
+    rawDocsToolSchemaTokenEstimate,
+    docsToolSchemaTokenEstimate,
+    totalToolSchemaTokenEstimate: baseToolSchemaTokenEstimate + rawDocsToolSchemaTokenEstimate + docsToolSchemaTokenEstimate,
+    toolSchemaByTool,
+  };
+}
+
+function sumToolSchemaTokens(tools, toolSchemaByTool) {
+  return tools.reduce((sum, tool) => sum + (toolSchemaByTool[tool.name] ?? 0), 0);
+}
+
+function hotTokenEstimatesFor({ inputTokens, outputTokens, turns, docsToolSchemaTokenEstimate }) {
+  const docsSchemaRepeatedTaxEstimate = docsToolSchemaTokenEstimate * turns;
+  return {
+    coldTotalTokens: inputTokens + outputTokens,
+    docsSchemaRepeatedTaxEstimate,
+    hotAdjustedInputTokensEstimate: Math.max(0, inputTokens - docsSchemaRepeatedTaxEstimate),
+    hotAdjustedTotalTokensEstimate: Math.max(0, inputTokens + outputTokens - docsSchemaRepeatedTaxEstimate),
+    note: "Analytical estimate: subtracts repeated AgentDocs MCP tool-schema tokens from cold API token totals to approximate a hot session where docs tools are already loaded.",
+  };
 }
 
 function systemPromptFor(group) {

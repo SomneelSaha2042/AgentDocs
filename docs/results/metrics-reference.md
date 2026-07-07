@@ -71,6 +71,22 @@ Routing classifications are deterministic:
 
 Routing benchmarks are report-only unless a run declares `--expect-route`.
 
+## Active Evaluation Token Fields
+
+The active evaluation harness compares AgentDocs MCP with raw local and web-style
+search controls. Its token fields are separate from dogfood routing metrics.
+
+| Field | Meaning |
+| --- | --- |
+| `toolSchemaTokenEstimate` | Estimated tokens for all tools exposed to the model in a run. Kept for backward compatibility. |
+| `toolSchemaMetrics.docsToolSchemaTokenEstimate` | Estimated tokens for AgentDocs MCP tool definitions such as `query_docs` and `read_page`. |
+| `toolSchemaMetrics.rawDocsToolSchemaTokenEstimate` | Estimated tokens for raw-doc control tools such as `search_raw_docs`, `read_raw_doc`, `web_search`, and `fetch_webpage`. |
+| `hotTokenEstimates.coldTotalTokens` | Provider-reported total tokens for the run. |
+| `hotTokenEstimates.docsSchemaRepeatedTaxEstimate` | Analytical estimate of repeated AgentDocs MCP tool-schema tokens across turns. |
+| `hotTokenEstimates.hotAdjustedTotalTokensEstimate` | Analytical estimate for an already-loaded AgentDocs session: cold total tokens minus repeated AgentDocs MCP tool-schema overhead. This is not a billing figure. |
+| `retrievalPayloadTokenEstimate` | Estimated tokens returned by documentation retrieval tools. |
+| `docsBytesReturned` | UTF-8 bytes returned by documentation retrieval tools. |
+
 ## Agent Task Field
 
 `agent_task_passed` is a human judgment. It remains `unknown` until an agent

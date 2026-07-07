@@ -110,12 +110,34 @@ function normalizeRun(run) {
       total: run.tokens?.total ?? ((run.tokens?.input ?? 0) + (run.tokens?.output ?? 0)),
     },
     toolSchemaTokenEstimate: run.toolSchemaTokenEstimate,
+    toolSchemaMetrics: normalizeToolSchemaMetrics(run),
+    hotTokenEstimates: normalizeHotTokenEstimates(run),
     retrievalPayloadTokenEstimate: run.retrievalPayloadTokenEstimate,
     docsBytesReturned: run.docsBytesReturned,
     retrievalPayloadByTool: run.retrievalPayloadByTool ?? {},
   };
 }
 
+function normalizeToolSchemaMetrics(run) {
+  const total = run.toolSchemaMetrics?.totalToolSchemaTokenEstimate ?? run.toolSchemaTokenEstimate;
+  return {
+    baseToolSchemaTokenEstimate: run.toolSchemaMetrics?.baseToolSchemaTokenEstimate,
+    rawDocsToolSchemaTokenEstimate: run.toolSchemaMetrics?.rawDocsToolSchemaTokenEstimate,
+    docsToolSchemaTokenEstimate: run.toolSchemaMetrics?.docsToolSchemaTokenEstimate,
+    totalToolSchemaTokenEstimate: total,
+    toolSchemaByTool: run.toolSchemaMetrics?.toolSchemaByTool ?? {},
+  };
+}
+
+function normalizeHotTokenEstimates(run) {
+  const total = run.tokens?.total ?? 0;
+  return {
+    coldTotalTokens: run.hotTokenEstimates?.coldTotalTokens ?? total,
+    docsSchemaRepeatedTaxEstimate: run.hotTokenEstimates?.docsSchemaRepeatedTaxEstimate,
+    hotAdjustedInputTokensEstimate: run.hotTokenEstimates?.hotAdjustedInputTokensEstimate,
+    hotAdjustedTotalTokensEstimate: run.hotTokenEstimates?.hotAdjustedTotalTokensEstimate ?? total,
+  };
+}
 function summarizeRuns(runs) {
   const sorted = [...runs].sort((left, right) => (left.seed ?? 0) - (right.seed ?? 0));
   const passCount = sorted.filter((run) => run.passed).length;
@@ -132,6 +154,11 @@ function summarizeRuns(runs) {
       outputTokens: median(sorted.map((run) => run.tokens.output)),
       totalTokens: median(sorted.map((run) => run.tokens.total)),
       toolSchemaTokenEstimate: medianPresent(sorted.map((run) => run.toolSchemaTokenEstimate)),
+      docsToolSchemaTokenEstimate: medianPresent(sorted.map((run) => run.toolSchemaMetrics.docsToolSchemaTokenEstimate)),
+      rawDocsToolSchemaTokenEstimate: medianPresent(sorted.map((run) => run.toolSchemaMetrics.rawDocsToolSchemaTokenEstimate)),
+      docsSchemaRepeatedTaxEstimate: medianPresent(sorted.map((run) => run.hotTokenEstimates.docsSchemaRepeatedTaxEstimate)),
+      hotAdjustedInputTokensEstimate: medianPresent(sorted.map((run) => run.hotTokenEstimates.hotAdjustedInputTokensEstimate)),
+      hotAdjustedTotalTokensEstimate: medianPresent(sorted.map((run) => run.hotTokenEstimates.hotAdjustedTotalTokensEstimate)),
       retrievalPayloadTokenEstimate: medianPresent(sorted.map((run) => run.retrievalPayloadTokenEstimate)),
       docsBytesReturned: medianPresent(sorted.map((run) => run.docsBytesReturned)),
     },
@@ -143,11 +170,15 @@ function summarizeRuns(runs) {
     contaminationPassed: sorted.every((run) => run.contaminationChecks?.passed !== false),
     toolCalls: mergeToolCalls(sorted),
     retrievalPayloadByTool: mergeRetrievalPayloadByTool(sorted),
+    toolSchemaByTool: mergeToolSchemaByTool(sorted),
   };
 }
 
 function compareSummaries(experimental, control) {
   const tokenDelta = control.medians.totalTokens - experimental.medians.totalTokens;
+  const hotTokenDelta = (control.medians.hotAdjustedTotalTokensEstimate ?? control.medians.totalTokens)
+    - (experimental.medians.hotAdjustedTotalTokensEstimate ?? experimental.medians.totalTokens);
+  const hotControlTokens = control.medians.hotAdjustedTotalTokensEstimate ?? control.medians.totalTokens;
   const turnDelta = control.medians.turns - experimental.medians.turns;
   const durationDelta = control.medians.durationMs - experimental.medians.durationMs;
   return {
@@ -158,6 +189,12 @@ function compareSummaries(experimental, control) {
       raw: tokenDelta,
       percentSaved: control.medians.totalTokens > 0
         ? Math.round((tokenDelta / control.medians.totalTokens) * 100)
+        : 0,
+    },
+    medianHotAdjustedTokenUsageDelta: {
+      raw: hotTokenDelta,
+      percentSaved: hotControlTokens > 0
+        ? Math.round((hotTokenDelta / hotControlTokens) * 100)
         : 0,
     },
     experimentalN: experimental.n,
@@ -175,6 +212,8 @@ function printSummary(taskName, groups, comparisons, summaryPath) {
     console.log(`  N: ${summary.n}, Success: ${summary.passed}/${summary.n} (${Math.round(summary.successRate * 100)}%)`);
     console.log(`  Median Turns: ${summary.medians.turns}`);
     console.log(`  Median Tokens: ${summary.medians.totalTokens}`);
+    console.log(`  Median Hot-Adjusted Tokens: ${summary.medians.hotAdjustedTotalTokensEstimate ?? "n/a"}`);
+    console.log(`  Median Docs Schema Tax Estimate: ${summary.medians.docsSchemaRepeatedTaxEstimate ?? "n/a"}`);
     console.log(`  Median Retrieval Payload Tokens: ${summary.medians.retrievalPayloadTokenEstimate ?? "n/a"}`);
     console.log(`  Contamination Checks: ${summary.contaminationPassed ? "pass" : "fail"}`);
   }
@@ -183,6 +222,7 @@ function printSummary(taskName, groups, comparisons, summaryPath) {
     console.log(`  Success Rate Delta: ${formatSigned(Math.round(comparison.successRateDelta * 100))}%`);
     console.log(`  Median Turns Saved: ${comparison.medianTurnsSaved}`);
     console.log(`  Median Tokens Saved: ${comparison.medianTokenUsageDelta.raw} (${comparison.medianTokenUsageDelta.percentSaved}%)`);
+    console.log(`  Median Hot-Adjusted Tokens Saved: ${comparison.medianHotAdjustedTokenUsageDelta.raw} (${comparison.medianHotAdjustedTokenUsageDelta.percentSaved}%)`);
     console.log(`  Median Time Delta: ${comparison.medianDurationMsSaved >= 0 ? "Saved" : "Added"} ${Math.abs(comparison.medianDurationMsSaved)}ms`);
   }
   console.log(`Saved detailed summary to ${summaryPath}`);
@@ -198,6 +238,15 @@ function mergeToolCalls(runs) {
   return Object.fromEntries(Object.entries(merged).sort(([left], [right]) => left.localeCompare(right)));
 }
 
+function mergeToolSchemaByTool(runs) {
+  const merged = {};
+  for (const run of runs) {
+    for (const [tool, tokens] of Object.entries(run.toolSchemaMetrics.toolSchemaByTool ?? {})) {
+      merged[tool] = (merged[tool] ?? 0) + tokens;
+    }
+  }
+  return Object.fromEntries(Object.entries(merged).sort(([left], [right]) => left.localeCompare(right)));
+}
 function mergeRetrievalPayloadByTool(runs) {
   const merged = {};
   for (const run of runs) {

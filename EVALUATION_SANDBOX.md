@@ -82,12 +82,18 @@ Each result JSON records:
 
 - task, group, model, provider, and seed;
 - pass/fail, turns, duration, and token usage;
-- tool schema token estimate;
+- tool schema token estimate, including base tool, raw-doc tool, and AgentDocs MCP tool categories;
+- cold total tokens reported by the provider;
+- analytical hot-session token estimates that subtract repeated AgentDocs MCP tool-schema overhead;
 - retrieval payload token estimate;
 - docs bytes returned by docs/MCP tools;
 - tool call counts and per-turn breakdowns;
 - final code hash, raw corpus hash, and AgentDocs build hash;
 - contamination checks before and after the run.
 
-The aggregator reports medians and success proportions by group. Treat
-single-run results as smoke checks only; use the seeded pilot for claims.
+The aggregator reports medians and success proportions by group. It reports both
+cold provider token totals and hot-adjusted estimates. Hot-adjusted values are
+analytical estimates, not billing truth: they subtract the repeated AgentDocs MCP
+tool-schema token estimate from each run to model an already-loaded AgentDocs
+session. Treat single-run results as smoke checks only; use the seeded pilot for
+claims.
