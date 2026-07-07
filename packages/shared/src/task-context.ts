@@ -95,7 +95,35 @@ type RankedChunk = {
   score: number;
 };
 
+type TaskSelection = {
+  pack: TaskPack;
+  score: number;
+  warnings: string[];
+};
+
+type TaskIntentRule = {
+  family: string;
+  strength: number;
+  pattern: RegExp;
+};
+
 const DEFAULT_SECTION_MAX_CHARS = 1000;
+
+const TASK_INTENT_RULES: TaskIntentRule[] = [
+  { family: "installation", strength: 10, pattern: /\b(?:install|installation|add\s+(?:the\s+)?(?:package|dependency)|npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get)\b/i },
+  { family: "authentication", strength: 10, pattern: /\b(?:auth|authentication|authenticate|authorization|credential|credentials|api[_ -]?key|token|secret|oauth|login|sign\s*in|row\s+level\s+security|rls|policy|policies)\b/i },
+  { family: "configuration", strength: 10, pattern: /\b(?:configure|configuration|config|setting|settings|option|options|environment|env\s*var|env\s*vars|environment\s+variable|environment\s+variables|properties|mcp|setup-agent|serve-mcp|context\s+server)\b/i },
+  { family: "deployment", strength: 10, pattern: /\b(?:deploy|deployment|production|hosting|hosted|publish|release|ship)\b/i },
+  { family: "errors", strength: 10, pattern: /\b(?:debug|debugging|troubleshoot|troubleshooting|error|errors|failure|failures|exception|exceptions|retry|retries|crash|crashes)\b/i },
+  { family: "testing", strength: 10, pattern: /\b(?:test|testing|unit\s+test|integration\s+test|assert|expect|mock|fixture|fixtures)\b/i },
+  { family: "migration", strength: 10, pattern: /\b(?:migrate|migration|upgrade|breaking\s+change|breaking\s+changes|deprecated|deprecation)\b/i },
+  { family: "pagination", strength: 10, pattern: /\b(?:pagination|paginate|paginated|paginator|cursor|next\s+page|page\s+token|next\s+token|continuation\s+token|offset|marker|has\s+more)\b/i },
+  { family: "webhooks", strength: 10, pattern: /\b(?:webhook|webhooks|signature\s+verification|signing\s+secret|hmac)\b/i },
+  { family: "api-usage", strength: 8, pattern: /\b(?:api|endpoint|route|handler|middleware|request|response|schema|validate|validation|mutation|mutate|update|invalidate|invalidation|refetch|workflow|pipeline)\b/i },
+  { family: "quickstart", strength: 20, pattern: /\b(?:quickstart|getting\s+started|start\s+(?:a|an|the)?\s*(?:[A-Za-z0-9_-]+\s+)?(?:project|app|application|client)|create\s+(?:a|an|the)?\s*(?:[A-Za-z0-9_-]+\s+)?(?:project|app|application|client)|initialize|bootstrap)\b/i },
+  { family: "api-usage", strength: 5, pattern: /\b(?:create|build|implement|add|use|call|send|return|handle)\b/i },
+  { family: "quickstart", strength: 4, pattern: /\b(?:create|start|initialize|bootstrap)\b/i },
+];
 
 export class TaskContextAssembler {
   private readonly pages: Map<string, DocPage>;
@@ -250,7 +278,8 @@ export class TaskContextAssembler {
   queryDocs(options: QueryDocsOptions): QueryDocsResponse {
     const limit = clampLimit(options.limit ?? 2, 1, 3);
     const queryText = queryTextFor(options.goal, options.task);
-    const selectedPack = this.selectTaskPack(options.goal, options.task, options.search);
+    const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
+    const selectedPack = taskSelection?.pack;
     const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, options.facets)
       .slice(0, 5);
     const steps = stableUniqueBy(
@@ -289,6 +318,7 @@ export class TaskContextAssembler {
       selectedPack?.confidence === "low" ? "Evidence is weak." : undefined,
       steps.length === 0 ? "No source-backed steps found." : undefined,
       codeExamples.length === 0 ? "No canonical code examples found." : undefined,
+      ...(taskSelection?.warnings ?? []),
       ...(options.search?.warnings.map((warning) =>
         `${warning.code}: ${warning.key}=${warning.values.join(",")}`) ?? []),
     ].filter((warning): warning is string => warning !== undefined);
@@ -369,47 +399,62 @@ export class TaskContextAssembler {
   }
 
   private selectTaskPack(goal: string, task?: string, search?: SearchResponse): TaskPack | undefined {
+    return this.selectTaskPackCandidate(goal, task, search)?.pack;
+  }
+
+  private selectTaskPackCandidate(goal: string, task?: string, search?: SearchResponse): TaskSelection | undefined {
     if (task !== undefined) {
       const exact = this.options.agentMap.taskPacks.find((pack) => pack.id === task);
-      if (exact !== undefined) return exact;
+      if (exact !== undefined) return { pack: exact, score: Number.POSITIVE_INFINITY, warnings: [] };
     }
     const goalTerms = tokenize(goal.toLowerCase());
     const taskTerms = task !== undefined ? tokenize(task.toLowerCase()) : [];
     const allTerms = [...goalTerms, ...taskTerms];
+    const queryText = `${task ?? ""} ${goal}`.toLowerCase();
+    const intents = taskIntentScores(queryText);
+    const strongestIntent = Math.max(0, ...intents.values());
     const searchPageScores = new Map<string, number>();
     for (const [index, result] of (search?.results ?? []).entries()) {
       searchPageScores.set(result.pageId, Math.max(searchPageScores.get(result.pageId) ?? 0, 16 - index));
     }
 
-    return this.options.agentMap.taskPacks
+    const ranked = this.options.agentMap.taskPacks
       .map((pack) => {
         const searchText = taskPackSearchText(pack);
-        const baseScore = scoreTerms(searchText, `${task ?? ""} ${goal}`.toLowerCase());
+        const baseScore = scoreTerms(searchText, queryText);
         const searchEvidenceScore = pack.requiredPages.reduce(
           (score, pageId) => score + (searchPageScores.get(pageId) ?? 0),
           0,
         );
-
-        // Title/ID direct match bonus
         const titleTokens = tokenize(pack.title.toLowerCase());
-        const exactTitleMatch = allTerms.some((t) => t === pack.id.toLowerCase() || titleTokens.includes(t));
-        const fuzzyTitleMatch = allTerms.some((t) =>
-          t.length >= 4 && (
-            pack.id.toLowerCase().startsWith(t)
-            || titleTokens.some((token) => token.startsWith(t) || t.startsWith(token))
+        const exactTitleMatch = allTerms.some((term) => term === pack.id.toLowerCase() || titleTokens.includes(term));
+        const fuzzyTitleMatch = allTerms.some((term) =>
+          term.length >= 4 && (
+            pack.id.toLowerCase().startsWith(term)
+            || titleTokens.some((token) => token.startsWith(term) || term.startsWith(token))
           ));
-        const titleBonus = exactTitleMatch ? 40 : fuzzyTitleMatch ? 10 : 0;
-        // Penalty for generic packs when query has specific API terms
-        const hasSpecificTerms = allTerms.some((t) => t.length >= 10);
-        const packHasSpecificMatch = allTerms.some((q) => 
-          q.length >= 10 && tokenize(searchText).some((t) => t === q || t.startsWith(q))
+        const titleBonus = exactTitleMatch ? 20 : fuzzyTitleMatch ? 6 : 0;
+        const intentScore = intents.get(pack.id) ?? 0;
+        const hasSpecificTerms = allTerms.some((term) => term.length >= 10);
+        const packHasSpecificMatch = allTerms.some((queryTerm) =>
+          queryTerm.length >= 10 && tokenize(searchText).some((term) => term === queryTerm || term.startsWith(queryTerm))
         );
-        const genericPenalty = hasSpecificTerms && !packHasSpecificMatch ? -10 : 0;
-
-        return { pack, score: baseScore + titleBonus + genericPenalty + searchEvidenceScore };
+        const genericPenalty = hasSpecificTerms && !packHasSpecificMatch ? -6 : 0;
+        const intentPenalty = strongestIntent >= 10 && intentScore < strongestIntent ? (intentScore === 0 ? -18 : -10) : 0;
+        const negativeIntentPenalty = negativeIntentConflict(pack.id, intents, queryText);
+        const evidenceBoost = evidenceShapeScoreForTask(pack, queryText, this.options.agentMap);
+        return {
+          pack,
+          score: baseScore + searchEvidenceScore + titleBonus + intentScore * 3 + evidenceBoost + genericPenalty + intentPenalty + negativeIntentPenalty,
+        };
       })
       .filter(({ score }) => score > 0)
-      .sort((left, right) => right.score - left.score || compareStrings(left.pack.id, right.pack.id))[0]?.pack;
+      .sort((left, right) => right.score - left.score || compareStrings(left.pack.id, right.pack.id));
+
+    const selected = ranked[0];
+    if (selected === undefined) return undefined;
+    const warnings = taskSelectionWarnings(selected, ranked[1], intents, strongestIntent);
+    return { ...selected, warnings };
   }
 
   private buildGoalBundle(goal: string, search: SearchResponse): ContextBundle["goalBundle"] {
@@ -870,6 +915,67 @@ function taskPackSearchText(pack: TaskPack): string {
   ].join(" ").toLowerCase();
 }
 
+function taskIntentScores(query: string): Map<string, number> {
+  const scores = new Map<string, number>();
+  for (const rule of TASK_INTENT_RULES) {
+    if (rule.pattern.test(query)) {
+      scores.set(rule.family, Math.max(scores.get(rule.family) ?? 0, rule.strength));
+    }
+  }
+  return scores;
+}
+
+function negativeIntentConflict(packId: string, intents: Map<string, number>, query: string): number {
+  const strongest = Math.max(0, ...intents.values());
+  if (strongest < 10 || (intents.get(packId) ?? 0) > 0) return 0;
+  if (packId === "errors" && /\b(?:create|build|implement|add|deploy|configure|install|test|paginate|authenticate)\b/i.test(query)) return -24;
+  if (packId === "testing" && /\b(?:deploy|install|configure|authenticate|pagination|paginate|mutation|route|middleware)\b/i.test(query)) return -22;
+  if (packId === "migration" && /\b(?:create|start|deploy|configure|authenticate|test|pagination|paginate|mutation|route|middleware)\b/i.test(query)) return -22;
+  if (packId === "pagination" && /\b(?:auth|authentication|credential|rls|policy|environment|env|install|deploy|test|debug)\b/i.test(query)) return -20;
+  if (packId === "quickstart" && /\b(?:configure|configuration|environment|env|auth|authentication|deploy|debug|test|pagination|paginate|migration|migrate)\b/i.test(query)) return -16;
+  return -10;
+}
+
+function evidenceShapeScoreForTask(pack: TaskPack, query: string, agentMap: AgentMap): number {
+  const text = taskPackSearchText(pack);
+  const code = pack.codeExamples.join("\n");
+  const pages = pack.requiredPages
+    .map((pageId) => agentMap.pages.find((page) => page.id === pageId))
+    .filter((page): page is DocPage => page !== undefined);
+  const pageText = pages.map((page) => `${page.title} ${page.markdown}`).join("\n").toLowerCase();
+  const combined = `${text}\n${code}\n${pageText}`;
+  let score = 0;
+  if (pack.id === "configuration" && /\b(?:config|configure|environment|env|option|properties)\b/i.test(query) && /\b(?:process\.env|environment|env|option|properties|config)\b/i.test(combined)) score += 8;
+  if (pack.id === "authentication" && /\b(?:auth|authentication|credential|token|secret|rls|policy)\b/i.test(query) && /\b(?:auth|credential|token|secret|rls|policy|permission)\b/i.test(combined)) score += 8;
+  if (pack.id === "deployment" && /\bdeploy\b|\bdeployment\b/i.test(query) && /\b(?:deploy|production|host|publish|worker|runtime)\b/i.test(combined)) score += 8;
+  if (pack.id === "api-usage" && /\b(?:route|middleware|schema|validation|mutation|invalidate|workflow|pipeline|request|response)\b/i.test(query) && /\b(?:route|middleware|schema|validation|mutation|invalidate|workflow|pipeline|request|response|api|endpoint)\b/i.test(combined)) score += 8;
+  if (pack.id === "quickstart" && /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap)\b/i.test(query) && /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap|hello|first)\b/i.test(combined)) score += 8;
+  if (pack.id === "testing" && /\btest\b|\btesting\b/i.test(query) && /\b(?:test|testing|assert|expect|mock)\b/i.test(combined)) score += 8;
+  if (pack.id === "errors" && /\b(?:debug|error|failure|troubleshoot|exception)\b/i.test(query) && /\b(?:debug|error|failure|troubleshoot|exception|retry)\b/i.test(combined)) score += 8;
+  return score;
+}
+
+function taskSelectionWarnings(
+  selected: { pack: TaskPack; score: number },
+  runnerUp: { pack: TaskPack; score: number } | undefined,
+  intents: Map<string, number>,
+  strongestIntent: number,
+): string[] {
+  const warnings: string[] = [];
+  if (strongestIntent >= 10 && (intents.get(selected.pack.id) ?? 0) === 0) {
+    const expected = [...intents.entries()]
+      .filter(([, score]) => score === strongestIntent)
+      .map(([family]) => family)
+      .sort(compareStrings)
+      .join(",");
+    warnings.push(`intent_evidence_mismatch: selected=${selected.pack.id}; expected=${expected}`);
+  }
+  if (runnerUp !== undefined && Number.isFinite(selected.score) && selected.score - runnerUp.score <= 12) {
+    warnings.push(`ambiguous_task_selection: selected=${selected.pack.id}; alternative=${runnerUp.pack.id}`);
+  }
+  return warnings;
+}
+
 function facetsCompatible(facets: Chunk["facets"], requested?: Record<string, string>): boolean {
   if (requested === undefined) return true;
   return Object.entries(requested).every(([key, value]) => {
@@ -1019,6 +1125,22 @@ function issueForQueryWarning(
       code: "weak_evidence",
       severity: "warning",
       message: pack === undefined ? "Evidence is weak." : `Task pack "${pack.id}" has low confidence.`,
+      evidence: pack?.evidence ?? [],
+    };
+  }
+  if (warning.startsWith("ambiguous_task_selection:")) {
+    return {
+      code: "ambiguous_task_selection",
+      severity: "warning",
+      message: warning,
+      evidence: pack?.evidence ?? [],
+    };
+  }
+  if (warning.startsWith("intent_evidence_mismatch:")) {
+    return {
+      code: "intent_evidence_mismatch",
+      severity: "warning",
+      message: warning,
       evidence: pack?.evidence ?? [],
     };
   }

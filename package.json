@@ -37,6 +37,7 @@
     "docs:preview": "vitepress preview docs --host 127.0.0.1",
     "check": "corepack pnpm build && corepack pnpm typecheck && corepack pnpm test && corepack pnpm docs:build && corepack pnpm pack:verify && corepack pnpm smoke:bundle",
     "pack:verify": "node scripts/verify-pack.mjs",
+    "proof:v1": "corepack pnpm build && node scripts/v1-product-proof.mjs",
     "regression:dogfood": "corepack pnpm build && node scripts/dogfood-regression.mjs",
     "regression:fixtures": "corepack pnpm build && node scripts/regression-fixtures.mjs",
     "smoke:bundle": "node scripts/release-smoke.mjs node packages/cli/dist/agentdocs.js",

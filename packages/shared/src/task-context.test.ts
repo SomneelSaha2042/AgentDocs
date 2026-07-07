@@ -634,3 +634,187 @@ describe("TaskContextAssembler routing with overlapping task vocabulary", () => 
     expect(result.task).toBe("pagination");
   });
 });
+// ---------------------------------------------------------------------------
+// Phase 5 proof-derived generic routing regressions.
+// ---------------------------------------------------------------------------
+
+describe("TaskContextAssembler routing from product-proof signals", () => {
+  it("routes environment configuration goals to configuration instead of quickstart", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "configure environment variables for local development",
+    });
+
+    expect(result.task).toBe("configuration");
+  });
+
+  it("routes install and golden workflow goals to installation instead of errors", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "install the package and run the golden workflow",
+    });
+
+    expect(result.task).toBe("installation");
+  });
+
+  it("routes deployment goals to deployment instead of testing", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "deploy the app to production hosting",
+    });
+
+    expect(result.task).toBe("deployment");
+  });
+
+  it("routes authentication and policy goals to authentication instead of pagination", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "implement authentication with row level security policies",
+    });
+
+    expect(result.task).toBe("authentication");
+  });
+
+  it("routes mutation invalidation goals to API usage instead of errors", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "implement a mutation and invalidate cached queries after success",
+    });
+
+    expect(result.task).toBe("api-usage");
+  });
+
+  it("routes create workflow goals to API usage instead of errors", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "create a scheduled workflow pipeline",
+    });
+
+    expect(result.task).toBe("api-usage");
+  });
+
+  it("warns when the top task selection is ambiguous", () => {
+    const map = genericRoutingFixtureMap();
+    map.taskPacks = map.taskPacks.filter((pack) => pack.id === "quickstart" || pack.id === "api-usage");
+    for (const pack of map.taskPacks) {
+      pack.description = "Create and use a client with source-backed setup evidence.";
+      pack.steps[0]!.description = "Create and use a client with source-backed setup evidence.";
+      pack.codeExamples = ["const client = createClient(); await client.use();"];
+    }
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "create and use a client",
+    });
+
+    expect(result.warnings.some((warning) => warning.startsWith("ambiguous_task_selection"))).toBe(true);
+  });
+});
+
+function genericRoutingFixtureMap(): AgentMap {
+  const hash = "e".repeat(64);
+  const families = [
+    {
+      id: "quickstart",
+      title: "Quickstart",
+      heading: "Getting started",
+      text: "Create a new application and initialize the first client. Start with the hello world example.",
+      code: "const client = createClient();",
+    },
+    {
+      id: "installation",
+      title: "Installation",
+      heading: "Install packages",
+      text: "Install the package and run the first workflow command after setup.",
+      code: "npm install @example/client",
+    },
+    {
+      id: "authentication",
+      title: "Authentication",
+      heading: "Authentication and policies",
+      text: "Authenticate requests with credentials and configure row level security policies before querying protected data.",
+      code: "const client = createClient({ token: process.env.API_TOKEN });",
+    },
+    {
+      id: "configuration",
+      title: "Configuration",
+      heading: "Environment configuration",
+      text: "Configure environment variables and options for local development and production.",
+      code: "EXAMPLE_API_URL=https://api.example.test\nEXAMPLE_TOKEN=secret",
+    },
+    {
+      id: "deployment",
+      title: "Deployment",
+      heading: "Deploy to production",
+      text: "Deploy the application to production hosting and configure the runtime.",
+      code: "npm run deploy",
+    },
+    {
+      id: "testing",
+      title: "Testing",
+      heading: "Testing",
+      text: "Test the application with assertions, mocks, and integration fixtures.",
+      code: "expect(result.ok).toBe(true);",
+    },
+    {
+      id: "errors",
+      title: "Errors and debugging",
+      heading: "Errors and debugging",
+      text: "Debug failures by reading error messages, retries, and troubleshooting output.",
+      code: "try { await run(); } catch (error) { console.error(error); }",
+    },
+    {
+      id: "pagination",
+      title: "Pagination",
+      heading: "Pagination",
+      text: "Paginate with a cursor and continue until the next page token is empty.",
+      code: "while (cursor) { const page = await list({ cursor }); cursor = page.nextCursor; }",
+    },
+    {
+      id: "api-usage",
+      title: "API usage",
+      heading: "API usage",
+      text: "Use routes, middleware, schemas, workflow pipelines, mutations, updates, and invalidation APIs.",
+      code: "await mutation.mutate(input, { onSuccess: () => cache.invalidateQueries() });",
+    },
+  ];
+  return AgentMapSchema.parse({
+    schemaVersion: "0.2.0",
+    pages: families.map((family) => ({
+      id: `page_${family.id}`,
+      sourceType: "local_markdown",
+      repoPath: `docs/${family.id}.md`,
+      title: family.title,
+      markdown: `# ${family.heading}\n\n${family.text}\n\n\`\`\`ts\n${family.code}\n\`\`\`\n`,
+      headings: [{ id: `heading_${family.id}`, depth: 1, text: family.heading, slug: family.heading.toLowerCase().replace(/\s+/g, "-"), position: {} }],
+      links: [],
+      codeBlocks: [{ id: `code_${family.id}`, language: "ts", value: family.code, sourceHeadingId: `heading_${family.id}` }],
+      contentHash: hash,
+      discoveredAt: "1970-01-01T00:00:00.000Z",
+      versionHints: [],
+      facets: [],
+    })),
+    chunks: families.map((family) => ({
+      id: `chunk_${family.id}`,
+      pageId: `page_${family.id}`,
+      headingPath: [family.heading],
+      text: family.text,
+      tokenEstimate: 24,
+      links: [],
+      entityIds: [],
+      contentHash: hash,
+      facets: [],
+    })),
+    entities: [],
+    edges: [],
+    taskPacks: families.map((family) => ({
+      id: family.id,
+      title: family.title,
+      description: `Complete ${family.title} with source-backed evidence.`,
+      confidence: "high",
+      requiredPages: [`page_${family.id}`],
+      relatedEntities: [],
+      steps: [{
+        title: family.heading,
+        description: family.text,
+        evidence: [{ source: "heading", pageId: `page_${family.id}`, headingId: `heading_${family.id}`, repoPath: `docs/${family.id}.md` }],
+      }],
+      gotchas: [],
+      codeExamples: [family.code],
+      evidence: [{ source: "heading", pageId: `page_${family.id}`, headingId: `heading_${family.id}`, repoPath: `docs/${family.id}.md` }],
+      context: { facets: {}, conflicts: [] },
+    })),
+  });
+}
