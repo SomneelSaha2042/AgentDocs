@@ -687,6 +687,30 @@ describe("TaskContextAssembler routing from product-proof signals", () => {
     expect(result.task).toBe("api-usage");
   });
 
+  it("routes true getting-started goals to quickstart", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "quickstart and create the first client",
+    });
+
+    expect(result.task).toBe("quickstart");
+  });
+
+  it("routes true debugging goals to errors", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "debug task failures and troubleshoot error output",
+    });
+
+    expect(result.task).toBe("errors");
+  });
+
+  it("routes true testing goals to testing", () => {
+    const result = new TaskContextAssembler({ agentMap: genericRoutingFixtureMap() }).queryDocs({
+      goal: "test the application with mocks and assertions",
+    });
+
+    expect(result.task).toBe("testing");
+  });
+
   it("warns when the top task selection is ambiguous", () => {
     const map = genericRoutingFixtureMap();
     map.taskPacks = map.taskPacks.filter((pack) => pack.id === "quickstart" || pack.id === "api-usage");

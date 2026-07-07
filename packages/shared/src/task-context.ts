@@ -442,7 +442,7 @@ export class TaskContextAssembler {
         const genericPenalty = hasSpecificTerms && !packHasSpecificMatch ? -6 : 0;
         const intentPenalty = strongestIntent >= 10 && intentScore < strongestIntent ? (intentScore === 0 ? -18 : -10) : 0;
         const negativeIntentPenalty = negativeIntentConflict(pack.id, intents, queryText);
-        const evidenceBoost = evidenceShapeScoreForTask(pack, queryText, this.options.agentMap);
+        const evidenceBoost = evidenceOverlapScoreForTask(pack, queryText, this.options.agentMap);
         return {
           pack,
           score: baseScore + searchEvidenceScore + titleBonus + intentScore * 3 + evidenceBoost + genericPenalty + intentPenalty + negativeIntentPenalty,
@@ -925,18 +925,36 @@ function taskIntentScores(query: string): Map<string, number> {
   return scores;
 }
 
-function negativeIntentConflict(packId: string, intents: Map<string, number>, query: string): number {
+function negativeIntentConflict(packId: string, intents: Map<string, number>, _query: string): number {
   const strongest = Math.max(0, ...intents.values());
   if (strongest < 10 || (intents.get(packId) ?? 0) > 0) return 0;
-  if (packId === "errors" && /\b(?:create|build|implement|add|deploy|configure|install|test|paginate|authenticate)\b/i.test(query)) return -24;
-  if (packId === "testing" && /\b(?:deploy|install|configure|authenticate|pagination|paginate|mutation|route|middleware)\b/i.test(query)) return -22;
-  if (packId === "migration" && /\b(?:create|start|deploy|configure|authenticate|test|pagination|paginate|mutation|route|middleware)\b/i.test(query)) return -22;
-  if (packId === "pagination" && /\b(?:auth|authentication|credential|rls|policy|environment|env|install|deploy|test|debug)\b/i.test(query)) return -20;
-  if (packId === "quickstart" && /\b(?:configure|configuration|environment|env|auth|authentication|deploy|debug|test|pagination|paginate|migration|migrate)\b/i.test(query)) return -16;
-  return -10;
+  return -12;
 }
 
-function evidenceShapeScoreForTask(pack: TaskPack, query: string, agentMap: AgentMap): number {
+type EvidenceOverlapSignal = {
+  query: RegExp;
+  evidence: RegExp;
+  score: number;
+};
+
+const EVIDENCE_OVERLAP_SIGNALS: EvidenceOverlapSignal[] = [
+  { query: /\b(?:install|installation|add\s+(?:the\s+)?(?:package|dependency)|setup|set\s+up)\b/i, evidence: /\b(?:npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get|install|setup|set\s+up)\b/i, score: 4 },
+  { query: /\b(?:config|configure|configuration|environment|env|option|options|properties|setting|settings)\b/i, evidence: /\b(?:process\.env|environment|env|option|options|properties|config|configuration|setting|settings)\b/i, score: 4 },
+  { query: /\b(?:auth|authentication|authenticate|authorization|credential|credentials|token|secret|rls|policy|policies|permission)\b/i, evidence: /\b(?:auth|authentication|credential|credentials|token|secret|rls|policy|policies|permission|oauth|login|sign\s*in)\b/i, score: 4 },
+  { query: /\b(?:deploy|deployment|production|hosting|hosted|publish|release|runtime)\b/i, evidence: /\b(?:deploy|deployment|production|host|hosting|publish|release|runtime|worker)\b/i, score: 4 },
+  { query: /\b(?:route|handler|middleware|endpoint|request|response)\b/i, evidence: /\b(?:route|handler|middleware|endpoint|request|response|api|get|post|put|patch|delete)\b/i, score: 4 },
+  { query: /\b(?:schema|validate|validation|validator)\b/i, evidence: /\b(?:schema|validate|validation|validator|required|properties|type:\s*['\"]?object)\b/i, score: 4 },
+  { query: /\b(?:mutation|mutate|update|invalidate|invalidation|refetch|cache)\b/i, evidence: /\b(?:mutation|mutate|update|invalidate|invalidation|refetch|cache|onSuccess)\b/i, score: 4 },
+  { query: /\b(?:workflow|pipeline|job|task)\b/i, evidence: /\b(?:workflow|pipeline|job|task|schedule|dag)\b/i, score: 4 },
+  { query: /\b(?:pagination|paginate|cursor|next\s+page|page\s+token|next\s+token|offset|marker|has\s+more)\b/i, evidence: /\b(?:pagination|paginate|cursor|next\s+page|page\s+token|next\s+token|offset|marker|has\s+more|while|for\s+await)\b/i, score: 4 },
+  { query: /\b(?:webhook|webhooks|signature|signing\s+secret|hmac)\b/i, evidence: /\b(?:webhook|webhooks|signature|signing\s+secret|hmac|verify|verification)\b/i, score: 4 },
+  { query: /\b(?:debug|debugging|troubleshoot|error|failure|exception|retry|crash)\b/i, evidence: /\b(?:debug|debugging|troubleshoot|error|failure|exception|retry|crash|warning)\b/i, score: 4 },
+  { query: /\b(?:test|testing|assert|expect|mock|fixture)\b/i, evidence: /\b(?:test|testing|assert|expect|mock|fixture|describe\(|it\()\b/i, score: 4 },
+  { query: /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap|first)\b/i, evidence: /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap|hello|first)\b/i, score: 4 },
+  { query: /\b(?:migrate|migration|upgrade|breaking\s+change|deprecated|deprecation)\b/i, evidence: /\b(?:migrate|migration|upgrade|breaking\s+change|deprecated|deprecation)\b/i, score: 4 },
+];
+
+function evidenceOverlapScoreForTask(pack: TaskPack, query: string, agentMap: AgentMap): number {
   const text = taskPackSearchText(pack);
   const code = pack.codeExamples.join("\n");
   const pages = pack.requiredPages
@@ -944,15 +962,42 @@ function evidenceShapeScoreForTask(pack: TaskPack, query: string, agentMap: Agen
     .filter((page): page is DocPage => page !== undefined);
   const pageText = pages.map((page) => `${page.title} ${page.markdown}`).join("\n").toLowerCase();
   const combined = `${text}\n${code}\n${pageText}`;
-  let score = 0;
-  if (pack.id === "configuration" && /\b(?:config|configure|environment|env|option|properties)\b/i.test(query) && /\b(?:process\.env|environment|env|option|properties|config)\b/i.test(combined)) score += 8;
-  if (pack.id === "authentication" && /\b(?:auth|authentication|credential|token|secret|rls|policy)\b/i.test(query) && /\b(?:auth|credential|token|secret|rls|policy|permission)\b/i.test(combined)) score += 8;
-  if (pack.id === "deployment" && /\bdeploy\b|\bdeployment\b/i.test(query) && /\b(?:deploy|production|host|publish|worker|runtime)\b/i.test(combined)) score += 8;
-  if (pack.id === "api-usage" && /\b(?:route|middleware|schema|validation|mutation|invalidate|workflow|pipeline|request|response)\b/i.test(query) && /\b(?:route|middleware|schema|validation|mutation|invalidate|workflow|pipeline|request|response|api|endpoint)\b/i.test(combined)) score += 8;
-  if (pack.id === "quickstart" && /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap)\b/i.test(query) && /\b(?:quickstart|getting\s+started|create|start|initialize|bootstrap|hello|first)\b/i.test(combined)) score += 8;
-  if (pack.id === "testing" && /\btest\b|\btesting\b/i.test(query) && /\b(?:test|testing|assert|expect|mock)\b/i.test(combined)) score += 8;
-  if (pack.id === "errors" && /\b(?:debug|error|failure|troubleshoot|exception)\b/i.test(query) && /\b(?:debug|error|failure|troubleshoot|exception|retry)\b/i.test(combined)) score += 8;
-  return score;
+  const combinedTokens = tokenize(combined);
+  const queryTerms = stableUnique(tokenize(query)).filter(isEvidenceTerm);
+
+  const termOverlap = queryTerms.reduce((score, queryTerm) => {
+    const matched = combinedTokens.some((term) => term === queryTerm || term.startsWith(queryTerm));
+    return score + (matched ? Math.min(queryTerm.length / 6, 2) : 0);
+  }, 0);
+  const signalScore = EVIDENCE_OVERLAP_SIGNALS.reduce(
+    (score, signal) => score + (signal.query.test(query) && signal.evidence.test(combined) ? signal.score : 0),
+    0,
+  );
+  const codeTokens = tokenize(code);
+  const codeOverlap = queryTerms.some((queryTerm) =>
+    codeTokens.some((term) => term === queryTerm || term.startsWith(queryTerm)))
+    ? 3
+    : 0;
+
+  return Math.min(12, Math.min(4, termOverlap) + Math.min(8, signalScore) + codeOverlap);
+}
+
+function isEvidenceTerm(term: string): boolean {
+  return term.length >= 4 && !new Set([
+    "with",
+    "from",
+    "using",
+    "use",
+    "uses",
+    "this",
+    "that",
+    "your",
+    "after",
+    "before",
+    "into",
+    "when",
+    "then",
+  ]).has(term);
 }
 
 function taskSelectionWarnings(

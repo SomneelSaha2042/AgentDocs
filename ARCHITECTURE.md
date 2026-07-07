@@ -184,10 +184,14 @@ FTS5. Otherwise it writes a deterministic lexical fallback index to the same
 selection, read-first resources, warnings, verification issues, citations,
 confidence, context bundles, handoff bundles, and `query_docs` style responses.
 Task-pack selection combines generic goal-intent signals, task-pack text,
-required-page overlap with search results, code/command evidence shape, and
-negative intent conflicts. It can emit ambiguity or intent-mismatch warnings
-through the existing context and verification surfaces without changing the
-generated `TaskPack` schema. `packages/mcp-server/src/artifacts.ts` remains the
+required-page overlap with search results, source-backed query/content overlap,
+and a uniform negative penalty for strong intent mismatches. The content-overlap
+scoring uses generic evidence signals such as commands, environment/config
+terms, credentials, routes, schemas, mutations, cursors, webhooks, errors, and
+tests without package-specific or task-pack-ID-specific bonuses. It can emit
+ambiguity or intent-mismatch warnings through the existing context and
+verification surfaces without changing the generated `TaskPack` schema.
+`packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the
 shared result shapes.
