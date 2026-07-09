@@ -111,23 +111,7 @@ describe("TaskContextAssembler", () => {
       })),
       entities: [],
       edges: [],
-      taskPacks: [{
-        id: "pagination",
-        title: "Pagination",
-        description: "Implement pagination.",
-        confidence: "high",
-        requiredPages: ["page_pagination"],
-        relatedEntities: [],
-        steps: [{
-          title: "Use paginate",
-          description: largeText,
-          evidence: [{ source: "heading", pageId: "page_pagination", headingId: "heading_pagination", repoPath: "docs/pagination.md", quote: largeText }],
-        }],
-        gotchas: [],
-        codeExamples: [],
-        evidence: [{ source: "heading", pageId: "page_pagination", headingId: "heading_pagination", repoPath: "docs/pagination.md", quote: largeText }],
-        context: { facets: {}, conflicts: [] },
-      }],
+      taskPacks: [],
     });
     const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
       goal: "fetch commits with octokit pagination",
@@ -310,6 +294,161 @@ describe("TaskContextAssembler", () => {
     expect(result.steps[0]?.title).toBe("Validate your data");
     expect(result.codeExamples[0]?.value).toContain("schema: { body:");
     expect(result.codeExamples[0]?.value).not.toContain("createClient");
+  });
+});
+
+
+describe("TaskContextAssembler facet safety", () => {
+  it("filters wrong-router evidence for App Router implementation goals", () => {
+    const hash = "f".repeat(64);
+    const appFacet = {
+      key: "router",
+      value: "app-router",
+      evidence: [{ source: "heading" as const, pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+    };
+    const pagesFacet = {
+      key: "router",
+      value: "pages-router",
+      evidence: [{ source: "heading" as const, pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" }],
+    };
+    const map = AgentMapSchema.parse({
+      schemaVersion: "0.2.0",
+      pages: [{
+        id: "page_app",
+        sourceType: "local_markdown",
+        repoPath: "docs/app-router.md",
+        title: "App Router webhook route handlers",
+        markdown: "# App Router webhook route handlers\nUse a route handler and read the raw body with req.text().\n",
+        headings: [{ id: "heading_app", depth: 1, text: "App Router webhook route handlers", slug: "app-router-webhook-route-handlers", position: {} }],
+        links: [],
+        codeBlocks: [{
+          id: "code_app_webhook",
+          language: "ts",
+          value: "export async function POST(req: Request) { const body = await req.text(); return Response.json({ received: true }); }",
+          sourceHeadingId: "heading_app",
+        }],
+        contentHash: hash,
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+        facets: [appFacet],
+      }, {
+        id: "page_pages",
+        sourceType: "local_markdown",
+        repoPath: "docs/pages-router.md",
+        title: "Pages Router webhook API routes",
+        markdown: "# Pages Router webhook API routes\nUse NextApiRequest and disable bodyParser in API route config.\n",
+        headings: [{ id: "heading_pages", depth: 1, text: "Pages Router webhook API routes", slug: "pages-router-webhook-api-routes", position: {} }],
+        links: [],
+        codeBlocks: [{
+          id: "code_pages_webhook",
+          language: "ts",
+          value: "import type { NextApiRequest, NextApiResponse } from 'next'; export const config = { api: { bodyParser: false } };",
+          sourceHeadingId: "heading_pages",
+        }],
+        contentHash: hash,
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+        facets: [pagesFacet],
+      }],
+      chunks: [{
+        id: "chunk_app",
+        pageId: "page_app",
+        headingPath: ["App Router webhook route handlers"],
+        text: "In App Router, export async function POST(req: Request) and read the raw request body with await req.text() before signature verification.",
+        tokenEstimate: 30,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [appFacet],
+      }, {
+        id: "chunk_pages",
+        pageId: "page_pages",
+        headingPath: ["Pages Router webhook API routes"],
+        text: "In Pages Router, use NextApiRequest, NextApiResponse, and export const config = { api: { bodyParser: false } }.",
+        tokenEstimate: 26,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [pagesFacet],
+      }],
+      entities: [],
+      edges: [],
+      taskPacks: [{
+        id: "webhooks",
+        title: "Webhooks",
+        description: "Implement webhook handlers with signature verification.",
+        confidence: "high",
+        requiredPages: ["page_app", "page_pages"],
+        relatedEntities: [],
+        steps: [{
+          title: "Use App Router route handlers",
+          description: "Export async function POST(req: Request) and read the raw body with req.text().",
+          evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+        }, {
+          title: "Use Pages Router API config",
+          description: "Use NextApiRequest and export const config with bodyParser disabled.",
+          evidence: [{ source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" }],
+        }],
+        gotchas: [],
+        codeExamples: [],
+        evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+        context: {
+          facets: { router: ["app-router", "pages-router"] },
+          conflicts: [{
+            key: "router",
+            values: ["app-router", "pages-router"],
+            evidence: [
+              { source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" },
+              { source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" },
+            ],
+          }],
+        },
+      }],
+    });
+    const search = {
+      query: "Stripe webhook Next.js App Router route handler",
+      results: [{
+        title: "Pages Router webhook API routes",
+        repoPath: "docs/pages-router.md",
+        headingPath: ["Pages Router webhook API routes"],
+        snippet: "Use NextApiRequest and bodyParser false.",
+        score: 100,
+        pageId: "page_pages",
+        chunkId: "chunk_pages",
+        facets: [pagesFacet],
+      }, {
+        title: "App Router webhook route handlers",
+        repoPath: "docs/app-router.md",
+        headingPath: ["App Router webhook route handlers"],
+        snippet: "Export async function POST and read req.text().",
+        score: 90,
+        pageId: "page_app",
+        chunkId: "chunk_app",
+        facets: [appFacet],
+      }],
+      warnings: [],
+    };
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const result = assembler.queryDocs({
+      goal: "Write a Next.js App Router app/api/webhooks/route.ts webhook route handler",
+      task: "webhooks",
+      search,
+    });
+    const verification = assembler.verifyContext({
+      goal: "Write a Next.js App Router app/api/webhooks/route.ts webhook route handler",
+      task: "webhooks",
+      search,
+    });
+
+    expect(result.task).toBe("webhooks");
+    expect(JSON.stringify(result.steps)).toContain("req.text");
+    expect(JSON.stringify(result.steps)).not.toContain("NextApiRequest");
+    expect(result.codeExamples[0]?.value).toContain("POST(req: Request)");
+    expect(result.codeExamples[0]?.value).not.toContain("bodyParser");
+    expect(result.warnings.some((warning) => warning.startsWith("preferred_context_mismatch: router=app-router"))).toBe(true);
+    expect(verification.status).toBe("fail");
+    expect(verification.issues.map((issue) => issue.code)).toContain("preferred_context_mismatch");
+    expect(verification.issues.map((issue) => issue.code)).toContain("mixed_context");
   });
 });
 

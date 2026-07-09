@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-04 during the Phase 4 ingestion contract closure pass.
+Verified on 2026-07-09 during the facet-safe context selection pass.
 
 ## Product Shape
 
@@ -188,9 +188,19 @@ required-page overlap with search results, source-backed query/content overlap,
 and a uniform negative penalty for strong intent mismatches. The content-overlap
 scoring uses generic evidence signals such as commands, environment/config
 terms, credentials, routes, schemas, mutations, cursors, webhooks, errors, and
-tests without package-specific or task-pack-ID-specific bonuses. It can emit
-ambiguity or intent-mismatch warnings through the existing context and
-verification surfaces without changing the generated `TaskPack` schema.
+tests without package-specific or task-pack-ID-specific bonuses.
+
+The assembler also applies a generic facet-safety pass for implementation
+context. Explicit requested facets and goal-inferred facets such as `version`,
+`router`, and `runtime` are used to filter source-ranked chunks, task-pack
+steps, gotchas, and code examples before `query_docs` returns them. If the
+available search results or selected task pack contain incompatible exclusive
+facet evidence, `query_docs` emits a `preferred_context_mismatch` warning and
+`verify_task_context` reports a critical issue. This is intended to prevent
+wrong-paradigm context, such as mixing App Router and Pages Router evidence,
+from being silently presented as safe. The behavior remains generic and does
+not add package-specific routing logic or change the generated `TaskPack`
+schema.
 `packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the

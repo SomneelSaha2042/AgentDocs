@@ -95,6 +95,12 @@ type RankedChunk = {
   score: number;
 };
 
+type ContextFacetWarning = {
+  key: string;
+  requested: string;
+  found: string[];
+};
+
 type TaskSelection = {
   pack: TaskPack;
   score: number;
@@ -180,6 +186,7 @@ export class TaskContextAssembler {
   buildContextDecision(options: ContextDecisionOptions): ContextDecision {
     const selectedPack = this.selectTaskPack(options.goal, options.task, options.search);
     const goalBundle = this.buildGoalBundle(options.goal, options.search);
+    const requestedFacets = requestedFacetsFor(options.goal, options.task, options.facets);
     const supportingResources = stableUnique([
       ...goalBundle.supportingResources,
       ...(selectedPack?.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`) ?? []),
@@ -205,6 +212,7 @@ export class TaskContextAssembler {
       freshness: options.freshness,
       selectedPack,
       search: options.search,
+      requestedFacets,
       queryWarnings: query.warnings,
     });
     return {
@@ -278,32 +286,37 @@ export class TaskContextAssembler {
   queryDocs(options: QueryDocsOptions): QueryDocsResponse {
     const limit = clampLimit(options.limit ?? 2, 1, 3);
     const queryText = queryTextFor(options.goal, options.task);
+    const requestedFacets = requestedFacetsFor(options.goal, options.task, options.facets);
     const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
     const selectedPack = taskSelection?.pack;
-    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, options.facets)
+    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets)
       .slice(0, 5);
     const steps = stableUniqueBy(
       [
         ...rankedChunks.map(({ chunk, page }) => ({
           title: chunk.headingPath.at(-1) ?? page.title,
-          text: excerpt(stripCode(chunk.text), 150),
+          text: selectedPack ? stripCode(chunk.text) : excerpt(stripCode(chunk.text), 150),
           evidence: compactEvidence([evidenceForChunk(page, chunk)]),
         })),
-        ...(selectedPack?.steps.map((step) => ({
-          title: step.title,
-          text: excerpt(stripCode(step.description), 150),
-          evidence: compactEvidence(step.evidence),
-        })) ?? []),
+        ...(selectedPack?.steps
+          .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, requestedFacets))
+          .map((step) => ({
+            title: step.title,
+            text: selectedPack ? stripCode(step.description) : excerpt(stripCode(step.description), 150),
+            evidence: compactEvidence(step.evidence),
+          })) ?? []),
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
     ).slice(0, limit);
-    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, limit);
+    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, limit, requestedFacets);
     const gotchas = stableUniqueBy(
-      (selectedPack?.gotchas.map((gotcha) => ({
-        ...gotcha,
-        text: excerpt(gotcha.text, 150),
-        evidence: compactEvidence(gotcha.evidence),
-      })) ?? []),
+      (selectedPack?.gotchas
+        .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, requestedFacets))
+        .map((gotcha) => ({
+          ...gotcha,
+          text: excerpt(gotcha.text, 150),
+          evidence: compactEvidence(gotcha.evidence),
+        })) ?? []),
       (gotcha) => `${gotcha.severity}:${gotcha.text}`,
     ).slice(0, 2);
     const citations = stableUniqueBy(
@@ -314,11 +327,16 @@ export class TaskContextAssembler {
       ].map((evidence, index) => citationForEvidence(evidence, index + 1)),
       (citation) => citation.id,
     );
+    const facetWarnings = contextFacetWarnings([
+      ...(options.search?.results.map((result) => result.facets) ?? []),
+      ...(selectedPack === undefined ? [] : [facetsFromTaskPack(selectedPack)]),
+    ], requestedFacets);
     const warnings = [
       selectedPack?.confidence === "low" ? "Evidence is weak." : undefined,
       steps.length === 0 ? "No source-backed steps found." : undefined,
       codeExamples.length === 0 ? "No canonical code examples found." : undefined,
       ...(taskSelection?.warnings ?? []),
+      ...facetWarnings.map(formatContextFacetWarning),
       ...(options.search?.warnings.map((warning) =>
         `${warning.code}: ${warning.key}=${warning.values.join(",")}`) ?? []),
     ].filter((warning): warning is string => warning !== undefined);
@@ -533,6 +551,7 @@ export class TaskContextAssembler {
     freshness?: StatusReport;
     selectedPack?: TaskPack;
     search: SearchResponse;
+    requestedFacets?: Record<string, string>;
     queryWarnings?: string[];
   }): ContextVerification {
     const issues: ContextVerification["issues"] = [];
@@ -569,7 +588,7 @@ export class TaskContextAssembler {
           evidence: conflict.evidence,
         });
       }
-      for (const [key, value] of Object.entries(options.facets ?? {})) {
+      for (const [key, value] of Object.entries(options.requestedFacets ?? options.facets ?? {})) {
         const values = pack.context.facets[key] ?? [];
         if (values.length > 0 && !values.includes(value)) {
           issues.push({
@@ -656,7 +675,13 @@ export class TaskContextAssembler {
       .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id));
   }
 
-  private codeExamplesFor(goal: string, ranked: RankedChunk[], pack: TaskPack | undefined, limit: number) {
+  private codeExamplesFor(
+    goal: string,
+    ranked: RankedChunk[],
+    pack: TaskPack | undefined,
+    limit: number,
+    facets: Record<string, string> | undefined,
+  ) {
     const rankedChunkIds = new Set(ranked.map(({ chunk }) => chunk.id));
     const rankedPageIds = new Set(ranked.map(({ page }) => page.id));
     const examples = this.options.agentMap.pages.flatMap((page) =>
@@ -666,13 +691,14 @@ export class TaskContextAssembler {
           chunk.pageId === page.id
           && (headingPath.length === 0 || arraysEqual(chunk.headingPath, headingPath)));
         const packMatch = pack?.codeExamples.some((example) => oneLine(example) === oneLine(block.value)) ?? false;
+        if (!facetsCompatible([...page.facets, ...(relatedChunk?.facets ?? [])], facets)) return undefined;
         const score = scoreTerms(`${page.title} ${headingPath.join(" ")} ${block.value}`, goal)
           + (rankedPageIds.has(page.id) ? 6 : 0)
           + (relatedChunk !== undefined && rankedChunkIds.has(relatedChunk.id) ? 10 : 0)
           + (packMatch ? 4 : 0);
         return {
           language: block.language,
-          value: excerptCode(block.value, 600),
+          value: (packMatch || pack !== undefined) ? block.value : excerptCode(block.value, 600),
           evidence: compactEvidence([{
             source: "code_block" as const,
             pageId: page.id,
@@ -685,11 +711,24 @@ export class TaskContextAssembler {
           score,
         };
       }))
+      .filter((example): example is NonNullable<typeof example> => example !== undefined)
       .filter((example) => example.score > 0)
       .sort((left, right) => right.score - left.score || compareStrings(left.value, right.value));
     return stableUniqueBy(examples, (example) => oneLine(example.value))
       .slice(0, 1)
       .map(({ score: _score, ...example }) => example);
+  }
+
+  private evidenceCompatibleWithRequestedFacets(evidence: Evidence[], requested: Record<string, string> | undefined): boolean {
+    if (requested === undefined) return true;
+    const groups = evidence.flatMap((item) => {
+      const page = item.pageId === undefined ? undefined : this.pages.get(item.pageId);
+      const chunks = item.pageId === undefined
+        ? []
+        : this.options.agentMap.chunks.filter((chunk) => chunk.pageId === item.pageId);
+      return [page?.facets ?? [], ...chunks.map((chunk) => chunk.facets)];
+    });
+    return contextFacetWarnings(groups, requested).length === 0;
   }
 
   private selectReadableSection(options: ReadPageOptions): {
@@ -1021,6 +1060,54 @@ function taskSelectionWarnings(
   return warnings;
 }
 
+function requestedFacetsFor(
+  goal: string,
+  task: string | undefined,
+  explicit: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  const inferred: Record<string, string> = {};
+  const text = `${task ?? ""} ${goal}`.toLowerCase();
+  const version = /(?:^|[^a-z0-9])v(\d+(?:\.\d+)?)(?:[^a-z0-9]|$)/i.exec(text)?.[1];
+  if (version !== undefined) inferred.version = `v${version}`;
+  if (/\b(?:app\s+router|app\/api|route\s+handler|route\.ts|route\.js)\b/i.test(text)) {
+    inferred.router = "app-router";
+  } else if (/\b(?:pages\s+router|pages\/api|nextapirequest|nextapiresponse|bodyparser)\b/i.test(text)) {
+    inferred.router = "pages-router";
+  }
+  if (/\b(?:cloudflare|workers?|worker\s+runtime)\b/i.test(text)) {
+    inferred.runtime = "cloudflare-workers";
+  } else if (/\b(?:node\.js|nodejs|node\s+runtime|node\s+adapter)\b/i.test(text)) {
+    inferred.runtime = "node";
+  }
+  const combined = { ...inferred, ...(explicit ?? {}) };
+  return Object.keys(combined).length === 0 ? undefined : combined;
+}
+
+function facetsFromTaskPack(pack: TaskPack): Chunk["facets"] {
+  return Object.entries(pack.context.facets).flatMap(([key, values]) =>
+    values.map((value) => ({
+      key,
+      value,
+      evidence: pack.evidence,
+    })));
+}
+
+function contextFacetWarnings(
+  groups: Array<Chunk["facets"]>,
+  requested: Record<string, string> | undefined,
+): ContextFacetWarning[] {
+  if (requested === undefined) return [];
+  return Object.entries(requested).flatMap(([key, requestedValue]) => {
+    const found = stableUnique(groups
+      .flatMap((facets) => facets.filter((facet) => facet.key === key).map((facet) => facet.value))
+      .filter((value) => value !== requestedValue));
+    return found.length === 0 ? [] : [{ key, requested: requestedValue, found }];
+  });
+}
+
+function formatContextFacetWarning(warning: ContextFacetWarning): string {
+  return `preferred_context_mismatch: ${warning.key}=${warning.requested}; found=${warning.found.join(",")}`;
+}
 function facetsCompatible(facets: Chunk["facets"], requested?: Record<string, string>): boolean {
   if (requested === undefined) return true;
   return Object.entries(requested).every(([key, value]) => {
@@ -1185,6 +1272,14 @@ function issueForQueryWarning(
     return {
       code: "intent_evidence_mismatch",
       severity: "warning",
+      message: warning,
+      evidence: pack?.evidence ?? [],
+    };
+  }
+  if (warning.startsWith("preferred_context_mismatch:")) {
+    return {
+      code: "preferred_context_mismatch",
+      severity: "critical",
       message: warning,
       evidence: pack?.evidence ?? [],
     };
