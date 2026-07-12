@@ -112,7 +112,7 @@ Reuse the built context without crawling again:
 agentdocs status
 agentdocs handoff "implement authentication"
 agentdocs setup-agent --client codex
-agentdocs serve-mcp
+agentdocs serve-mcp --tools query_docs,read_page
 agentdocs verify-context --task "implement authentication"
 ```
 
@@ -249,7 +249,7 @@ Expose only built AgentDocs artifacts to an MCP-compatible coding agent:
 
 ```bash
 agentdocs setup-agent --client codex
-agentdocs serve-mcp
+agentdocs serve-mcp --tools query_docs,read_page
 ```
 
 The server provides read-only tools for search, pages, task packs, task handoff,

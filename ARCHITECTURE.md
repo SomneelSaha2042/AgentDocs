@@ -232,7 +232,9 @@ get_related_pages
 Resources include the generated top-level artifacts, task packs, and page
 content through `agentdocs://` URIs. `serve-mcp --tools` filters `tools/list`
 and rejects disallowed `tools/call` requests before tool dispatch with a
-structured `TOOL_NOT_ALLOWED` tool error.
+structured `TOOL_NOT_ALLOWED` tool error. Generated setup snippets use the
+compact `query_docs,read_page` profile to reduce normal-session tool-schema
+overhead; bare `serve-mcp` continues to expose the full read-only surface.
 
 ## Readiness Scoring
 

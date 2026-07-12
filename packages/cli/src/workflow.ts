@@ -42,19 +42,21 @@ const ARTIFACT_PATHS = [
   "manifest.json",
 ];
 
+const CORE_MCP_TOOLS = "query_docs,read_page";
+
 export function mcpCommand(out: string): string {
-  return `agentdocs --out ${quoteArgument(out)} serve-mcp`;
+  return `agentdocs --out ${quoteArgument(out)} serve-mcp --tools ${CORE_MCP_TOOLS}`;
 }
 
 export function setupSnippets(out: string, client?: AgentSetupSnippet["client"]): AgentSetupSnippet[] {
-  const args = ["--out", out, "serve-mcp"];
+  const args = ["--out", out, "serve-mcp", "--tools", CORE_MCP_TOOLS];
   const json = `${JSON.stringify({ mcpServers: { agentdocs: { command: "agentdocs", args } } }, null, 2)}\n`;
   const snippets = [
     AgentSetupSnippetSchema.parse({
       client: "codex",
       title: "Codex MCP config",
       format: "toml",
-      contents: `[mcp_servers.agentdocs]\ncommand = "agentdocs"\nargs = ["--out", ${JSON.stringify(out)}, "serve-mcp"]\n`,
+      contents: `[mcp_servers.agentdocs]\ncommand = "agentdocs"\nargs = ["--out", ${JSON.stringify(out)}, "serve-mcp", "--tools", ${JSON.stringify(CORE_MCP_TOOLS)}]\n`,
       prompt: PERSISTENT_AGENT_PROMPT,
     }),
     AgentSetupSnippetSchema.parse({

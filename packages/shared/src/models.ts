@@ -160,8 +160,8 @@ export const EdgeSchema = z
 
 export const TaskStepSchema = z
   .object({
-    title: z.string().min(1),
-    description: z.string().min(1),
+    title: z.string(),
+    description: z.string(),
     evidence: z.array(EvidenceSchema).min(1),
   })
   .strict();

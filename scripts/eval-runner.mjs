@@ -394,6 +394,8 @@ async function main() {
       turns: runState.turns,
       totalInputTokens: runState.totalInputTokens,
       totalOutputTokens: runState.totalOutputTokens,
+      finishReason: runState.finishReason,
+      finalResponse: runState.finalResponse,
       startTime: runState.startTime,
       mcpTools,
       toolCallCounts: runState.toolCallCounts,
@@ -444,6 +446,8 @@ async function runAgentLoop({
   let totalOutputTokens = 0;
   const startTime = performance.now();
   let done = false;
+  let finishReason = "turn_limit";
+  let finalResponse = "";
   const turnsList = [];
   const toolCallCounts = {};
 
@@ -489,6 +493,7 @@ async function runAgentLoop({
 
     totalInputTokens += turnInputTokens;
     totalOutputTokens += turnOutputTokens;
+    finalResponse = response.content;
     const estimatedCost = estimateCost(totalInputTokens, totalOutputTokens);
     console.log(`Token Usage: ${totalInputTokens} input, ${totalOutputTokens} output. Estimated Cost: $${estimatedCost.toFixed(4)}`);
 
@@ -507,6 +512,7 @@ async function runAgentLoop({
 
     if (estimatedCost > maxCost) {
       console.log(`Cost limit of $${maxCost} exceeded. Aborting to save budget.`);
+      finishReason = "cost_limit";
       break;
     }
 
@@ -519,6 +525,7 @@ async function runAgentLoop({
     if (response.tool_calls.length === 0) {
       console.log("Agent finished (no more tool calls).");
       done = true;
+      finishReason = "no_tool_calls";
       break;
     }
 
@@ -537,7 +544,7 @@ async function runAgentLoop({
     }
   }
 
-  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts };
+  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse };
 }
 
 async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, group }) {
@@ -645,6 +652,8 @@ async function finishRun({
   turns,
   totalInputTokens,
   totalOutputTokens,
+  finishReason,
+  finalResponse,
   startTime,
   mcpTools,
   toolCallCounts,
@@ -700,6 +709,13 @@ async function finishRun({
     mcpToolsLoaded: mcpTools.map((t) => t.name),
     toolCalls: toolCallCounts,
     turnsBreakdown: turnsList,
+    completion: {
+      finishReason,
+      finalResponse,
+      wroteFiles: (toolCallCounts.write_file ?? 0) > 0,
+      ranTestCommand: turnsList.some((turn) => turn.toolCalls.some((call) =>
+        call.name === "run_command" && isTestCommand(call.args.command))),
+    },
     finalCodeHash,
     corpusHash,
     agentdocsBuildHash,
@@ -924,8 +940,13 @@ Do NOT try to read the .agentdocs/ folder or implement any code until you have s
   return `You are a professional software engineer agent.
 Your objective is to complete the task defined in task.md.
 You have access to file-system tools and command-running tools.
-Always run tests to verify that your implementation is correct before finishing.
+Write the requested implementation files with the file-system tools; do not finish by only describing code.
+Always run a project test command to verify that your implementation is correct before finishing.
 ${docsInstruction}`;
+}
+
+function isTestCommand(command) {
+  return typeof command === "string" && /(?:^|\s)(?:npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test|yarn\s+test|bun\s+test|node\s+test\.mjs|vitest|jest|pytest|cargo\s+test|go\s+test)(?:\s|$)/i.test(command);
 }
 
 async function collectTextFiles(root) {

@@ -100,6 +100,9 @@ agentdocs setup-agent --client claude --json
 ```
 
 Supported clients are `codex`, `claude`, `cursor`, and `generic`.
+Generated setup snippets expose the compact `query_docs,read_page` MCP tool
+profile. Users can run `serve-mcp` without `--tools` when they need the full
+read-only tool surface.
 
 ### 2.0.4 `agentdocs status`
 
