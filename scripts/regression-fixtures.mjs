@@ -32,6 +32,15 @@ const map = JSON.parse(await readFile(path.join(target, ".agentdocs", "agent-map
 const manifest = JSON.parse(await readFile(path.join(target, ".agentdocs", "sources", "ingest-manifest.json"), "utf8"));
 
 assert(migration.results.length > 0 && migration.results.every((result) => hasFacet(result, "version", "v5")), "v5 migration filter returned no evidence or mixed versions");
+const migrationVerification = await json([
+  "--cwd", target, "--json", "verify-context",
+  "--task", "migrate to Fastify v5", "--facet", "version=v5",
+]);
+assert(migrationVerification.requirements.some((requirement) =>
+  requirement.kind === "facet" && requirement.value === "version=v5" && requirement.status === "covered"),
+"verification did not prove requested version facet coverage");
+assert(!migrationVerification.issues.some((issue) => issue.code === "preferred_context_mismatch"),
+"version-filtered migration context reported a false preferred-context mismatch");
 assert(react.results.length > 0 && react.results.every((result) => hasFacet(result, "framework", "react")), "React filter returned no evidence or mixed frameworks");
 assert(app.results.length > 0 && app.results.every((result) => hasFacet(result, "router", "app")), "App Router filter returned no evidence or mixed routers");
 assert(mixed.warnings.some((warning) => warning.code === "context_conflict" && warning.key === "version"), "unfiltered migration did not warn");
@@ -74,6 +83,14 @@ const configuredMap = JSON.parse(await readFile(path.join(configuredTarget, ".ag
 assert(configuredMap.taskPacks.some((pack) => pack.id === "route-handlers"), "explicit route-handlers task pack missing");
 assert(configuredMap.taskPacks.some((pack) => pack.id === "query-invalidation"), "explicit query-invalidation task pack missing");
 assert(configuredMap.taskPacks.some((pack) => pack.id === "schema-validation"), "explicit schema-validation task pack missing");
+const routeVerification = await json([
+  "--cwd", configuredTarget, "--json", "verify-context",
+  "--task", "build App Router POST route handler", "--facet", "router=app",
+]);
+assert(routeVerification.requirements.some((requirement) =>
+  requirement.kind === "facet" && requirement.value === "router=app" && requirement.status === "covered"),
+"verification did not prove requested router facet coverage");
+assert(routeVerification.recommendation !== "stop", "compatible requested router facet was incorrectly blocked");
 
 await runNode(path.join(root, "scripts", "dogfood-regression.mjs"), [
   target,

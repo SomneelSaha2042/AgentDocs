@@ -481,6 +481,25 @@ export const SearchResponseSchema = z
   })
   .strict();
 
+export const ContextReadinessSchema = z
+  .object({
+    recommendation: z.enum(["implement", "inspect", "stop"]),
+    coverage: z.enum(["complete", "partial", "unknown"]),
+    issueCodes: z.array(z.string().min(1)).max(6),
+  })
+  .strict();
+
+export const RequirementAssessmentSchema = z
+  .object({
+    kind: z.enum(["facet", "symbol", "configuration", "constraint"]),
+    value: z.string().min(1),
+    source: z.enum(["explicit", "inferred"]),
+    status: z.enum(["covered", "partial", "missing", "contradicted", "unknown"]),
+    message: z.string().min(1),
+    evidence: z.array(EvidenceSchema),
+  })
+  .strict();
+
 export const QueryDocsResponseSchema = z
   .object({
     goal: z.string().min(1),
@@ -531,6 +550,7 @@ export const QueryDocsResponseSchema = z
       }).strict(),
     ),
     warnings: z.array(z.string().min(1)),
+    readiness: ContextReadinessSchema,
     estimatedTokens: z.number().int().nonnegative(),
   })
   .strict();
@@ -720,7 +740,7 @@ export const StatusReportSchema = z
 
 export const ContextVerificationSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     task: z.string().min(1),
     status: z.enum(["pass", "warn", "fail"]),
     summary: z.string().min(1),
@@ -734,6 +754,9 @@ export const ContextVerificationSchema = z
         })
         .strict(),
     ),
+    coverage: z.enum(["complete", "partial", "unknown"]),
+    recommendation: z.enum(["implement", "inspect", "stop"]),
+    requirements: z.array(RequirementAssessmentSchema),
     freshness: StatusReportSchema.optional(),
   })
   .strict();
@@ -930,6 +953,8 @@ export type SearchDocument = z.infer<typeof SearchDocumentSchema>;
 export type SearchIndexFallback = z.infer<typeof SearchIndexFallbackSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+export type ContextReadiness = z.infer<typeof ContextReadinessSchema>;
+export type RequirementAssessment = z.infer<typeof RequirementAssessmentSchema>;
 export type QueryDocsResponse = z.infer<typeof QueryDocsResponseSchema>;
 export type ReadPageResponse = z.infer<typeof ReadPageResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;

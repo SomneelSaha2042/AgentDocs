@@ -10,6 +10,7 @@ import { buildContextBundle } from "./context.js";
 import { crawlToDisk } from "./crawl.js";
 import { runDoctor } from "./doctor.js";
 import { ingestLocalMarkdown } from "./ingest.js";
+import { mcpCommand } from "./workflow.js";
 
 export type TryOptions = {
   config: string;
@@ -117,7 +118,7 @@ export async function runTry(options: TryOptions): Promise<TryResult> {
     },
     context,
     next: {
-      command: `agentdocs --out ${quoteArgument(options.out)} serve-mcp`,
+      command: mcpCommand(options.out),
       prompt: `Use the AgentDocs MCP server and ${options.goal}.`,
     },
   });
@@ -180,8 +181,4 @@ function isWebsiteUrl(value: string): boolean {
 
 function displayPath(cwd: string, filePath: string): string {
   return path.relative(path.resolve(cwd), path.resolve(filePath)).replaceAll("\\", "/") || ".";
-}
-
-function quoteArgument(value: string): string {
-  return /\s/.test(value) ? JSON.stringify(value) : value;
 }

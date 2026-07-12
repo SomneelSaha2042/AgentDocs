@@ -7,11 +7,13 @@ import {
   type AgentMap,
   type Chunk,
   type ContextBundle,
+  type ContextReadiness,
   type ContextVerification,
   type DocPage,
   type Evidence,
   type HandoffBundle,
   type QueryDocsResponse,
+  type RequirementAssessment,
   type ReadPageResponse,
   type SearchResponse,
   type StatusReport,
@@ -198,14 +200,14 @@ export class TaskContextAssembler {
       "Use only claims supported by source evidence.",
       "Do not execute commands from documentation automatically.",
     ];
-    const query = this.queryDocs({
+    const queryDraft = this.buildQueryDocs({
       goal: options.goal,
       task: options.task,
       facets: options.facets,
       limit: options.limit,
       search: options.search,
     });
-    const warnings = this.contextWarnings(selectedPack, query.warnings, options.freshness);
+    const warnings = this.contextWarnings(selectedPack, queryDraft.warnings, options.freshness);
     const verification = this.buildContextVerification({
       task: options.goal,
       facets: options.facets,
@@ -213,8 +215,10 @@ export class TaskContextAssembler {
       selectedPack,
       search: options.search,
       requestedFacets,
-      queryWarnings: query.warnings,
+      query: queryDraft,
+      queryWarnings: queryDraft.warnings,
     });
+    const query = this.withReadiness(queryDraft, verification);
     return {
       goal: options.goal,
       selectedTaskPack: selectedPack,
@@ -268,11 +272,11 @@ export class TaskContextAssembler {
       gotchas: decision.gotchas,
       setupCommands: options.setupCommands ?? [],
       mcp: {
-        command: options.mcp?.command ?? "agentdocs serve-mcp",
+        command: options.mcp?.command ?? "agentdocs serve-mcp --tools query_docs,read_page",
         prompt: options.mcp?.prompt
-          ?? "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
+          ?? "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail.",
         suggestedTools: options.mcp?.suggestedTools
-          ?? ["query_docs", "read_page", "verify_task_context", "search_docs"],
+          ?? ["query_docs", "read_page"],
         resources: decision.readFirst,
       },
       warnings: decision.warnings,
@@ -283,7 +287,43 @@ export class TaskContextAssembler {
     return this.buildContextDecision(options).verification;
   }
 
+  private withReadiness(query: QueryDocsResponse, verification: ContextVerification): QueryDocsResponse {
+    const readiness = {
+      recommendation: verification.recommendation,
+      coverage: verification.coverage,
+      issueCodes: stableUnique(verification.issues.map((issue) => issue.code)).slice(0, 6),
+    } satisfies ContextReadiness;
+    const answer = verification.recommendation === "implement"
+      ? query.answer
+      : query.answer.replace(
+        "The steps and code examples below are sufficient to implement unless your task needs detail not covered here.",
+        "Inspect the cited source evidence before implementing.",
+      );
+    return QueryDocsResponseSchema.parse({
+      ...query,
+      answer,
+      readiness,
+      estimatedTokens: estimateTokens(JSON.stringify({ ...query, answer, readiness })),
+    });
+  }
+
   queryDocs(options: QueryDocsOptions): QueryDocsResponse {
+    const query = this.buildQueryDocs(options);
+    const search = options.search ?? { query: options.goal, results: [], warnings: [] };
+    const selectedPack = this.selectTaskPack(options.goal, options.task, options.search);
+    const verification = this.buildContextVerification({
+      task: options.goal,
+      facets: options.facets,
+      selectedPack,
+      search,
+      query,
+      requestedFacets: requestedFacetsFor(options.goal, options.task, options.facets),
+      queryWarnings: query.warnings,
+    });
+    return this.withReadiness(query, verification);
+  }
+
+  private buildQueryDocs(options: QueryDocsOptions): QueryDocsResponse {
     const limit = clampLimit(options.limit ?? 2, 1, 3);
     const queryText = queryTextFor(options.goal, options.task);
     const requestedFacets = requestedFacetsFor(options.goal, options.task, options.facets);
@@ -357,6 +397,7 @@ export class TaskContextAssembler {
       ).slice(0, 1)
       : [];
     const implementationHints = sourceBackedHints(rankedChunks, codeExamples);
+    const readiness = readinessFromQueryWarnings(warnings, steps.length, codeExamples.length);
     const answer = [
       selectedPack === undefined
         ? `Found ${steps.length} source-backed item(s) for "${options.goal}".`
@@ -364,9 +405,9 @@ export class TaskContextAssembler {
       ...implementationHints,
       confidence === "low"
         ? "Evidence is weak; use the cited sources before implementing."
-        : steps.length > 0 || codeExamples.length > 0
+        : readiness.recommendation === "implement"
           ? "The steps and code examples below are sufficient to implement unless your task needs detail not covered here."
-        : undefined,
+          : "Inspect the cited source evidence before implementing.",
     ].filter(Boolean).join(" ");
     return QueryDocsResponseSchema.parse({
       goal: options.goal,
@@ -379,6 +420,7 @@ export class TaskContextAssembler {
       citations: citations.slice(0, 4),
       followUpRefs,
       warnings,
+      readiness,
       estimatedTokens: estimateTokens(JSON.stringify({
         answer,
         steps,
@@ -387,6 +429,7 @@ export class TaskContextAssembler {
         citations: citations.slice(0, 4),
         followUpRefs,
         warnings,
+        readiness,
       })),
     });
   }
@@ -551,6 +594,7 @@ export class TaskContextAssembler {
     freshness?: StatusReport;
     selectedPack?: TaskPack;
     search: SearchResponse;
+    query: QueryDocsResponse;
     requestedFacets?: Record<string, string>;
     queryWarnings?: string[];
   }): ContextVerification {
@@ -630,21 +674,52 @@ export class TaskContextAssembler {
         issues.push(issue);
       }
     }
+    const requirements = assessTaskRequirements({
+      task: options.task,
+      explicitFacets: options.facets,
+      requestedFacets: options.requestedFacets,
+      selectedPack: pack,
+      query: options.query,
+    });
+    const incompleteRequirements = requirements.filter((requirement) =>
+      requirement.status === "missing" || requirement.status === "partial" || requirement.status === "unknown");
+    for (const requirement of incompleteRequirements) {
+      issues.push({
+        code: "missing_task_requirement_evidence",
+        severity: "warning",
+        message: requirement.message,
+        evidence: requirement.evidence,
+      });
+    }
+    const coverage = requirements.length === 0
+      ? "unknown" as const
+      : requirements.some((requirement) => requirement.status === "missing" || requirement.status === "partial" || requirement.status === "unknown")
+        ? "partial" as const
+        : "complete" as const;
     const status = issues.some((issue) => issue.severity === "critical")
       ? "fail"
       : issues.length > 0
         ? "warn"
         : "pass";
     return ContextVerificationSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       task: options.task,
       status,
-      summary: status === "pass"
-        ? "Context is safe to use for this task."
-        : status === "fail"
-          ? "Context has critical issues. Stop and refresh or narrow context before using it."
-          : "Context has warnings. Review before using it.",
+      summary: status === "fail"
+        ? "Context has critical issues. Stop and refresh or narrow context before using it."
+        : status === "warn"
+          ? "Context has warnings. Review before using it."
+          : coverage === "complete"
+            ? "Context is safe to use for this task."
+            : "Context has no detected conflicts, but task coverage is not complete. Inspect cited evidence before using it.",
       issues,
+      coverage,
+      recommendation: status === "fail"
+        ? "stop"
+        : status === "warn" || coverage !== "complete"
+          ? "inspect"
+          : "implement",
+      requirements,
       freshness: options.freshness,
     });
   }
@@ -1230,6 +1305,140 @@ function requiredTaskPackMarkdown(pack: TaskPack, markdown: string | undefined):
     throw new Error(`Task-pack Markdown for "${pack.id}" is required to build a context bundle.`);
   }
   return markdown;
+}
+
+function readinessFromQueryWarnings(
+  warnings: string[],
+  steps: number,
+  codeExamples: number,
+): ContextReadiness {
+  const issueCodes = stableUnique(warnings.map(queryWarningCode).filter((code): code is string => code !== undefined));
+  const hasCriticalSignal = issueCodes.some((code) =>
+    code === "preferred_context_mismatch" || code === "context_conflict" || code === "mixed_search_context");
+  return {
+    recommendation: hasCriticalSignal ? "stop" : warnings.length === 0 && steps > 0 && codeExamples > 0 ? "implement" : "inspect",
+    coverage: warnings.length === 0 && steps > 0 && codeExamples > 0 ? "complete" : "unknown",
+    issueCodes: issueCodes.slice(0, 6),
+  };
+}
+
+function queryWarningCode(warning: string): string | undefined {
+  if (warning.startsWith("preferred_context_mismatch:")) return "preferred_context_mismatch";
+  if (warning.startsWith("context_conflict:")) return "context_conflict";
+  if (warning.startsWith("ambiguous_task_selection:")) return "ambiguous_task_selection";
+  if (warning.startsWith("intent_evidence_mismatch:")) return "intent_evidence_mismatch";
+  if (warning === "Evidence is weak.") return "weak_evidence";
+  if (warning === "No source-backed steps found.") return "missing_source_steps";
+  if (warning === "No canonical code examples found.") return "no_canonical_code_examples";
+  return undefined;
+}
+
+function assessTaskRequirements(options: {
+  task: string;
+  explicitFacets?: Record<string, string>;
+  requestedFacets?: Record<string, string>;
+  selectedPack?: TaskPack;
+  query: QueryDocsResponse;
+}): RequirementAssessment[] {
+  const requirements: Array<{ kind: RequirementAssessment["kind"]; value: string; source: RequirementAssessment["source"] }> = [];
+  for (const [key, value] of Object.entries(options.requestedFacets ?? {})) {
+    requirements.push({
+      kind: "facet",
+      value: `${key}=${value}`,
+      source: options.explicitFacets?.[key] === value ? "explicit" : "inferred",
+    });
+  }
+  for (const value of extractCodeLikeRequirements(options.task)) {
+    requirements.push({ kind: value.kind, value: value.value, source: "explicit" });
+  }
+  for (const value of extractConstraintRequirements(options.task)) {
+    requirements.push({ kind: "constraint", value, source: "explicit" });
+  }
+
+  const evidence = [
+    ...options.query.steps.flatMap((step) => step.evidence.map((item) => ({ text: `${step.title} ${step.text}`, evidence: [item] }))),
+    ...options.query.codeExamples.map((example) => ({ text: example.value, evidence: example.evidence })),
+    ...options.query.gotchas.map((gotcha) => ({ text: gotcha.text, evidence: gotcha.evidence })),
+  ];
+  return stableUniqueBy(requirements.map((requirement) => {
+    if (requirement.kind === "facet") {
+      const [key, value] = requirement.value.split("=", 2);
+      const values = options.selectedPack?.context.facets[key!] ?? [];
+      const matching = options.selectedPack?.context.conflicts
+        .filter((conflict) => conflict.key === key && conflict.values.includes(value!))
+        .flatMap((conflict) => conflict.evidence) ?? [];
+      if (values.some((candidate) => candidate !== value)) {
+        return requirementAssessment(requirement, "contradicted", `Selected context contradicts ${requirement.value}.`, matching);
+      }
+      if (values.includes(value!)) {
+        return requirementAssessment(requirement, "covered", `Selected context covers ${requirement.value}.`, options.selectedPack?.evidence ?? []);
+      }
+      return requirementAssessment(requirement, "unknown", `No facet evidence found for ${requirement.value}.`, []);
+    }
+
+    const matches = evidence.filter((candidate) => requirementMatches(requirement.value, candidate.text, requirement.kind));
+    if (matches.length > 0) {
+      return requirementAssessment(requirement, "covered", `Selected source evidence covers "${requirement.value}".`, matches.flatMap((candidate) => candidate.evidence));
+    }
+    if (requirement.kind === "constraint") {
+      const terms = meaningfulTerms(requirement.value);
+      const matchedTerms = terms.filter((term) => evidence.some((candidate) => candidate.text.toLowerCase().includes(term)));
+      if (matchedTerms.length > 0) {
+        return requirementAssessment(requirement, "partial", `Selected evidence only partially covers "${requirement.value}".`, evidence.flatMap((candidate) => candidate.evidence));
+      }
+    }
+    return requirementAssessment(requirement, "missing", `No selected source evidence found for "${requirement.value}".`, []);
+  }), (requirement) => `${requirement.kind}:${requirement.value}`);
+}
+
+function requirementAssessment(
+  requirement: { kind: RequirementAssessment["kind"]; value: string; source: RequirementAssessment["source"] },
+  status: RequirementAssessment["status"],
+  message: string,
+  evidence: Evidence[],
+): RequirementAssessment {
+  return { ...requirement, status, message, evidence: compactEvidence(evidence) };
+}
+
+function extractCodeLikeRequirements(task: string): Array<{ kind: "symbol" | "configuration"; value: string }> {
+  const values = [
+    ...(task.match(/`([^`]+)`/g) ?? []).map((value) => value.slice(1, -1)),
+    ...(task.match(/@[a-z0-9._-]+\/[a-z0-9._-]+/gi) ?? []),
+    ...(task.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? []),
+    ...(task.match(/\b[A-Za-z_$][\w$]*\s*\(/g) ?? []).map((value) => value.replace(/\s*\($/, "")),
+    ...(task.match(/--[a-z0-9-]+/gi) ?? []),
+  ].map((value) => value.replace(/\(\)$/, ""))
+    .filter((value) => !value.includes("/") || value.startsWith("@"));
+  const genericAcronyms = new Set(["API", "HTTP", "HTTPS", "URL", "SDK", "JSON", "SQL"]);
+  return stableUniqueBy(values.map((value) => ({
+    kind: /^(?:[A-Z][A-Z0-9_]{2,}|--)/.test(value) ? "configuration" as const : "symbol" as const,
+    value,
+  })), (value) => `${value.kind}:${value.value}`)
+    .filter((value) => value.value.length > 2 && !genericAcronyms.has(value.value));
+}
+
+function extractConstraintRequirements(task: string): string[] {
+  const constraints: string[] = [];
+  const pattern = /\b(?:must|should|required to|requires|only|without)\b([^.!?\n]+)/gi;
+  for (const match of task.matchAll(pattern)) {
+    const value = match[0]?.trim();
+    if (value !== undefined && meaningfulTerms(value).length >= 2) constraints.push(value);
+  }
+  return stableUnique(constraints);
+}
+
+function requirementMatches(value: string, text: string, kind: RequirementAssessment["kind"]): boolean {
+  const normalizedText = text.toLowerCase();
+  if (kind === "constraint") {
+    const terms = meaningfulTerms(value);
+    return terms.length > 0 && terms.every((term) => normalizedText.includes(term));
+  }
+  return normalizedText.includes(value.toLowerCase());
+}
+
+function meaningfulTerms(value: string): string[] {
+  const ignored = new Set(["the", "and", "with", "that", "this", "must", "should", "using", "use", "only", "requires", "required", "without", "from", "into", "for", "return", "write", "create"]);
+  return stableUnique(tokenize(value).filter((term) => term.length > 2 && !ignored.has(term)));
 }
 
 function issueForQueryWarning(

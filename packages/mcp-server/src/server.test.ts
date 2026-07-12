@@ -86,6 +86,7 @@ describe("AgentDocs MCP protocol", () => {
     const queryDocsText = queryDocsResult.content.map((item) => item.text).join("\n");
     expect(queryDocsText).toContain("Answer:");
     expect(queryDocsText).toContain("Confidence:");
+    expect(queryDocsText).toContain("Readiness:");
     expect(queryDocsText).not.toMatch(/^\{/);
     expect(Math.ceil(queryDocsText.length / 4)).toBeLessThan(800);
     expect(queryDocsText.length).toBeLessThan(JSON.stringify(queryDocsResult.structuredContent).length);

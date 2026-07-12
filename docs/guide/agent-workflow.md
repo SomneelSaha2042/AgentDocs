@@ -146,7 +146,7 @@ developer stays in control of where it is installed.
 The persistent prompt is:
 
 ```txt
-Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
 ```
 
 The MCP server is still read-only. New workflow tools expose richer built

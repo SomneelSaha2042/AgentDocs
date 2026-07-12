@@ -31,9 +31,41 @@ describe("TaskContextAssembler", () => {
     expect(result.steps.every((step) => step.evidence.length > 0)).toBe(true);
     expect(result.gotchas.every((gotcha) => gotcha.evidence.length > 0)).toBe(true);
     expect(result.codeExamples.every((example) => example.evidence.length > 0)).toBe(true);
-    expect(result.answer).toContain("sufficient to implement");
+    expect(result.readiness.recommendation).toBe("inspect");
+    expect(result.readiness.coverage).toBe("unknown");
+    expect(result.answer).toContain("Inspect the cited source evidence");
     expect(result.followUpRefs).toHaveLength(0);
     expect(JSON.stringify(result)).toContain("code_auth");
+  });
+
+  it("marks selected context for an undocumented symbol as inspectable", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = assembler.buildContextDecision({
+      goal: "authenticate requests with `createSession()`",
+      task: "authentication",
+      search: {
+        query: "authenticate requests with createSession",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.coverage).toBe("partial");
+    expect(decision.verification.recommendation).toBe("inspect");
+    expect(decision.verification.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "symbol", value: "createSession", status: "missing" }),
+    ]));
+    expect(decision.query.readiness.recommendation).toBe("inspect");
+    expect(decision.query.answer).not.toContain("sufficient to implement");
   });
 
   it("reads bounded sections by default and respects maxChars", () => {

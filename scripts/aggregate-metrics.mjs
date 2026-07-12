@@ -168,9 +168,28 @@ function summarizeRuns(runs) {
       durationMs: minMax(sorted.map((run) => run.durationMs)),
     },
     contaminationPassed: sorted.every((run) => run.contaminationChecks?.passed !== false),
+    completion: summarizeCompletion(sorted),
     toolCalls: mergeToolCalls(sorted),
     retrievalPayloadByTool: mergeRetrievalPayloadByTool(sorted),
     toolSchemaByTool: mergeToolSchemaByTool(sorted),
+  };
+}
+
+function summarizeCompletion(runs) {
+  const completion = runs.map((run) => run.completion).filter((value) => value !== undefined);
+  const count = completion.length;
+  const rate = (predicate) => count === 0 ? null : completion.filter(predicate).length / count;
+  const finishReasons = {};
+  for (const item of completion) {
+    const reason = item.finishReason ?? "unknown";
+    finishReasons[reason] = (finishReasons[reason] ?? 0) + 1;
+  }
+  return {
+    observedRuns: count,
+    writeAttemptRate: rate((item) => item.wroteFiles === true),
+    testCommandRate: rate((item) => item.ranTestCommand === true),
+    complianceRecoveryRate: rate((item) => item.complianceRecoveryUsed === true),
+    finishReasons: Object.fromEntries(Object.entries(finishReasons).sort(([left], [right]) => left.localeCompare(right))),
   };
 }
 

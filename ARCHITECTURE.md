@@ -201,6 +201,14 @@ wrong-paradigm context, such as mixing App Router and Pages Router evidence,
 from being silently presented as safe. The behavior remains generic and does
 not add package-specific routing logic or change the generated `TaskPack`
 schema.
+The same decision now performs conservative task-readiness assessment. It
+extracts only high-signal facets, code-like symbols/configuration, and explicit
+constraints from the task text, then checks those claims against selected
+evidence. `query_docs` exposes only a compact readiness recommendation;
+`verify_task_context` exposes the full evidence-linked requirement assessments.
+Missing evidence produces `inspect`, while stale or contradictory context
+produces `stop`. This is evidence assurance, not a guarantee that generated
+code will pass arbitrary project tests.
 `packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the

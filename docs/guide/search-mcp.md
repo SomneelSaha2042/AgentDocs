@@ -40,7 +40,7 @@ context verification, setup commands, version policy, code examples, and related
 pages. Prefer this flow inside an agent:
 
 ```txt
-Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
 ```
 
 For multi-session work:

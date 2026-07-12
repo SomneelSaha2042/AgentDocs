@@ -1150,12 +1150,22 @@ Output:
   "citations": [],
   "followUpRefs": [],
   "warnings": [],
+  "readiness": {
+    "recommendation": "inspect",
+    "coverage": "partial",
+    "issueCodes": ["missing_task_requirement_evidence"]
+  },
   "estimatedTokens": 420
 }
 ```
 
 Every step, code example, gotcha, and citation must have source evidence.
 Unsupported steps are omitted rather than invented.
+`readiness.recommendation` is `implement` only when selected evidence is fresh,
+compatible, and complete for the deterministically extracted task requirements.
+Use `inspect` when evidence is missing or partial, and `stop` when context is
+stale or contradictory. The full requirement evidence is returned by
+`verify_task_context` and CLI `verify-context`.
 
 #### `read_page`
 

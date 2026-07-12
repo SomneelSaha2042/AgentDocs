@@ -19,7 +19,7 @@ import { minimatch } from "minimatch";
 
 
 export const PERSISTENT_AGENT_PROMPT =
-  "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.";
+  "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.";
 
 type ConfiguredSource = AgentDocsConfig["sources"][number];
 
@@ -255,7 +255,10 @@ export function formatContextVerification(result: ContextVerification): string {
   const issues = result.issues.length === 0
     ? "- No issues found."
     : result.issues.map((issue) => `- ${issue.severity.toUpperCase()} ${issue.code}: ${issue.message}`).join("\n");
-  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nFreshness: ${result.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n\nIssues:\n${issues}\n`;
+  const requirements = result.requirements.length === 0
+    ? "- No deterministic task requirements extracted."
+    : result.requirements.map((requirement) => `- ${requirement.status.toUpperCase()} ${requirement.kind}: ${requirement.value}`).join("\n");
+  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nRecommendation: ${result.recommendation.toUpperCase()}\nCoverage: ${result.coverage}\nFreshness: ${result.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n\nRequirements:\n${requirements}\n\nIssues:\n${issues}\n`;
 }
 
 async function writeAgentBrief(context: WorkflowContext): Promise<void> {

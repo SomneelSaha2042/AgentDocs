@@ -336,6 +336,7 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   const lines = [
     `Answer: ${result.answer}`,
     `Confidence: ${result.confidence}`,
+    `Readiness: ${result.readiness.recommendation.toUpperCase()} (${result.readiness.coverage} coverage)`,
   ];
   if (result.warnings.length > 0) {
     lines.push("", "Warnings:", ...result.warnings.map((warning) => `- ${warning}`));

@@ -91,7 +91,8 @@ export class ArtifactService {
     limit = 5,
   ) {
     validateContextLimit(limit);
-    const input = await this.buildContextInput({ goal, task, facets, limit });
+    const freshness = await this.getRecordedStatus();
+    const input = await this.buildContextInput({ goal, task, facets, limit, freshness });
     return input.decision.query;
   }
 
@@ -219,9 +220,9 @@ export class ArtifactService {
       selectedTaskPackMarkdown: selected?.markdown,
       setupCommands: setup.commands,
       mcp: {
-        command: options.mcpCommand ?? "agentdocs serve-mcp",
-        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first, then read_page only for cited source detail; stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
-        suggestedTools: ["query_docs", "read_page", "verify_task_context", "search_docs"],
+        command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
+        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail.",
+        suggestedTools: ["query_docs", "read_page"],
       },
     });
   }

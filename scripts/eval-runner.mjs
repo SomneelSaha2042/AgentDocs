@@ -396,6 +396,7 @@ async function main() {
       totalOutputTokens: runState.totalOutputTokens,
       finishReason: runState.finishReason,
       finalResponse: runState.finalResponse,
+      complianceRecoveryUsed: runState.complianceRecoveryUsed,
       startTime: runState.startTime,
       mcpTools,
       toolCallCounts: runState.toolCallCounts,
@@ -448,6 +449,7 @@ async function runAgentLoop({
   let done = false;
   let finishReason = "turn_limit";
   let finalResponse = "";
+  let complianceRecoveryUsed = false;
   const turnsList = [];
   const toolCallCounts = {};
 
@@ -523,6 +525,18 @@ async function runAgentLoop({
     pushAssistantMessage(provider, messages, response);
 
     if (response.tool_calls.length === 0) {
+      const wroteFiles = (toolCallCounts.write_file ?? 0) > 0;
+      const ranTestCommand = turnsList.some((turn) => turn.toolCalls.some((call) =>
+        call.name === "run_command" && isTestCommand(call.args.command)));
+      if (!complianceRecoveryUsed && (!wroteFiles || !ranTestCommand)) {
+        const missing = [
+          wroteFiles ? undefined : "write every requested implementation file",
+          ranTestCommand ? undefined : "run a project test command",
+        ].filter((item) => item !== undefined).join(" and ");
+        complianceRecoveryUsed = true;
+        pushRecoveryMessage(provider, messages, `The task is not complete: ${missing}. Use the available tools now; do not finish by describing code.`);
+        continue;
+      }
       console.log("Agent finished (no more tool calls).");
       done = true;
       finishReason = "no_tool_calls";
@@ -544,7 +558,7 @@ async function runAgentLoop({
     }
   }
 
-  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse };
+  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse, complianceRecoveryUsed };
 }
 
 async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, group }) {
@@ -712,6 +726,7 @@ async function finishRun({
     completion: {
       finishReason,
       finalResponse,
+      complianceRecoveryUsed,
       wroteFiles: (toolCallCounts.write_file ?? 0) > 0,
       ranTestCommand: turnsList.some((turn) => turn.toolCalls.some((call) =>
         call.name === "run_command" && isTestCommand(call.args.command))),
@@ -1186,6 +1201,14 @@ function pushToolResult(provider, messages, toolCall, resultText) {
       name: toolCall.name,
       content: resultText,
     });
+  }
+}
+
+function pushRecoveryMessage(provider, messages, text) {
+  if (provider === "anthropic") {
+    messages.push({ role: "user", content: [{ type: "text", text }] });
+  } else {
+    messages.push({ role: "user", content: text });
   }
 }
 
