@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "task": "authjs-v5",
+  "source": {
+    "type": "local_markdown_snapshot",
+    "origin": "https://authjs.dev/",
+    "capturedAt": null,
+    "provenance": "Existing local snapshot; capture timestamp was not recorded.",
+    "format": "markdown",
+    "pageCount": 100,
+    "byteCount": 791432,
+    "corpusHash": "2186b6913d7f15d72965d936f8b0f3a7af9aa5fc5b4fbf8f11313cb803e4013a"
+  },
+  "evaluation": {
+    "oracle": "evaluation/private-test.mjs",
+    "visibleTest": "test.mjs",
+    "requiredEvidence": ["GitHub", "App Router", "Prisma"]
+  }
+}

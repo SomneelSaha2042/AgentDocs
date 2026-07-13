@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "task": "langchain-js",
+  "source": {
+    "type": "local_markdown_snapshot",
+    "origin": "https://docs.langchain.com/",
+    "capturedAt": null,
+    "provenance": "Existing local snapshot; capture timestamp was not recorded.",
+    "format": "markdown",
+    "pageCount": 100,
+    "byteCount": 2256747,
+    "corpusHash": "04543a6306a8a893739a6306270047c944bd6e3432e76eba446719d2cc8bfcc5"
+  },
+  "evaluation": {
+    "oracle": "evaluation/private-test.mjs",
+    "visibleTest": "test.mjs",
+    "requiredEvidence": ["ChatOpenAI", "@langchain/openai", "invoke"]
+  }
+}

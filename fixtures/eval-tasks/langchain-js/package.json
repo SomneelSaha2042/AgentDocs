@@ -1,0 +1,12 @@
+{
+  "name": "langchain-task",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "langchain": "0.2.0",
+    "@langchain/core": "0.2.0",
+    "@langchain/openai": "0.2.0"
+  }
+}

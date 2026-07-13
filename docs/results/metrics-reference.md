@@ -86,6 +86,15 @@ search controls. Its token fields are separate from dogfood routing metrics.
 | `hotTokenEstimates.hotAdjustedTotalTokensEstimate` | Analytical estimate for an already-loaded AgentDocs session: cold total tokens minus repeated AgentDocs MCP tool-schema overhead. This is not a billing figure. |
 | `retrievalPayloadTokenEstimate` | Estimated tokens returned by documentation retrieval tools. |
 | `docsBytesReturned` | UTF-8 bytes returned by documentation retrieval tools. |
+| `verification.publicSmokePassed` | Whether the visible fixture smoke test passed. |
+| `verification.privateOraclePassed` | Whether the hidden final fixture oracle passed. This is the task-success gate used by north-star runs. |
+| `contextDecisions` | Structured readiness observations captured from AgentDocs `query_docs` calls. Missing observations remain unknown. |
+
+North-star suite decisions are based on the hidden-oracle task result. Readiness
+is diagnostic: an `implement` recommendation followed by a failed oracle is a
+false-confidence signal, while `inspect` or `stop` followed by a successful
+oracle is conservative behavior. Neither signal is converted into a success
+score.
 
 ## Agent Task Field
 

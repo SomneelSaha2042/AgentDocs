@@ -1,4 +1,4 @@
-import { spawn, execSync } from "node:child_process";
+import { spawn, execSync, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, rm, cp, mkdtemp, readdir, stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -18,6 +18,7 @@ const GENERATED_ARTIFACT_NAMES = new Set([
 const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
   "task.md",
   "test.mjs",
+  "fixture.manifest.json",
   "package.json",
   "package-lock.json",
   "pnpm-lock.yaml",
@@ -270,6 +271,11 @@ async function main() {
   const requestedGroup = resolveGroup(args);
   const mcpToolsArg = getArg(args, "--mcp-tools")
     || (requestedGroup === "experimental-agentdocs" ? "query_docs,read_page" : null);
+  const runId = getArg(args, "--run-id") || "default";
+  const resultsDir = path.resolve(
+    repositoryRoot,
+    getArg(args, "--results-dir") || ".dogfood",
+  );
   const keepSandbox = args.includes("--keep-sandbox");
   const dryRun = args.includes("--dry-run");
   globalThis.__agentdocsEvalSeed = seed;
@@ -286,7 +292,12 @@ async function main() {
   let mcpClient = null;
   let mcpTools = [];
   let cleanupHandled = false;
-  const docsTelemetry = { docsBytesReturned: 0, retrievalPayloadTokenEstimate: 0, byTool: {} };
+  const docsTelemetry = {
+    docsBytesReturned: 0,
+    retrievalPayloadTokenEstimate: 0,
+    byTool: {},
+    contextDecisions: [],
+  };
 
   try {
     await prepareSandbox({ taskDir, workspaceDir, corpusDir, buildDir, group: requestedGroup });
@@ -355,6 +366,8 @@ async function main() {
         sandboxRoot,
         corpusDir,
         buildDir,
+        runId,
+        resultsDir,
         toolSchemaTokenEstimate,
         toolSchemaMetrics,
         docsTelemetry,
@@ -383,7 +396,7 @@ async function main() {
       group: requestedGroup,
     });
 
-    const { passed, testOutput } = runFinalVerification(workspaceDir);
+    const { passed, testOutput, verification } = runFinalVerification(workspaceDir, taskDir);
     const result = await finishRun({
       taskName,
       group: requestedGroup,
@@ -402,10 +415,13 @@ async function main() {
       toolCallCounts: runState.toolCallCounts,
       turnsList: runState.turnsList,
       testOutput,
+      verification,
       workspaceDir,
       sandboxRoot,
       corpusDir,
       buildDir,
+      runId,
+      resultsDir,
       toolSchemaTokenEstimate,
       toolSchemaMetrics,
       docsTelemetry,
@@ -592,6 +608,7 @@ async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docs
     } else {
       const mcpResult = await mcpClient.callTool(toolCall.name, args);
       resultText = mcpResult.content.map((c) => c.text).join("\n");
+      recordContextDecision(docsTelemetry, toolCall.name, mcpResult.structuredContent);
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     }
     return resultText;
@@ -602,8 +619,18 @@ async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docs
 
 async function prepareSandbox({ taskDir, workspaceDir, corpusDir, buildDir, group }) {
   await mkdir(path.dirname(workspaceDir), { recursive: true });
-  await cp(taskDir, workspaceDir, { recursive: true });
-  await cp(taskDir, buildDir, { recursive: true });
+  const privateEvaluationDir = path.join(taskDir, "evaluation");
+  const fixtureManifest = path.join(taskDir, "fixture.manifest.json");
+  const copyTask = (destination) => cp(taskDir, destination, {
+    recursive: true,
+    filter(source) {
+      return source !== privateEvaluationDir
+        && !source.startsWith(`${privateEvaluationDir}${path.sep}`)
+        && source !== fixtureManifest;
+    },
+  });
+  await copyTask(workspaceDir);
+  await copyTask(buildDir);
   const docsPath = path.join(taskDir, DOCS_DIR_NAME);
   if (fs.existsSync(docsPath)) {
     await cp(docsPath, corpusDir, { recursive: true });
@@ -642,18 +669,39 @@ async function buildAgentDocs(buildDir) {
   return hashPath(path.join(buildDir, ".agentdocs"));
 }
 
-function runFinalVerification(workspaceDir) {
-  let passed = false;
-  let testOutput = "";
+function runFinalVerification(workspaceDir, taskDir) {
+  const publicResult = runVerifierCommand(process.execPath, ["test.mjs"], workspaceDir);
+  const privateVerifier = path.join(taskDir, "evaluation", "private-test.mjs");
+  const privateResult = fs.existsSync(privateVerifier)
+    ? runVerifierCommand(process.execPath, [privateVerifier, workspaceDir], workspaceDir)
+    : { passed: false, output: "Private verifier is missing." };
+  return {
+    passed: publicResult.passed && privateResult.passed,
+    testOutput: [
+      "[public smoke]",
+      publicResult.output,
+      "[private oracle]",
+      privateResult.output,
+    ].join("\n"),
+    verification: {
+      publicSmokePassed: publicResult.passed,
+      privateOraclePresent: fs.existsSync(privateVerifier),
+      privateOraclePassed: privateResult.passed,
+    },
+  };
+}
+
+function runVerifierCommand(command, args, cwd) {
   try {
-    const out = execSync("node test.mjs", { cwd: workspaceDir, encoding: "utf8", stdio: "pipe" });
-    passed = true;
-    testOutput = out;
+    const output = execFileSync(command, args, { cwd, encoding: "utf8", stdio: "pipe", windowsHide: true });
+    return { passed: true, output };
   } catch (err) {
-    console.log("CI check failed.");
-    testOutput = `Test failed:\nStdout: ${err.stdout}\nStderr: ${err.stderr}`;
+    console.log("Verification check failed.");
+    return {
+      passed: false,
+      output: `Test failed:\nStdout: ${err.stdout ?? ""}\nStderr: ${err.stderr ?? ""}`,
+    };
   }
-  return { passed, testOutput };
 }
 
 async function finishRun({
@@ -668,15 +716,19 @@ async function finishRun({
   totalOutputTokens,
   finishReason,
   finalResponse,
+  complianceRecoveryUsed = false,
   startTime,
   mcpTools,
   toolCallCounts,
   turnsList,
   testOutput,
+  verification,
   workspaceDir,
   sandboxRoot,
   corpusDir,
   buildDir,
+  runId,
+  resultsDir,
   toolSchemaTokenEstimate,
   toolSchemaMetrics,
   docsTelemetry,
@@ -692,7 +744,7 @@ async function finishRun({
   const finalCodeHash = await hashWorkspaceCode(workspaceDir);
   const corpusHash = await hashPath(corpusDir);
   const result = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     task: taskName,
     group,
     control: group !== "experimental-agentdocs",
@@ -700,6 +752,7 @@ async function finishRun({
     provider,
     model: modelName,
     seed,
+    runId,
     dryRun,
     passed,
     turns,
@@ -719,6 +772,8 @@ async function finishRun({
     retrievalPayloadTokenEstimate: docsTelemetry.retrievalPayloadTokenEstimate,
     docsBytesReturned: docsTelemetry.docsBytesReturned,
     retrievalPayloadByTool: docsTelemetry.byTool,
+    contextDecisions: docsTelemetry.contextDecisions,
+    verification,
     durationMs: duration,
     mcpToolsLoaded: mcpTools.map((t) => t.name),
     toolCalls: toolCallCounts,
@@ -743,7 +798,6 @@ async function finishRun({
     testOutput,
   };
 
-  const resultsDir = path.join(repositoryRoot, ".dogfood");
   await mkdir(resultsDir, { recursive: true });
   const outPath = path.join(resultsDir, `eval-result-${taskName}-${group}-seed-${seed}.json`);
   await writeFile(outPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
@@ -767,7 +821,7 @@ async function checkContamination(workspaceDir, group) {
       // In local coldstart, the docs/ and generated .agentdocs/ are expected
       continue;
     }
-    if (base === DOCS_DIR_NAME || GENERATED_ARTIFACT_NAMES.has(base) || relative.startsWith(".agentdocs/")) {
+    if (base === DOCS_DIR_NAME || base === "evaluation" || GENERATED_ARTIFACT_NAMES.has(base) || relative.startsWith(".agentdocs/")) {
       violations.push(relative);
     }
     if (group !== "experimental-agentdocs" && /(?:^|\/)task-packs(?:\/|$)/.test(relative)) {
@@ -1124,6 +1178,8 @@ function isProtectedWorkspacePath(relativePath, group) {
     return false;
   }
   return GENERATED_ARTIFACT_NAMES.has(base)
+    || normalized === "evaluation"
+    || normalized.startsWith("evaluation/")
     || normalized === DOCS_DIR_NAME
     || normalized.startsWith(`${DOCS_DIR_NAME}/`)
     || normalized === ".agentdocs"
@@ -1269,6 +1325,31 @@ function recordDocsPayload(telemetry, toolName, text) {
   telemetry.byTool[toolName].calls += 1;
   telemetry.byTool[toolName].docsBytesReturned += bytes;
   telemetry.byTool[toolName].retrievalPayloadTokenEstimate += tokens;
+}
+
+function recordContextDecision(telemetry, toolName, structuredContent) {
+  if (toolName !== "query_docs" || !structuredContent || typeof structuredContent !== "object") {
+    return;
+  }
+  const readiness = structuredContent.readiness;
+  if (!readiness || typeof readiness !== "object") {
+    telemetry.contextDecisions.push({
+      tool: toolName,
+      readiness: null,
+      parseStatus: "missing",
+    });
+    return;
+  }
+  telemetry.contextDecisions.push({
+    tool: toolName,
+    readiness: {
+      recommendation: readiness.recommendation ?? null,
+      coverage: readiness.coverage ?? null,
+      issueCodes: Array.isArray(readiness.issueCodes) ? readiness.issueCodes : [],
+    },
+    estimatedTokens: structuredContent.estimatedTokens ?? null,
+    parseStatus: "ok",
+  });
 }
 
 function estimateTokens(value) {

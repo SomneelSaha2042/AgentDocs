@@ -11,8 +11,23 @@ const LEGACY_GROUPS = {
 
 async function main() {
   const args = process.argv.slice(2);
-  const taskName = args[0] || "dummy-sdk";
-  const resultsDir = path.join(repositoryRoot, ".dogfood");
+  const taskNames = positionalArgs(args);
+  const resultsDir = path.resolve(repositoryRoot, getArg(args, "--results-dir") || ".dogfood");
+  if (taskNames.length === 0) taskNames.push("dummy-sdk");
+
+  const summaries = [];
+  for (const taskName of taskNames) {
+    summaries.push(await aggregateTask(taskName, resultsDir));
+  }
+  if (summaries.length > 1) {
+    const suiteSummary = aggregateSuite(summaries, resultsDir);
+    const suitePath = path.join(resultsDir, "suite-summary.json");
+    await writeFile(suitePath, `${JSON.stringify(suiteSummary, null, 2)}\n`, "utf8");
+    printSuiteSummary(suiteSummary, suitePath);
+  }
+}
+
+async function aggregateTask(taskName, resultsDir) {
 
   console.log(`Aggregating metrics for task: ${taskName}`);
 
@@ -44,7 +59,7 @@ async function main() {
   }
 
   const summary = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     task: taskName,
     generatedAt: new Date().toISOString(),
     groups: groupSummaries,
@@ -56,6 +71,67 @@ async function main() {
   await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 
   printSummary(taskName, groupSummaries, comparisons, summaryPath);
+  return summary;
+}
+
+function aggregateSuite(summaries, resultsDir) {
+  const groups = {};
+  for (const group of CLEAN_GROUPS) {
+    const taskSummaries = summaries.map((summary) => summary.groups[group]).filter(Boolean);
+    if (taskSummaries.length === 0) continue;
+    const passed = taskSummaries.reduce((sum, summary) => sum + summary.passed, 0);
+    const n = taskSummaries.reduce((sum, summary) => sum + summary.n, 0);
+    groups[group] = { n, passed, failed: n - passed, successRate: n > 0 ? passed / n : null };
+  }
+  const experimental = groups["experimental-agentdocs"];
+  const controls = ["control-local-raw", "control-web-raw"]
+    .map((group) => ({ group, summary: groups[group] }))
+    .filter((item) => item.summary);
+  const taskRegressions = [];
+  for (const summary of summaries) {
+    const agent = summary.groups["experimental-agentdocs"];
+    for (const { group, summary: control } of controls) {
+      const controlTask = summary.groups[group];
+      if (agent && controlTask && agent.passed < controlTask.passed) {
+        taskRegressions.push({ task: summary.task, control: group, agentPassed: agent.passed, controlPassed: controlTask.passed });
+      }
+    }
+  }
+  const aggregateTie = Boolean(
+    experimental
+      && controls.length === 2
+      && controls.every(({ summary }) => experimental.passed >= summary.passed),
+  );
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    resultsDir,
+    tasks: summaries.map((summary) => summary.task),
+    groups,
+    decision: {
+      gate: "no_success_regression",
+      aggregateTieOrBetter: Boolean(aggregateTie),
+      taskRegressions,
+      passed: aggregateTie && taskRegressions.length === 0,
+    },
+    taskSummaries: summaries.map((summary) => ({
+      task: summary.task,
+      groups: summary.groups,
+      comparisons: summary.comparisons,
+    })),
+  };
+}
+
+function printSuiteSummary(summary, suitePath) {
+  console.log("\nNorth-star suite summary:");
+  console.log(`  Gate: ${summary.decision.passed ? "PASS" : "DO NOT ADVANCE"}`);
+  for (const [group, values] of Object.entries(summary.groups)) {
+    console.log(`  ${group}: ${values.passed}/${values.n} (${Math.round(values.successRate * 100)}%)`);
+  }
+  if (summary.decision.taskRegressions.length > 0) {
+    console.log(`  Task regressions: ${summary.decision.taskRegressions.length}`);
+  }
+  console.log(`Saved suite summary to ${suitePath}`);
 }
 
 async function loadRuns(resultsDir, taskName) {
@@ -91,7 +167,7 @@ async function loadRuns(resultsDir, taskName) {
 
 function isDryRun(run) {
   return run.dryRun === true
-    || (run.schemaVersion === 2
+    || (run.schemaVersion >= 2
       && run.turns === 0
       && run.tokens.total === 0
       && /Dry run completed/.test(run.testOutput ?? ""));
@@ -115,6 +191,8 @@ function normalizeRun(run) {
     retrievalPayloadTokenEstimate: run.retrievalPayloadTokenEstimate,
     docsBytesReturned: run.docsBytesReturned,
     retrievalPayloadByTool: run.retrievalPayloadByTool ?? {},
+    contextDecisions: run.contextDecisions ?? [],
+    verification: run.verification,
   };
 }
 
@@ -169,9 +247,37 @@ function summarizeRuns(runs) {
     },
     contaminationPassed: sorted.every((run) => run.contaminationChecks?.passed !== false),
     completion: summarizeCompletion(sorted),
+    contextDecisions: summarizeContextDecisions(sorted),
+    verification: summarizeVerification(sorted),
     toolCalls: mergeToolCalls(sorted),
     retrievalPayloadByTool: mergeRetrievalPayloadByTool(sorted),
     toolSchemaByTool: mergeToolSchemaByTool(sorted),
+  };
+}
+
+function summarizeContextDecisions(runs) {
+  const decisions = runs.flatMap((run) => run.contextDecisions ?? []);
+  const byRecommendation = {};
+  for (const decision of decisions) {
+    const recommendation = decision.readiness?.recommendation ?? "unknown";
+    byRecommendation[recommendation] = (byRecommendation[recommendation] ?? 0) + 1;
+  }
+  return {
+    observedQueries: decisions.length,
+    parseFailures: decisions.filter((decision) => decision.parseStatus !== "ok").length,
+    byRecommendation: Object.fromEntries(Object.entries(byRecommendation).sort(([left], [right]) => left.localeCompare(right))),
+  };
+}
+
+function summarizeVerification(runs) {
+  const values = runs.map((run) => run.verification).filter(Boolean);
+  if (values.length === 0) return { observedRuns: 0 };
+  const rate = (key) => values.filter((value) => value[key] === true).length / values.length;
+  return {
+    observedRuns: values.length,
+    publicSmokePassRate: rate("publicSmokePassed"),
+    privateOraclePresentRate: rate("privateOraclePresent"),
+    privateOraclePassRate: rate("privateOraclePassed"),
   };
 }
 
@@ -311,6 +417,23 @@ function minMax(values) {
 
 function formatSigned(value) {
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+function getArg(args, key) {
+  const index = args.indexOf(key);
+  return index >= 0 ? args[index + 1] : null;
+}
+
+function positionalArgs(args) {
+  const values = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--results-dir") {
+      index += 1;
+      continue;
+    }
+    if (!args[index].startsWith("--")) values.push(args[index]);
+  }
+  return values;
 }
 
 function escapeRegex(value) {

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "task": "stripe-webhooks",
+  "source": {
+    "type": "local_markdown_snapshot",
+    "origin": "https://docs.stripe.com/",
+    "capturedAt": null,
+    "provenance": "Existing local snapshot; capture timestamp was not recorded.",
+    "format": "markdown",
+    "pageCount": 101,
+    "byteCount": 716199,
+    "corpusHash": "9168efd93056e3cb65715e294b9a016b883ed914e83d2ac98b6e195b8352d4e6"
+  },
+  "evaluation": {
+    "oracle": "evaluation/private-test.mjs",
+    "visibleTest": "test.mjs",
+    "requiredEvidence": ["constructEvent", "raw body", "checkout.session.completed"]
+  }
+}

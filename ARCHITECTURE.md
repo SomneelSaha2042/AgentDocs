@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-09 during the facet-safe context selection pass.
+Verified on 2026-07-13 during the evidence-backed readiness and evaluation-harness pass.
 
 ## Product Shape
 
@@ -283,7 +283,17 @@ corepack pnpm regression:fixtures
 corepack pnpm docs:build
 corepack pnpm pack:verify
 corepack pnpm smoke:bundle
+node --test scripts/eval-suites.test.mjs scripts/eval-fixtures.test.mjs
 ```
+
+The active evaluation harness is deliberately outside the deterministic
+product pipeline. `scripts/eval-suite-runner.mjs` expands a declarative suite
+into isolated seeded runs, while `scripts/eval-fixtures.mjs` validates source
+snapshot hashes and required evidence before any model call. The north-star
+pilot uses hidden final oracles in addition to visible fixture smoke tests;
+private oracle files and fixture manifests are excluded from agent workspaces.
+Its task-success gate is separate from readiness diagnostics and token
+efficiency, so retrieval savings cannot mask an implementation regression.
 
 The GitHub CI matrix in `.github/workflows/ci.yml` runs on Ubuntu Node 20,
 Ubuntu Node 22, and Windows Node 20. It installs with the frozen lockfile, runs
@@ -391,3 +401,7 @@ The proof confirms stable repeated builds across the sampled targets and records
   as not implemented unless verified.
 - Website freshness uses configured TTLs rather than live network
   revalidation, by design.
+- The north-star evaluation suite is not a product guarantee. Its result is
+  only valid when fixture evidence, hidden-oracle status, corpus hashes, and
+  contamination checks are all present; historical runs without those fields
+  remain backward-compatible but cannot be treated as equivalent evidence.

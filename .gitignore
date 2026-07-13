@@ -19,6 +19,12 @@ fixtures/eval-tasks/fastify-validation/docs/
 fixtures/eval-tasks/octokit-pagination/docs/
 fixtures/eval-tasks/agentdocs-config/docs/
 fixtures/eval-tasks/vercel-ai-sdk/docs/
-fixtures/eval-tasks/authjs-v5/docs/
-fixtures/eval-tasks/langchain-js/docs/
-fixtures/eval-tasks/stripe-webhooks/docs/
+fixtures/eval-tasks/authjs-v5/docs/*
+!fixtures/eval-tasks/authjs-v5/docs/
+!fixtures/eval-tasks/authjs-v5/docs/**/*.md
+fixtures/eval-tasks/langchain-js/docs/*
+!fixtures/eval-tasks/langchain-js/docs/
+!fixtures/eval-tasks/langchain-js/docs/**/*.md
+fixtures/eval-tasks/stripe-webhooks/docs/*
+!fixtures/eval-tasks/stripe-webhooks/docs/
+!fixtures/eval-tasks/stripe-webhooks/docs/**/*.md
