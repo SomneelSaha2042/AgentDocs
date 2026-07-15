@@ -18,6 +18,8 @@ test("north-star suite declares the matched dense-doc matrix", () => {
   assert.deepEqual(NORTH_STAR_SUITE.seeds, [1, 2, 3]);
   assert.equal(NORTH_STAR_SUITE.model, "gpt-4o");
   assert.equal(NORTH_STAR_SUITE.maxCost, 1);
+  assert.equal(NORTH_STAR_SUITE.maxInputTokens, 24000);
+  assert.equal(NORTH_STAR_SUITE.maxOutputTokens, 2000);
   assert.equal(NORTH_STAR_SUITE.mcpTools, "query_docs,read_page");
 });
 

@@ -5,6 +5,9 @@ benchmark runs. The fields are stable enough for public interpretation during
 the beta, but historical rows may omit newer fields. Missing historical values
 should be labeled, not treated as zero.
 
+Active evaluator result files use schema version 4. Older result files remain
+readable through normalization but may not contain outcome or budget fields.
+
 ## Summary Artifacts
 
 Each `pnpm regression:dogfood` run writes local machine-readable evidence:
@@ -89,8 +92,16 @@ search controls. Its token fields are separate from dogfood routing metrics.
 | `verification.publicSmokePassed` | Whether the visible fixture smoke test passed. |
 | `verification.privateOraclePassed` | Whether the hidden final fixture oracle passed. This is the task-success gate used by north-star runs. |
 | `contextDecisions` | Structured readiness observations captured from AgentDocs `query_docs` calls. Missing observations remain unknown. |
+| `outcome` | Run classification: `success`, `task_failure`, `operational_failure`, or `dry_run`. |
+| `failure.code` | Structured operational failure reason, such as `context_budget_exceeded`, `provider_tpm_limit`, or `provider_rate_limit`. |
+| `tokenBudget` | Input/output request budgets and the peak estimated request-context tokens. |
+| `rawCorpusFilesLoaded` | Number of text-like documentation files exposed to a raw control, including intentionally messy captured source material. |
 
-North-star suite decisions are based on the hidden-oracle task result. Readiness
+North-star suite decisions are based on the hidden-oracle task result. A run
+with `outcome=operational_failure` is a service failure and remains
+`passed=false`, but it is not interpreted as a completed task attempt. The
+aggregator therefore reports both service success across all planned runs and
+task success among completed runs. Readiness
 is diagnostic: an `implement` recommendation followed by a failed oracle is a
 false-confidence signal, while `inspect` or `stop` followed by a successful
 oracle is conservative behavior. Neither signal is converted into a success

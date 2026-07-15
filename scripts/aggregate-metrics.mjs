@@ -59,7 +59,7 @@ async function aggregateTask(taskName, resultsDir) {
   }
 
   const summary = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     task: taskName,
     generatedAt: new Date().toISOString(),
     groups: groupSummaries,
@@ -81,7 +81,18 @@ function aggregateSuite(summaries, resultsDir) {
     if (taskSummaries.length === 0) continue;
     const passed = taskSummaries.reduce((sum, summary) => sum + summary.passed, 0);
     const n = taskSummaries.reduce((sum, summary) => sum + summary.n, 0);
-    groups[group] = { n, passed, failed: n - passed, successRate: n > 0 ? passed / n : null };
+    const operationalFailureCount = taskSummaries.reduce((sum, summary) => sum + (summary.operationalFailureCount ?? 0), 0);
+    const completedN = taskSummaries.reduce((sum, summary) => sum + (summary.completedN ?? summary.n), 0);
+    groups[group] = {
+      n,
+      passed,
+      failed: n - passed,
+      successRate: n > 0 ? passed / n : null,
+      serviceSuccessRate: n > 0 ? passed / n : null,
+      completedN,
+      taskSuccessRate: completedN > 0 ? passed / completedN : null,
+      operationalFailureCount,
+    };
   }
   const experimental = groups["experimental-agentdocs"];
   const controls = ["control-local-raw", "control-web-raw"]
@@ -103,7 +114,7 @@ function aggregateSuite(summaries, resultsDir) {
       && controls.every(({ summary }) => experimental.passed >= summary.passed),
   );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     resultsDir,
     tasks: summaries.map((summary) => summary.task),
@@ -127,6 +138,7 @@ function printSuiteSummary(summary, suitePath) {
   console.log(`  Gate: ${summary.decision.passed ? "PASS" : "DO NOT ADVANCE"}`);
   for (const [group, values] of Object.entries(summary.groups)) {
     console.log(`  ${group}: ${values.passed}/${values.n} (${Math.round(values.successRate * 100)}%)`);
+    console.log(`    Service success: ${formatRate(values.serviceSuccessRate)}, Task success among completed: ${formatRate(values.taskSuccessRate)}, Operational failures: ${values.operationalFailureCount}`);
   }
   if (summary.decision.taskRegressions.length > 0) {
     console.log(`  Task regressions: ${summary.decision.taskRegressions.length}`);
@@ -180,6 +192,8 @@ function normalizeRun(run) {
     ...run,
     group,
     seed: run.seed ?? 1,
+    outcome: run.outcome ?? (run.passed ? "success" : "task_failure"),
+    failure: run.failure ?? null,
     tokens: {
       input: run.tokens?.input ?? 0,
       output: run.tokens?.output ?? 0,
@@ -193,6 +207,7 @@ function normalizeRun(run) {
     retrievalPayloadByTool: run.retrievalPayloadByTool ?? {},
     contextDecisions: run.contextDecisions ?? [],
     verification: run.verification,
+    tokenBudget: run.tokenBudget ?? null,
   };
 }
 
@@ -219,10 +234,22 @@ function normalizeHotTokenEstimates(run) {
 function summarizeRuns(runs) {
   const sorted = [...runs].sort((left, right) => (left.seed ?? 0) - (right.seed ?? 0));
   const passCount = sorted.filter((run) => run.passed).length;
+  const completedRuns = sorted.filter((run) => run.outcome !== "operational_failure" && run.outcome !== "dry_run");
+  const operationalFailures = sorted.filter((run) => run.outcome === "operational_failure");
+  const operationalFailureCodes = {};
+  for (const run of operationalFailures) {
+    const code = run.failure?.code ?? "unknown";
+    operationalFailureCodes[code] = (operationalFailureCodes[code] ?? 0) + 1;
+  }
   return {
     n: sorted.length,
     seeds: sorted.map((run) => run.seed),
     successRate: passCount / sorted.length,
+    serviceSuccessRate: passCount / sorted.length,
+    completedN: completedRuns.length,
+    taskSuccessRate: completedRuns.length > 0 ? passCount / completedRuns.length : null,
+    operationalFailureCount: operationalFailures.length,
+    operationalFailureCodes: Object.fromEntries(Object.entries(operationalFailureCodes).sort(([left], [right]) => left.localeCompare(right))),
     passed: passCount,
     failed: sorted.length - passCount,
     medians: {
@@ -239,6 +266,7 @@ function summarizeRuns(runs) {
       hotAdjustedTotalTokensEstimate: medianPresent(sorted.map((run) => run.hotTokenEstimates.hotAdjustedTotalTokensEstimate)),
       retrievalPayloadTokenEstimate: medianPresent(sorted.map((run) => run.retrievalPayloadTokenEstimate)),
       docsBytesReturned: medianPresent(sorted.map((run) => run.docsBytesReturned)),
+      rawCorpusFilesLoaded: medianPresent(sorted.map((run) => run.rawCorpusFilesLoaded)),
     },
     minMax: {
       totalTokens: minMax(sorted.map((run) => run.tokens.total)),
@@ -308,6 +336,7 @@ function compareSummaries(experimental, control) {
   const durationDelta = control.medians.durationMs - experimental.medians.durationMs;
   return {
     successRateDelta: experimental.successRate - control.successRate,
+    taskSuccessRateDelta: (experimental.taskSuccessRate ?? 0) - (control.taskSuccessRate ?? 0),
     medianTurnsSaved: turnDelta,
     medianDurationMsSaved: durationDelta,
     medianTokenUsageDelta: {
@@ -335,11 +364,14 @@ function printSummary(taskName, groups, comparisons, summaryPath) {
     if (summary === undefined) continue;
     console.log(`${group}:`);
     console.log(`  N: ${summary.n}, Success: ${summary.passed}/${summary.n} (${Math.round(summary.successRate * 100)}%)`);
+    console.log(`  Service success: ${formatRate(summary.serviceSuccessRate)}, Task success among completed: ${formatRate(summary.taskSuccessRate)}`);
+    console.log(`  Operational failures: ${summary.operationalFailureCount} ${JSON.stringify(summary.operationalFailureCodes)}`);
     console.log(`  Median Turns: ${summary.medians.turns}`);
     console.log(`  Median Tokens: ${summary.medians.totalTokens}`);
     console.log(`  Median Hot-Adjusted Tokens: ${summary.medians.hotAdjustedTotalTokensEstimate ?? "n/a"}`);
     console.log(`  Median Docs Schema Tax Estimate: ${summary.medians.docsSchemaRepeatedTaxEstimate ?? "n/a"}`);
     console.log(`  Median Retrieval Payload Tokens: ${summary.medians.retrievalPayloadTokenEstimate ?? "n/a"}`);
+    console.log(`  Median Raw Corpus Files: ${summary.medians.rawCorpusFilesLoaded ?? "n/a"}`);
     console.log(`  Contamination Checks: ${summary.contaminationPassed ? "pass" : "fail"}`);
   }
   for (const [name, comparison] of Object.entries(comparisons)) {
@@ -419,6 +451,10 @@ function formatSigned(value) {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
+function formatRate(value) {
+  return value === null || value === undefined ? "n/a" : `${Math.round(value * 100)}%`;
+}
+
 function getArg(args, key) {
   const index = args.indexOf(key);
   return index >= 0 ? args[index + 1] : null;
@@ -440,7 +476,11 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export { aggregateSuite, normalizeRun, summarizeRuns };
+
+if (process.argv[1]?.endsWith("aggregate-metrics.mjs")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

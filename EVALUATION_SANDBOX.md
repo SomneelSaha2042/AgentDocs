@@ -33,7 +33,9 @@ Group behavior:
   generated artifacts. By default the runner limits MCP to
   `query_docs,read_page`; pass `--mcp-tools` to benchmark a different surface.
 - `control-local-raw`: exposes `search_raw_docs` and `read_raw_doc` over the
-  hidden raw docs corpus.
+  hidden raw docs corpus, preserving captured Markdown, HTML, JSON, and other
+  text-like source material when present. This intentionally messy corpus is
+  part of the control's difficulty profile.
 - `control-web-raw`: exposes `web_search` and `fetch_webpage` over the same raw
   corpus, with web-fetch-like page noise.
 
@@ -82,7 +84,8 @@ The reproducible dense-document pilot is declared by the `north-star-v1` suite:
 
 ```bash
 node scripts/eval-suite-runner.mjs --suite north-star-v1 \
-  --provider openai --model gpt-4o --seeds 1,2,3 --max-cost 1.00
+  --provider openai --model gpt-4o --seeds 1,2,3 --max-cost 1.00 \
+  --max-input-tokens 24000 --max-output-tokens 2000
 ```
 
 It runs Auth.js v5, Stripe webhooks, and LangChain JavaScript against the
@@ -110,17 +113,29 @@ workspace. Fixture package versions are exact; lockfile generation is a
 network-dependent preparation step and is not included unless it completes
 successfully in the evaluation environment.
 
+Every provider request has a deterministic input-context guard. The default
+24,000-input-token and 2,000-output-token budgets leave headroom below a
+30,000-token organization limit. A request that exceeds the guard is persisted
+as an `operational_failure` with `failure.code=context_budget_exceeded`; a
+provider 429 caused by the same condition is recorded as
+`failure.code=provider_tpm_limit`. These runs have `passed=false`, and the
+suite continues to the next planned run instead of crashing.
+
 ## Telemetry Captured
 
 Each result JSON records:
 
 - task, group, model, provider, and seed;
 - pass/fail, turns, duration, and token usage;
+- run `outcome` (`success`, `task_failure`, `operational_failure`, or `dry_run`)
+  and structured failure code/details;
+- input/output token budgets and peak estimated request-context tokens;
 - tool schema token estimate, including base tool, raw-doc tool, and AgentDocs MCP tool categories;
 - cold total tokens reported by the provider;
 - analytical hot-session token estimates that subtract repeated AgentDocs MCP tool-schema overhead;
 - retrieval payload token estimate;
 - docs bytes returned by docs/MCP tools;
+- raw corpus file count used by the control group;
 - tool call counts and per-turn breakdowns;
 - final code hash, raw corpus hash, and AgentDocs build hash;
 - contamination checks before and after the run.
@@ -129,8 +144,11 @@ Each result JSON records:
 - structured `query_docs` readiness observations (recommendation, coverage, and
   issue codes) when the experimental group calls it.
 
-The aggregator reports medians and success proportions by group. It reports both
-cold provider token totals and hot-adjusted estimates. Hot-adjusted values are
+The aggregator reports medians and success proportions by group. It reports
+both service success (all planned runs, including operational failures) and
+task success among completed runs, along with operational-failure counts and
+codes. It reports both cold provider token totals and hot-adjusted estimates.
+Hot-adjusted values are
 analytical estimates, not billing truth: they subtract the repeated AgentDocs MCP
 tool-schema token estimate from each run to model an already-loaded AgentDocs
 session. Treat single-run results as smoke checks only; use the seeded pilot for

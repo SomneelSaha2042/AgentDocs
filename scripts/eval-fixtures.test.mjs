@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { validateFixtureSnapshot } from "./eval-fixtures.mjs";
 
@@ -37,3 +38,41 @@ test("the validator blocks a corpus that cannot support its task", async () => {
     await rm(taskDir, { recursive: true, force: true });
   }
 });
+
+test("raw evaluation preserves the full text-like fixture corpus", async () => {
+  const runId = `fixture-filter-${process.pid}`;
+  const resultsDir = path.join(".dogfood", "evals", runId);
+  const resultPath = path.join(resultsDir, "eval-result-authjs-v5-control-local-raw-seed-1.json");
+  const expectedRawCorpusFiles = await countTextLikeFiles(path.join(root, "authjs-v5", "docs"));
+  try {
+    execFileSync(process.execPath, [
+      "scripts/eval-runner.mjs",
+      "--task", "authjs-v5",
+      "--group", "control-local-raw",
+      "--seed", "1",
+      "--dry-run",
+      "--run-id", runId,
+      "--results-dir", resultsDir,
+    ], { stdio: "pipe" });
+    const result = JSON.parse(await readFile(resultPath, "utf8"));
+    assert.equal(result.schemaVersion, 4);
+    assert.equal(result.rawCorpusFilesLoaded, expectedRawCorpusFiles);
+    assert.ok(result.rawCorpusFilesLoaded >= 100);
+  } finally {
+    await rm(resultsDir, { recursive: true, force: true });
+  }
+});
+
+async function countTextLikeFiles(rootDir) {
+  const extensions = new Set([".md", ".mdx", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".html", ".htm", ".txt", ".yaml", ".yml", ".json"]);
+  let count = 0;
+  async function visit(dir) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) await visit(fullPath);
+      else if (extensions.has(path.extname(entry.name).toLowerCase())) count += 1;
+    }
+  }
+  await visit(rootDir);
+  return count;
+}

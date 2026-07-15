@@ -6,6 +6,13 @@ import { performance } from "node:perf_hooks";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import {
+  DEFAULT_MAX_INPUT_TOKENS,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  EvaluationOperationalError,
+  assertRequestBudget,
+  providerFailureError,
+} from "./eval-budget.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const GENERATED_ARTIFACT_NAMES = new Set([
@@ -172,9 +179,11 @@ class RawDocsCorpus {
   }
 }
 
-async function callAnthropic(messages, tools, system) {
+async function callAnthropic(messages, tools, system, maxOutputTokens = 4000) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set.");
+  if (!apiKey) {
+    throw new EvaluationOperationalError("provider_auth_missing", "ANTHROPIC_API_KEY is not set.");
+  }
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -185,7 +194,7 @@ async function callAnthropic(messages, tools, system) {
     },
     body: JSON.stringify({
       model: "claude-3-5-sonnet-20241022",
-      max_tokens: 4000,
+      max_tokens: maxOutputTokens,
       system,
       messages,
       tools: tools.map((t) => ({
@@ -198,15 +207,17 @@ async function callAnthropic(messages, tools, system) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Anthropic API Error (${response.status}): ${text}`);
+    throw providerFailureError(response.status, text);
   }
 
   return response.json();
 }
 
-async function callOpenAI(messages, tools, system, modelName = "gpt-4o") {
+async function callOpenAI(messages, tools, system, modelName = "gpt-4o", maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set.");
+  if (!apiKey) {
+    throw new EvaluationOperationalError("provider_auth_missing", "OPENAI_API_KEY is not set.");
+  }
 
   const openAiMessages = [
     { role: "system", content: system },
@@ -232,6 +243,7 @@ async function callOpenAI(messages, tools, system, modelName = "gpt-4o") {
         parameters: t.inputSchema || t.input_schema,
       },
     })),
+    max_tokens: maxOutputTokens,
     seed: globalThis.__agentdocsEvalSeed,
   });
 
@@ -250,14 +262,15 @@ async function callOpenAI(messages, tools, system, modelName = "gpt-4o") {
     }
 
     const text = await response.text();
-    if (response.status === 429 && attempt < 4) {
+    const failure = providerFailureError(response.status, text);
+    if (response.status === 429 && failure.details.retryable && attempt < 4) {
       const waitSeconds = retryAfterSeconds(response, text) ?? Math.min(30, attempt * 5);
       console.warn(`OpenAI rate limit hit. Retrying in ${waitSeconds}s (attempt ${attempt + 1}/4).`);
       await delay(waitSeconds * 1000);
       continue;
     }
 
-    throw new Error(`OpenAI API Error (${response.status}): ${text}`);
+    throw failure;
   }
 }
 
@@ -268,6 +281,14 @@ async function main() {
   const provider = getArg(args, "--provider") || (process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai");
   const modelName = getArg(args, "--model") || (provider === "openai" ? "gpt-4o" : "claude-3-5-sonnet-20241022");
   const maxCost = parseFloat(getArg(args, "--max-cost") || "1.00");
+  const maxInputTokens = parsePositiveInteger(
+    getArg(args, "--max-input-tokens") || String(DEFAULT_MAX_INPUT_TOKENS),
+    "--max-input-tokens",
+  );
+  const maxOutputTokens = parsePositiveInteger(
+    getArg(args, "--max-output-tokens") || String(DEFAULT_MAX_OUTPUT_TOKENS),
+    "--max-output-tokens",
+  );
   const requestedGroup = resolveGroup(args);
   const mcpToolsArg = getArg(args, "--mcp-tools")
     || (requestedGroup === "experimental-agentdocs" ? "query_docs,read_page" : null);
@@ -280,7 +301,7 @@ async function main() {
   const dryRun = args.includes("--dry-run");
   globalThis.__agentdocsEvalSeed = seed;
 
-  console.log(`Starting eval run. Task: ${taskName}, Group: ${requestedGroup}, Provider: ${provider}, Model: ${modelName}, Seed: ${seed}, Max Cost: $${maxCost}`);
+  console.log(`Starting eval run. Task: ${taskName}, Group: ${requestedGroup}, Provider: ${provider}, Model: ${modelName}, Seed: ${seed}, Max Cost: $${maxCost}, Input Budget: ${maxInputTokens}, Output Budget: ${maxOutputTokens}`);
 
   const taskDir = path.join(repositoryRoot, "fixtures", "eval-tasks", taskName);
   const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), `agentdocs-eval-${taskName}-${requestedGroup}-`));
@@ -295,6 +316,7 @@ async function main() {
   const docsTelemetry = {
     docsBytesReturned: 0,
     retrievalPayloadTokenEstimate: 0,
+    rawCorpusFilesLoaded: 0,
     byTool: {},
     contextDecisions: [],
   };
@@ -313,8 +335,12 @@ async function main() {
 
     let rawCorpus = null;
     if (requestedGroup === "control-local-raw" || requestedGroup === "control-web-raw") {
-      rawCorpus = new RawDocsCorpus(corpusDir, requestedGroup === "control-web-raw" ? "web" : "local");
+      rawCorpus = new RawDocsCorpus(
+        corpusDir,
+        requestedGroup === "control-web-raw" ? "web" : "local",
+      );
       await rawCorpus.load();
+      docsTelemetry.rawCorpusFilesLoaded = rawCorpus.files.length;
       console.log(`Loaded ${rawCorpus.files.length} raw documentation file(s).`);
     }
 
@@ -375,6 +401,10 @@ async function main() {
         agentdocsBuildHash,
         contaminationBefore,
         dryRun,
+        outcome: "dry_run",
+        maxInputTokens,
+        maxOutputTokens,
+        peakRequestTokenEstimate: 0,
         keepSandbox,
       });
       cleanupHandled = true;
@@ -382,19 +412,80 @@ async function main() {
       return;
     }
 
-    const runState = await runAgentLoop({
-      provider,
-      modelName,
-      messages,
-      allTools,
-      systemPrompt,
-      maxCost,
-      workspaceDir,
-      corpus: rawCorpus,
-      mcpClient,
-      docsTelemetry,
-      group: requestedGroup,
-    });
+    let runState;
+    try {
+      runState = await runAgentLoop({
+        provider,
+        modelName,
+        messages,
+        allTools,
+        systemPrompt,
+        maxCost,
+        maxInputTokens,
+        maxOutputTokens,
+        workspaceDir,
+        corpus: rawCorpus,
+        mcpClient,
+        docsTelemetry,
+        group: requestedGroup,
+      });
+    } catch (error) {
+      if (!(error instanceof EvaluationOperationalError)) throw error;
+      const state = error.evalState ?? {
+        turns: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        startTime: performance.now(),
+        turnsList: [],
+        toolCallCounts: {},
+        finalResponse: "",
+        complianceRecoveryUsed: false,
+        peakRequestTokenEstimate: error.details?.requestedTokens ?? 0,
+      };
+      const result = await finishRun({
+        taskName,
+        group: requestedGroup,
+        provider,
+        modelName,
+        seed,
+        passed: false,
+        outcome: "operational_failure",
+        failureCode: error.code,
+        failureDetails: error.details,
+        turns: state.turns,
+        totalInputTokens: state.totalInputTokens,
+        totalOutputTokens: state.totalOutputTokens,
+        finishReason: "operational_failure",
+        finalResponse: state.finalResponse,
+        complianceRecoveryUsed: state.complianceRecoveryUsed,
+        startTime: state.startTime,
+        mcpTools,
+        toolCallCounts: state.toolCallCounts,
+        turnsList: state.turnsList,
+        testOutput: `Operational failure (${error.code}): ${error.message}`,
+        workspaceDir,
+        sandboxRoot,
+        corpusDir,
+        buildDir,
+        runId,
+        resultsDir,
+        toolSchemaTokenEstimate,
+        toolSchemaMetrics,
+        docsTelemetry,
+        protectedFilesBefore,
+        agentdocsBuildHash,
+        contaminationBefore,
+        dryRun,
+        maxInputTokens,
+        maxOutputTokens,
+        peakRequestTokenEstimate: state.peakRequestTokenEstimate,
+        keepSandbox,
+      });
+      cleanupHandled = true;
+      console.warn(`Evaluation recorded as operational failure: ${error.code}`);
+      console.log(result);
+      return;
+    }
 
     const { passed, testOutput, verification } = runFinalVerification(workspaceDir, taskDir);
     const result = await finishRun({
@@ -404,6 +495,9 @@ async function main() {
       modelName,
       seed,
       passed,
+      maxInputTokens,
+      maxOutputTokens,
+      peakRequestTokenEstimate: runState.peakRequestTokenEstimate,
       turns: runState.turns,
       totalInputTokens: runState.totalInputTokens,
       totalOutputTokens: runState.totalOutputTokens,
@@ -452,6 +546,8 @@ async function runAgentLoop({
   allTools,
   systemPrompt,
   maxCost,
+  maxInputTokens,
+  maxOutputTokens,
   workspaceDir,
   corpus,
   mcpClient,
@@ -468,6 +564,7 @@ async function runAgentLoop({
   let complianceRecoveryUsed = false;
   const turnsList = [];
   const toolCallCounts = {};
+  let peakRequestTokenEstimate = 0;
 
   while (!done && turns < 10) {
     turns++;
@@ -478,8 +575,15 @@ async function runAgentLoop({
     let response;
 
     try {
+      const requestTokenEstimate = assertRequestBudget({
+        system: systemPrompt,
+        messages,
+        tools: allTools,
+        maxInputTokens,
+      });
+      peakRequestTokenEstimate = Math.max(peakRequestTokenEstimate, requestTokenEstimate);
       if (provider === "anthropic") {
-        const rawRes = await callAnthropic(messages, allTools, systemPrompt);
+        const rawRes = await callAnthropic(messages, allTools, systemPrompt, maxOutputTokens);
         turnInputTokens = rawRes.usage.input_tokens;
         turnOutputTokens = rawRes.usage.output_tokens;
         response = {
@@ -491,7 +595,7 @@ async function runAgentLoop({
           })),
         };
       } else {
-        const rawRes = await callOpenAI(messages, allTools, systemPrompt, modelName);
+        const rawRes = await callOpenAI(messages, allTools, systemPrompt, modelName, maxOutputTokens);
         turnInputTokens = rawRes.usage.prompt_tokens;
         turnOutputTokens = rawRes.usage.completion_tokens;
         const choice = rawRes.choices[0];
@@ -506,6 +610,19 @@ async function runAgentLoop({
       }
     } catch (err) {
       console.error("LLM call failed:", err);
+      if (err instanceof EvaluationOperationalError) {
+        err.evalState = {
+          turns,
+          totalInputTokens,
+          totalOutputTokens,
+          startTime,
+          turnsList,
+          toolCallCounts,
+          finalResponse,
+          complianceRecoveryUsed,
+          peakRequestTokenEstimate: Math.max(peakRequestTokenEstimate, err.details?.requestedTokens ?? 0),
+        };
+      }
       throw err;
     }
 
@@ -574,7 +691,7 @@ async function runAgentLoop({
     }
   }
 
-  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse, complianceRecoveryUsed };
+  return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse, complianceRecoveryUsed, peakRequestTokenEstimate };
 }
 
 async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, group }) {
@@ -711,6 +828,9 @@ async function finishRun({
   modelName,
   seed,
   passed,
+  outcome,
+  failureCode,
+  failureDetails,
   turns,
   totalInputTokens,
   totalOutputTokens,
@@ -736,6 +856,9 @@ async function finishRun({
   agentdocsBuildHash,
   contaminationBefore,
   dryRun = false,
+  maxInputTokens = DEFAULT_MAX_INPUT_TOKENS,
+  maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
+  peakRequestTokenEstimate = 0,
   keepSandbox,
 }) {
   const duration = Math.round(performance.now() - startTime);
@@ -744,7 +867,7 @@ async function finishRun({
   const finalCodeHash = await hashWorkspaceCode(workspaceDir);
   const corpusHash = await hashPath(corpusDir);
   const result = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     task: taskName,
     group,
     control: group !== "experimental-agentdocs",
@@ -755,6 +878,10 @@ async function finishRun({
     runId,
     dryRun,
     passed,
+    outcome: outcome ?? (passed ? "success" : "task_failure"),
+    failure: failureCode
+      ? { code: failureCode, details: failureDetails ?? {} }
+      : null,
     turns,
     tokens: {
       input: totalInputTokens,
@@ -762,6 +889,11 @@ async function finishRun({
       total: totalInputTokens + totalOutputTokens,
     },
     toolSchemaTokenEstimate,
+    tokenBudget: {
+      maxInputTokens,
+      maxOutputTokens,
+      peakRequestTokenEstimate,
+    },
     toolSchemaMetrics,
     hotTokenEstimates: hotTokenEstimatesFor({
       inputTokens: totalInputTokens,
@@ -771,6 +903,7 @@ async function finishRun({
     }),
     retrievalPayloadTokenEstimate: docsTelemetry.retrievalPayloadTokenEstimate,
     docsBytesReturned: docsTelemetry.docsBytesReturned,
+    rawCorpusFilesLoaded: docsTelemetry.rawCorpusFilesLoaded,
     retrievalPayloadByTool: docsTelemetry.byTool,
     contextDecisions: docsTelemetry.contextDecisions,
     verification,
@@ -1054,6 +1187,7 @@ async function collectTextFiles(root) {
 }
 
 function isTextLike(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
   return [
     ".md",
     ".mdx",
@@ -1068,7 +1202,7 @@ function isTextLike(filePath) {
     ".yaml",
     ".yml",
     ".json",
-  ].includes(path.extname(filePath).toLowerCase());
+  ].includes(extension);
 }
 
 function scoreText(value, terms, query) {
@@ -1287,6 +1421,14 @@ function getArg(args, key) {
     return args[idx + 1];
   }
   return null;
+}
+
+function parsePositiveInteger(value, name) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function requiredString(value, name) {

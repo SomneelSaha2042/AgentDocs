@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-13 during the evidence-backed readiness and evaluation-harness pass.
+Verified on 2026-07-14 during the evidence-backed evaluation budget and raw-corpus pass.
 
 ## Product Shape
 
@@ -283,7 +283,7 @@ corepack pnpm regression:fixtures
 corepack pnpm docs:build
 corepack pnpm pack:verify
 corepack pnpm smoke:bundle
-node --test scripts/eval-suites.test.mjs scripts/eval-fixtures.test.mjs
+corepack pnpm test:evaluation
 ```
 
 The active evaluation harness is deliberately outside the deterministic
@@ -292,8 +292,13 @@ into isolated seeded runs, while `scripts/eval-fixtures.mjs` validates source
 snapshot hashes and required evidence before any model call. The north-star
 pilot uses hidden final oracles in addition to visible fixture smoke tests;
 private oracle files and fixture manifests are excluded from agent workspaces.
-Its task-success gate is separate from readiness diagnostics and token
-efficiency, so retrieval savings cannot mask an implementation regression.
+Raw controls preserve the captured text-like corpus, including intentionally
+messy Markdown/HTML/JSON and versioned source material when present. Each
+provider request has a deterministic input/output budget; context overages and
+provider TPM/rate-limit errors are persisted as operational failures and do
+not crash the remaining suite runs. Its task-success gate is separate from
+readiness diagnostics and token efficiency, while aggregate reports distinguish
+service success across all planned runs from task success among completed runs.
 
 The GitHub CI matrix in `.github/workflows/ci.yml` runs on Ubuntu Node 20,
 Ubuntu Node 22, and Windows Node 20. It installs with the frozen lockfile, runs

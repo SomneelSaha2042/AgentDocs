@@ -12,6 +12,8 @@ export const NORTH_STAR_SUITE = Object.freeze({
   model: "gpt-4o",
   provider: "openai",
   maxCost: 1,
+  maxInputTokens: 24000,
+  maxOutputTokens: 2000,
   mcpTools: "query_docs,read_page",
 });
 

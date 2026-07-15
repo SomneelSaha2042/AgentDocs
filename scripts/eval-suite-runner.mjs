@@ -2,6 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  DEFAULT_MAX_INPUT_TOKENS,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+} from "./eval-budget.mjs";
+import {
   parseSeedList,
   plannedRuns,
   resultDirectoryFor,
@@ -18,6 +22,14 @@ async function main() {
   const provider = getArg(args, "--provider") || suite.provider;
   const model = getArg(args, "--model") || suite.model;
   const maxCost = Number(getArg(args, "--max-cost") || suite.maxCost);
+  const maxInputTokens = positiveInteger(
+    getArg(args, "--max-input-tokens") || suite.maxInputTokens || DEFAULT_MAX_INPUT_TOKENS,
+    "--max-input-tokens",
+  );
+  const maxOutputTokens = positiveInteger(
+    getArg(args, "--max-output-tokens") || suite.maxOutputTokens || DEFAULT_MAX_OUTPUT_TOKENS,
+    "--max-output-tokens",
+  );
   if (!Number.isFinite(maxCost) || maxCost <= 0) {
     throw new Error("--max-cost must be a positive number");
   }
@@ -41,12 +53,13 @@ async function main() {
   const runs = plannedRuns(suite, { seeds });
   await mkdir(resultsDir, { recursive: true });
   await writeFile(path.join(resultsDir, "suite-manifest.json"), `${JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     suite: suite.id,
     runId,
     provider,
     model,
     maxCost,
+    tokenBudget: { maxInputTokens, maxOutputTokens },
     dryRun,
     mcpTools: suite.mcpTools,
     gitCommit: gitCommit(),
@@ -65,6 +78,8 @@ async function main() {
       "--provider", provider,
       "--model", model,
       "--max-cost", String(maxCost),
+      "--max-input-tokens", String(maxInputTokens),
+      "--max-output-tokens", String(maxOutputTokens),
       "--mcp-tools", suite.mcpTools,
       "--run-id", runId,
       "--results-dir", resultsDir,
@@ -95,6 +110,14 @@ function defaultRunId() {
 function getArg(args, key) {
   const index = args.indexOf(key);
   return index >= 0 ? args[index + 1] : null;
+}
+
+function positiveInteger(value, name) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
 }
 
 if (process.argv[1]?.endsWith("eval-suite-runner.mjs")) {
