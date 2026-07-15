@@ -13,6 +13,8 @@ import {
   assertRequestBudget,
   providerFailureError,
 } from "./eval-budget.mjs";
+import { createEvidenceProtocol } from "./eval-evidence-protocol.mjs";
+import { assistantMessageFor } from "./eval-provider-messages.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const GENERATED_ARTIFACT_NAMES = new Set([
@@ -319,7 +321,9 @@ async function main() {
     rawCorpusFilesLoaded: 0,
     byTool: {},
     contextDecisions: [],
+    successfulWriteCount: 0,
   };
+  const evidenceProtocol = createEvidenceProtocol({ enabled: requestedGroup === "experimental-agentdocs" });
 
   try {
     await prepareSandbox({ taskDir, workspaceDir, corpusDir, buildDir, group: requestedGroup });
@@ -397,6 +401,7 @@ async function main() {
         toolSchemaTokenEstimate,
         toolSchemaMetrics,
         docsTelemetry,
+        evidenceProtocol,
         protectedFilesBefore,
         agentdocsBuildHash,
         contaminationBefore,
@@ -427,6 +432,7 @@ async function main() {
         corpus: rawCorpus,
         mcpClient,
         docsTelemetry,
+        evidenceProtocol,
         group: requestedGroup,
       });
     } catch (error) {
@@ -519,6 +525,7 @@ async function main() {
       toolSchemaTokenEstimate,
       toolSchemaMetrics,
       docsTelemetry,
+      evidenceProtocol,
       protectedFilesBefore,
       agentdocsBuildHash,
       contaminationBefore,
@@ -552,6 +559,7 @@ async function runAgentLoop({
   corpus,
   mcpClient,
   docsTelemetry,
+  evidenceProtocol,
   group,
 }) {
   let turns = 0;
@@ -658,7 +666,7 @@ async function runAgentLoop({
     pushAssistantMessage(provider, messages, response);
 
     if (response.tool_calls.length === 0) {
-      const wroteFiles = (toolCallCounts.write_file ?? 0) > 0;
+      const wroteFiles = docsTelemetry.successfulWriteCount > 0;
       const ranTestCommand = turnsList.some((turn) => turn.toolCalls.some((call) =>
         call.name === "run_command" && isTestCommand(call.args.command)));
       if (!complianceRecoveryUsed && (!wroteFiles || !ranTestCommand)) {
@@ -684,6 +692,8 @@ async function runAgentLoop({
         corpus,
         mcpClient,
         docsTelemetry,
+        evidenceProtocol,
+        turn: turns,
         group,
       });
       console.log(`Tool Result: ${resultText.slice(0, 100)}...`);
@@ -694,15 +704,20 @@ async function runAgentLoop({
   return { turns, totalInputTokens, totalOutputTokens, startTime, turnsList, toolCallCounts, finishReason, finalResponse, complianceRecoveryUsed, peakRequestTokenEstimate };
 }
 
-async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, group }) {
+async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docsTelemetry, evidenceProtocol, turn, group }) {
   try {
     let resultText = "";
     const args = toolCall.arguments;
     if (toolCall.name === "write_file") {
+      const writeDecision = evidenceProtocol.beforeWrite({ turn });
+      if (!writeDecision.allowed) {
+        return `Evidence protocol blocked write (${writeDecision.code}): ${writeDecision.message}`;
+      }
       const filePath = resolveInside(workspaceDir, requiredString(args.path, "path"));
       assertWritableWorkspacePath(workspaceDir, filePath, group);
       await mkdir(path.dirname(filePath), { recursive: true });
       await writeFile(filePath, requiredString(args.content, "content"), "utf8");
+      docsTelemetry.successfulWriteCount += 1;
       resultText = `Successfully wrote to ${args.path}`;
     } else if (toolCall.name === "read_file") {
       const filePath = resolveInside(workspaceDir, requiredString(args.path, "path"));
@@ -726,6 +741,11 @@ async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docs
       const mcpResult = await mcpClient.callTool(toolCall.name, args);
       resultText = mcpResult.content.map((c) => c.text).join("\n");
       recordContextDecision(docsTelemetry, toolCall.name, mcpResult.structuredContent);
+      if (toolCall.name === "query_docs") {
+        evidenceProtocol.observeQuery({ turn, response: mcpResult.structuredContent });
+      } else if (toolCall.name === "read_page") {
+        evidenceProtocol.observeReadPage({ turn, args, result: mcpResult.structuredContent });
+      }
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     }
     return resultText;
@@ -852,6 +872,7 @@ async function finishRun({
   toolSchemaTokenEstimate,
   toolSchemaMetrics,
   docsTelemetry,
+  evidenceProtocol,
   protectedFilesBefore,
   agentdocsBuildHash,
   contaminationBefore,
@@ -867,7 +888,7 @@ async function finishRun({
   const finalCodeHash = await hashWorkspaceCode(workspaceDir);
   const corpusHash = await hashPath(corpusDir);
   const result = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     task: taskName,
     group,
     control: group !== "experimental-agentdocs",
@@ -906,6 +927,7 @@ async function finishRun({
     rawCorpusFilesLoaded: docsTelemetry.rawCorpusFilesLoaded,
     retrievalPayloadByTool: docsTelemetry.byTool,
     contextDecisions: docsTelemetry.contextDecisions,
+    evidenceProtocol: evidenceProtocol?.snapshot?.() ?? null,
     verification,
     durationMs: duration,
     mcpToolsLoaded: mcpTools.map((t) => t.name),
@@ -915,7 +937,7 @@ async function finishRun({
       finishReason,
       finalResponse,
       complianceRecoveryUsed,
-      wroteFiles: (toolCallCounts.write_file ?? 0) > 0,
+      wroteFiles: docsTelemetry.successfulWriteCount > 0,
       ranTestCommand: turnsList.some((turn) => turn.toolCalls.some((call) =>
         call.name === "run_command" && isTestCommand(call.args.command))),
     },
@@ -1127,7 +1149,7 @@ function hotTokenEstimatesFor({ inputTokens, outputTokens, turns, docsToolSchema
 function systemPromptFor(group) {
   const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
   const docsInstruction = group === "experimental-agentdocs"
-    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Use those documentation tools for implementation context before coding."
+    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Call query_docs once before coding. If readiness is INSPECT, call read_page with one cited ID before writing. If readiness is STOP, resolve the warning before implementing."
     : group === "experimental-agentdocs-local-coldstart"
       ? `CRITICAL REQUIREMENT: The AgentDocs context layer is NOT compiled yet. You MUST compile it in Turn 1 before doing anything else.
 To do this, you MUST immediately call run_command in Turn 1 with the following commands:
@@ -1343,33 +1365,7 @@ function parseDocsExampleUrl(url) {
 }
 
 function pushAssistantMessage(provider, messages, response) {
-  if (provider === "anthropic") {
-    messages.push({
-      role: "assistant",
-      content: [
-        ...(response.content ? [{ type: "text", text: response.content }] : []),
-        ...response.tool_calls.map((tc) => ({
-          type: "tool_use",
-          id: tc.id,
-          name: tc.name,
-          input: tc.arguments,
-        })),
-      ],
-    });
-  } else {
-    messages.push({
-      role: "assistant",
-      content: response.content,
-      tool_calls: response.tool_calls.map((tc) => ({
-        id: tc.id,
-        type: "function",
-        function: {
-          name: tc.name,
-          arguments: JSON.stringify(tc.arguments),
-        },
-      })),
-    });
-  }
+  messages.push(assistantMessageFor(provider, response));
 }
 
 function pushToolResult(provider, messages, toolCall, resultText) {

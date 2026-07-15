@@ -1164,7 +1164,9 @@ Unsupported steps are omitted rather than invented.
 `readiness.recommendation` is `implement` only when selected evidence is fresh,
 compatible, and complete for the deterministically extracted task requirements.
 Use `inspect` when evidence is missing or partial, and `stop` when context is
-stale or contradictory. The full requirement evidence is returned by
+stale or contradictory. Agents should read one cited source with `read_page`
+when the recommendation is `inspect`, and should resolve the warning before
+implementing when it is `stop`. The full requirement evidence is returned by
 `verify_task_context` and CLI `verify-context`.
 
 #### `read_page`

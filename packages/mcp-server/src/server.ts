@@ -356,7 +356,10 @@ function formatQueryDocs(result: QueryDocsResponse): string {
       `- ${gotcha.severity}: ${gotcha.text} ${evidenceLabel(gotcha.evidence)}`));
   }
   if (result.followUpRefs.length > 0) {
-    lines.push("", "Read only if more source detail is needed:", ...result.followUpRefs.map((ref) =>
+    const followUpLabel = result.readiness.recommendation === "inspect"
+      ? "Read one cited source before implementation:"
+      : "Read only if more source detail is needed:";
+    lines.push("", followUpLabel, ...result.followUpRefs.map((ref) =>
       `- ${ref.title}: ${ref.ref}`));
   }
   if (result.citations.length > 0) {

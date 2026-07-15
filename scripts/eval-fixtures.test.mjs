@@ -14,6 +14,13 @@ test("the Auth.js dense fixture is reproducible and evidence-complete", async ()
   assert.equal(result.pageCount, 100);
 });
 
+test("the Stripe fixture contains evidence for its App Router contract", async () => {
+  const result = await validateFixtureSnapshot(path.join(root, "stripe-webhooks"));
+  assert.equal(result.valid, true, result.issues.join("; "));
+  assert.equal(result.pageCount, 102);
+  assert.deepEqual(result.missingEvidence, []);
+});
+
 test("the validator blocks a corpus that cannot support its task", async () => {
   const taskDir = await mkdtemp(path.join(".dogfood", "fixture-validator-"));
   try {
@@ -55,7 +62,7 @@ test("raw evaluation preserves the full text-like fixture corpus", async () => {
       "--results-dir", resultsDir,
     ], { stdio: "pipe" });
     const result = JSON.parse(await readFile(resultPath, "utf8"));
-    assert.equal(result.schemaVersion, 4);
+    assert.equal(result.schemaVersion, 5);
     assert.equal(result.rawCorpusFilesLoaded, expectedRawCorpusFiles);
     assert.ok(result.rawCorpusFilesLoaded >= 100);
   } finally {

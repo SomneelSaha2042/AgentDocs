@@ -39,6 +39,9 @@ export function assertRequestBudget({ system, messages, tools, maxInputTokens })
 
 export function classifyProviderFailure(status, text = "") {
   const normalized = String(text);
+  if (status === 400 && /tool[_ ]calls?.*(empty array|minimum length)/i.test(normalized)) {
+    return { code: "provider_protocol_error", retryable: false };
+  }
   if (status === 429) {
     const tokenLimit = parseTokenLimit(normalized);
     const lower = normalized.toLowerCase();

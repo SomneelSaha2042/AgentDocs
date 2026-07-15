@@ -678,8 +678,9 @@ ${linesOrFallback([...rules.map((rule) => `- ${rule}`), ...concepts.filter((valu
 ## Guidelines for coding agents
 
 - **Retrieve compact context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, and citations.
-- **Read only cited detail**: Use \`read_page\` with the exact citation ID (passed as \`chunkId\`) only when more source detail is needed. Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
-- **Coding & Implementation**: Once documentation context is loaded, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
+- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, use \`read_page\` with one cited ID (passed as \`chunkId\`) before writing. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
+- **Read only cited detail**: Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
+- **Coding & Implementation**: Once readiness is satisfied, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
 
 ## Evidence and source docs
 

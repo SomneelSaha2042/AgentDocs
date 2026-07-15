@@ -7,13 +7,13 @@
     "capturedAt": null,
     "provenance": "Existing local snapshot; capture timestamp was not recorded.",
     "format": "markdown",
-    "pageCount": 101,
-    "byteCount": 716199,
-    "corpusHash": "9168efd93056e3cb65715e294b9a016b883ed914e83d2ac98b6e195b8352d4e6"
+    "pageCount": 102,
+    "byteCount": 717326,
+    "corpusHash": "14e3c8b65e23d4666ad84349506332540e04bcc9b2e348aecbd022dfaf9dfb9c"
   },
   "evaluation": {
     "oracle": "evaluation/private-test.mjs",
     "visibleTest": "test.mjs",
-    "requiredEvidence": ["constructEvent", "raw body", "checkout.session.completed"]
+    "requiredEvidence": ["constructEvent", "raw body", "checkout.session.completed", "request.text()", "headers.get"]
   }
 }

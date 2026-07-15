@@ -221,7 +221,7 @@ export class ArtifactService {
       setupCommands: setup.commands,
       mcp: {
         command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
-        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail.",
+        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first. If readiness is INSPECT, read one cited source before writing; if STOP, resolve the warning before implementing.",
         suggestedTools: ["query_docs", "read_page"],
       },
     });

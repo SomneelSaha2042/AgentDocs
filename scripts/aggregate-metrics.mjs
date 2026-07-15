@@ -20,7 +20,8 @@ async function main() {
     summaries.push(await aggregateTask(taskName, resultsDir));
   }
   if (summaries.length > 1) {
-    const suiteSummary = aggregateSuite(summaries, resultsDir);
+    const suiteManifest = await loadSuiteManifest(resultsDir);
+    const suiteSummary = aggregateSuite(summaries, resultsDir, suiteManifest);
     const suitePath = path.join(resultsDir, "suite-summary.json");
     await writeFile(suitePath, `${JSON.stringify(suiteSummary, null, 2)}\n`, "utf8");
     printSuiteSummary(suiteSummary, suitePath);
@@ -74,56 +75,105 @@ async function aggregateTask(taskName, resultsDir) {
   return summary;
 }
 
-function aggregateSuite(summaries, resultsDir) {
+function aggregateSuite(summaries, resultsDir, suiteManifest = null) {
   const groups = {};
   for (const group of CLEAN_GROUPS) {
-    const taskSummaries = summaries.map((summary) => summary.groups[group]).filter(Boolean);
+    const taskSummaries = summaries
+      .map((summary) => ({ task: summary.task, summary: summary.groups[group] }))
+      .filter((item) => item.summary);
     if (taskSummaries.length === 0) continue;
-    const passed = taskSummaries.reduce((sum, summary) => sum + summary.passed, 0);
-    const n = taskSummaries.reduce((sum, summary) => sum + summary.n, 0);
-    const operationalFailureCount = taskSummaries.reduce((sum, summary) => sum + (summary.operationalFailureCount ?? 0), 0);
-    const completedN = taskSummaries.reduce((sum, summary) => sum + (summary.completedN ?? summary.n), 0);
+    const passed = taskSummaries.reduce((sum, item) => sum + item.summary.passed, 0);
+    const observedN = taskSummaries.reduce((sum, item) => sum + item.summary.n, 0);
+    const plannedN = taskSummaries.reduce(
+      (sum, item) => sum + plannedCount(suiteManifest, item.task, group, item.summary.n),
+      0,
+    );
+    const operationalFailureCount = taskSummaries.reduce((sum, item) => sum + (item.summary.operationalFailureCount ?? 0), 0);
+    const completedN = taskSummaries.reduce((sum, item) => sum + (item.summary.completedN ?? item.summary.n), 0);
     groups[group] = {
-      n,
+      n: observedN,
+      plannedN,
       passed,
-      failed: n - passed,
-      successRate: n > 0 ? passed / n : null,
-      serviceSuccessRate: n > 0 ? passed / n : null,
+      failed: plannedN - passed,
+      successRate: plannedN > 0 ? passed / plannedN : null,
+      serviceSuccessRate: plannedN > 0 ? passed / plannedN : null,
       completedN,
+      executionCompletionRate: plannedN > 0 ? completedN / plannedN : null,
       taskSuccessRate: completedN > 0 ? passed / completedN : null,
       operationalFailureCount,
     };
   }
   const experimental = groups["experimental-agentdocs"];
-  const controls = ["control-local-raw", "control-web-raw"]
+  const expectedControlGroups = ["control-local-raw", "control-web-raw"];
+  const controls = expectedControlGroups
     .map((group) => ({ group, summary: groups[group] }))
     .filter((item) => item.summary);
   const taskRegressions = [];
+  const inconclusiveTasks = [];
+  const experimentalIncompleteTasks = [];
+  const missingControls = expectedControlGroups.filter((group) => groups[group] === undefined);
   for (const summary of summaries) {
     const agent = summary.groups["experimental-agentdocs"];
+    const expectedAgentN = plannedCount(suiteManifest, summary.task, "experimental-agentdocs", agent?.n ?? 0);
+    if (agent && agent.completedN < expectedAgentN) {
+      experimentalIncompleteTasks.push({
+        task: summary.task,
+        completedN: agent.completedN,
+        requiredN: expectedAgentN,
+      });
+    }
     for (const { group, summary: control } of controls) {
       const controlTask = summary.groups[group];
-      if (agent && controlTask && agent.passed < controlTask.passed) {
+      const expectedControlN = plannedCount(suiteManifest, summary.task, group, controlTask?.n ?? 0);
+      const comparable = Boolean(
+        agent
+        && controlTask
+        && agent.completedN >= expectedAgentN
+        && controlTask.completedN >= expectedControlN,
+      );
+      if (!comparable) {
+        inconclusiveTasks.push({
+          task: summary.task,
+          control: group,
+          experimentalCompletedN: agent?.completedN ?? 0,
+          experimentalRequiredN: expectedAgentN,
+          controlCompletedN: controlTask?.completedN ?? 0,
+          controlRequiredN: expectedControlN,
+        });
+      } else if (agent.passed < controlTask.passed) {
         taskRegressions.push({ task: summary.task, control: group, agentPassed: agent.passed, controlPassed: controlTask.passed });
       }
     }
   }
-  const aggregateTie = Boolean(
-    experimental
-      && controls.length === 2
-      && controls.every(({ summary }) => experimental.passed >= summary.passed),
-  );
+  const fixtureIssues = (suiteManifest?.validations ?? [])
+    .filter((validation) => validation.valid === false)
+    .map((validation) => ({ task: validation.task, issues: validation.issues ?? [] }));
+  const status = fixtureIssues.length > 0
+    || experimental === undefined
+    || missingControls.length > 0
+    || experimentalIncompleteTasks.length > 0
+    || taskRegressions.length > 0
+    ? "do_not_advance"
+    : inconclusiveTasks.length > 0
+      ? "inconclusive"
+      : "pass";
+  const aggregateTie = status === "pass";
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: new Date().toISOString(),
     resultsDir,
     tasks: summaries.map((summary) => summary.task),
     groups,
     decision: {
-      gate: "no_success_regression",
+      gate: "dual_reliability_and_capability",
+      status,
       aggregateTieOrBetter: Boolean(aggregateTie),
       taskRegressions,
-      passed: aggregateTie && taskRegressions.length === 0,
+      inconclusiveTasks,
+      experimentalIncompleteTasks,
+      missingControls,
+      fixtureIssues,
+      passed: status === "pass",
     },
     taskSummaries: summaries.map((summary) => ({
       task: summary.task,
@@ -135,15 +185,29 @@ function aggregateSuite(summaries, resultsDir) {
 
 function printSuiteSummary(summary, suitePath) {
   console.log("\nNorth-star suite summary:");
-  console.log(`  Gate: ${summary.decision.passed ? "PASS" : "DO NOT ADVANCE"}`);
+  console.log(`  Gate: ${summary.decision.status.toUpperCase()}`);
   for (const [group, values] of Object.entries(summary.groups)) {
-    console.log(`  ${group}: ${values.passed}/${values.n} (${Math.round(values.successRate * 100)}%)`);
-    console.log(`    Service success: ${formatRate(values.serviceSuccessRate)}, Task success among completed: ${formatRate(values.taskSuccessRate)}, Operational failures: ${values.operationalFailureCount}`);
+    console.log(`  ${group}: ${values.passed}/${values.plannedN} planned (${Math.round(values.successRate * 100)}%)`);
+    console.log(`    Observed: ${values.n}, Completion: ${formatRate(values.executionCompletionRate)}, Task success among completed: ${formatRate(values.taskSuccessRate)}, Operational failures: ${values.operationalFailureCount}`);
   }
   if (summary.decision.taskRegressions.length > 0) {
     console.log(`  Task regressions: ${summary.decision.taskRegressions.length}`);
   }
   console.log(`Saved suite summary to ${suitePath}`);
+}
+
+async function loadSuiteManifest(resultsDir) {
+  try {
+    return JSON.parse(await readFile(path.join(resultsDir, "suite-manifest.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function plannedCount(manifest, task, group, fallback) {
+  const planned = manifest?.plannedRuns;
+  if (!Array.isArray(planned)) return fallback;
+  return planned.filter((run) => run.task === task && run.group === group).length;
 }
 
 async function loadRuns(resultsDir, taskName) {
@@ -206,6 +270,7 @@ function normalizeRun(run) {
     docsBytesReturned: run.docsBytesReturned,
     retrievalPayloadByTool: run.retrievalPayloadByTool ?? {},
     contextDecisions: run.contextDecisions ?? [],
+    evidenceProtocol: run.evidenceProtocol ?? null,
     verification: run.verification,
     tokenBudget: run.tokenBudget ?? null,
   };

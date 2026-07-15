@@ -104,9 +104,12 @@ node scripts/aggregate-metrics.mjs \
   authjs-v5 stripe-webhooks langchain-js
 ```
 
-The suite gate is task success: AgentDocs must tie or exceed each control's
-aggregate pass count and must not have fewer passes on any individual task.
-Token and readiness measurements are secondary diagnostics. A visible
+The suite uses a dual gate. Operational failures remain failed reliability
+outcomes, while task success is compared only among completed, valid runs.
+An experimental operational failure or a comparable task regression produces
+`DO NOT ADVANCE`; incomplete control samples produce `INCONCLUSIVE`; only a
+complete, non-regressing matrix produces `PASS`. Token and readiness
+measurements remain secondary diagnostics. A visible
 `node test.mjs` smoke test remains available to the agent; the final evaluator
 also runs a private oracle that is never copied into the implementation
 workspace. Fixture package versions are exact; lockfile generation is a
@@ -143,11 +146,13 @@ Each result JSON records:
 - public smoke-test and private-oracle outcomes;
 - structured `query_docs` readiness observations (recommendation, coverage, and
   issue codes) when the experimental group calls it.
+- evidence-protocol telemetry: query/read reference IDs, first-write turn,
+  blocked writes, and whether cited inspection was satisfied before writing.
 
 The aggregator reports medians and success proportions by group. It reports
-both service success (all planned runs, including operational failures) and
-task success among completed runs, along with operational-failure counts and
-codes. It reports both cold provider token totals and hot-adjusted estimates.
+both planned-run reliability and task success among completed runs, along with
+operational-failure counts/codes and per-task comparability status. It reports
+both cold provider token totals and hot-adjusted estimates.
 Hot-adjusted values are
 analytical estimates, not billing truth: they subtract the repeated AgentDocs MCP
 tool-schema token estimate from each run to model an already-loaded AgentDocs

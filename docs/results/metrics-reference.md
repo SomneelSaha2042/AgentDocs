@@ -92,20 +92,25 @@ search controls. Its token fields are separate from dogfood routing metrics.
 | `verification.publicSmokePassed` | Whether the visible fixture smoke test passed. |
 | `verification.privateOraclePassed` | Whether the hidden final fixture oracle passed. This is the task-success gate used by north-star runs. |
 | `contextDecisions` | Structured readiness observations captured from AgentDocs `query_docs` calls. Missing observations remain unknown. |
+| `evidenceProtocol` | Evaluator-only evidence-use telemetry: readiness observations, cited references read, first-write timing, and blocked writes. It contains IDs and statuses, not source text. |
 | `outcome` | Run classification: `success`, `task_failure`, `operational_failure`, or `dry_run`. |
 | `failure.code` | Structured operational failure reason, such as `context_budget_exceeded`, `provider_tpm_limit`, or `provider_rate_limit`. |
 | `tokenBudget` | Input/output request budgets and the peak estimated request-context tokens. |
 | `rawCorpusFilesLoaded` | Number of text-like documentation files exposed to a raw control, including intentionally messy captured source material. |
 
 North-star suite decisions are based on the hidden-oracle task result. A run
-with `outcome=operational_failure` is a service failure and remains
+with `outcome=operational_failure` is a reliability failure and remains
 `passed=false`, but it is not interpreted as a completed task attempt. The
-aggregator therefore reports both service success across all planned runs and
-task success among completed runs. Readiness
+aggregator reports planned-run reliability, task success among completed runs,
+and whether each task/control comparison is comparable. Readiness
 is diagnostic: an `implement` recommendation followed by a failed oracle is a
 false-confidence signal, while `inspect` or `stop` followed by a successful
 oracle is conservative behavior. Neither signal is converted into a success
 score.
+
+The dual gate emits `PASS`, `DO NOT ADVANCE`, or `INCONCLUSIVE`. Control TPM
+overflows remain visible reliability failures; they cannot become task passes
+or create a regression when the control lacks the required completed sample.
 
 ## Agent Task Field
 

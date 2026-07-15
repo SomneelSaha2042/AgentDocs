@@ -214,6 +214,13 @@ artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the
 shared result shapes.
 
+Generated agent guidance and evaluator prompts use the same generic evidence
+protocol: `implement` permits writing, `inspect` requires reading one cited
+source first, and `stop` requires resolving the warning before implementation.
+The MCP server remains stateless and exposes the existing two-tool compact
+profile; enforcement in the active evaluation runner is diagnostic and does not
+add package-specific routing logic.
+
 ## MCP Surface
 
 `packages/mcp-server` implements JSON-RPC over stdio. It reads generated
@@ -296,9 +303,11 @@ Raw controls preserve the captured text-like corpus, including intentionally
 messy Markdown/HTML/JSON and versioned source material when present. Each
 provider request has a deterministic input/output budget; context overages and
 provider TPM/rate-limit errors are persisted as operational failures and do
-not crash the remaining suite runs. Its task-success gate is separate from
-readiness diagnostics and token efficiency, while aggregate reports distinguish
-service success across all planned runs from task success among completed runs.
+not crash the remaining suite runs. Experimental runs also record schema-v5
+evidence-protocol telemetry without storing source text. The dual gate treats
+experimental operational failures or comparable task regressions as
+`DO_NOT_ADVANCE`, incomplete control samples as `INCONCLUSIVE`, and only a
+complete non-regressing matrix as `PASS`.
 
 The GitHub CI matrix in `.github/workflows/ci.yml` runs on Ubuntu Node 20,
 Ubuntu Node 22, and Windows Node 20. It installs with the frozen lockfile, runs

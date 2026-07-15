@@ -47,3 +47,10 @@ test("provider token-limit errors are classified separately from retryable rate 
     retryable: true,
   });
 });
+
+test("malformed tool-call payloads are classified as evaluator protocol failures", () => {
+  assert.deepEqual(
+    classifyProviderFailure(400, "Invalid messages[14].tool_calls: empty array. Expected minimum length 1."),
+    { code: "provider_protocol_error", retryable: false },
+  );
+});
