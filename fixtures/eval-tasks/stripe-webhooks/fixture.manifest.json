@@ -8,8 +8,8 @@
     "provenance": "Existing local snapshot; capture timestamp was not recorded.",
     "format": "markdown",
     "pageCount": 102,
-    "byteCount": 717326,
-    "corpusHash": "14e3c8b65e23d4666ad84349506332540e04bcc9b2e348aecbd022dfaf9dfb9c"
+    "byteCount": 717325,
+    "corpusHash": "f647c0c9839ff8e1ed3044a48542ca086d1f3f1366310d3a36fdd2e2fac2dde5"
   },
   "evaluation": {
     "oracle": "evaluation/private-test.mjs",
