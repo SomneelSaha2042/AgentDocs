@@ -352,6 +352,8 @@ Release gates cover:
 
 Latest dogfood metrics are published in the
 [Phase 5 full dogfood rerun](https://somneelsaha2042.github.io/AgentDocs/results/full-dogfood-rerun-phase-5).
+The maintainer runbook for isolated agent evaluations is in the
+[evaluation sandbox guide](docs/guide/evaluation-sandbox.md).
 
 ## Configuration
 

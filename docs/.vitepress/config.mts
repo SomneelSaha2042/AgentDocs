@@ -49,6 +49,7 @@ export default defineConfig({
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
           { text: "Live Dogfood Runs", link: "/guide/live-dogfood" },
           { text: "Dogfood Workflow Matrix", link: "/guide/workflow-matrix" },
+          { text: "Evaluation Sandbox", link: "/guide/evaluation-sandbox" },
         ],
       },
       {
