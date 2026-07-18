@@ -1128,7 +1128,7 @@ Input:
 ```json
 {
   "goal": "implement pagination with Octokit",
-  "task": "pagination",
+  "task": "Use the current cursor API and preserve the documented next-page token.",
   "facets": {
     "runtime": "node"
   },
@@ -1153,7 +1153,10 @@ Output:
   "readiness": {
     "recommendation": "inspect",
     "coverage": "partial",
-    "issueCodes": ["missing_task_requirement_evidence"]
+    "issueCodes": ["missing_task_requirement_evidence"],
+    "gaps": [
+      { "requirement": "next-page token", "status": "partial", "ref": "agentdocs://pages/page_pagination.md#chunk_pagination" }
+    ]
   },
   "estimatedTokens": 420
 }
@@ -1161,12 +1164,15 @@ Output:
 
 Every step, code example, gotcha, and citation must have source evidence.
 Unsupported steps are omitted rather than invented.
-`readiness.recommendation` is `implement` only when selected evidence is fresh,
-compatible, and complete for the deterministically extracted task requirements.
-Use `inspect` when evidence is missing or partial, and `stop` when context is
-stale or contradictory. Agents should read one cited source with `read_page`
-when the recommendation is `inspect`, and should resolve the warning before
-implementing when it is `stop`. The full requirement evidence is returned by
+The `task` field may contain detailed constraints or an exact task-pack ID. A
+task-pack match is a relevance hint; it never restricts corpus search. The
+assembler searches the complete goal/task text and returns a bounded evidence
+set. `readiness.recommendation` is `implement` only when selected evidence is
+fresh, compatible, and complete for the deterministically extracted task
+requirements. Use `inspect` when a source candidate exists but requires audit;
+read every `followUpRefs` entry whose `requiredFor` is present. Use `stop` when
+an explicit requirement has no source candidate or context is stale or
+contradictory. The full requirement evidence is returned by
 `verify_task_context` and CLI `verify-context`.
 
 #### `read_page`

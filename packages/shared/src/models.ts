@@ -4,8 +4,8 @@ export const HeadingSchema = z
   .object({
     id: z.string().min(1),
     depth: z.number().int().min(1).max(6),
-    text: z.string(),
-    slug: z.string(),
+    text: z.string().min(1),
+    slug: z.string().min(1),
     position: z
       .object({
         startLine: z.number().int().positive().optional(),
@@ -98,7 +98,7 @@ export const ChunkSchema = z
   .object({
     id: z.string().min(1),
     pageId: z.string().min(1),
-    headingPath: z.array(z.string()),
+    headingPath: z.array(z.string().min(1)),
     text: z.string().min(1),
     tokenEstimate: z.number().int().positive(),
     links: z.array(z.string()),
@@ -160,8 +160,8 @@ export const EdgeSchema = z
 
 export const TaskStepSchema = z
   .object({
-    title: z.string(),
-    description: z.string(),
+    title: z.string().min(1),
+    description: z.string().min(1),
     evidence: z.array(EvidenceSchema).min(1),
   })
   .strict();
@@ -481,11 +481,20 @@ export const SearchResponseSchema = z
   })
   .strict();
 
+export const ContextRequirementGapSchema = z
+  .object({
+    requirement: z.string().min(1),
+    status: z.enum(["partial", "missing", "unknown"]),
+    ref: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const ContextReadinessSchema = z
   .object({
     recommendation: z.enum(["implement", "inspect", "stop"]),
     coverage: z.enum(["complete", "partial", "unknown"]),
     issueCodes: z.array(z.string().min(1)).max(6),
+    gaps: z.array(ContextRequirementGapSchema).max(3).default([]),
   })
   .strict();
 
@@ -547,6 +556,7 @@ export const QueryDocsResponseSchema = z
         title: z.string().min(1),
         sourceUrl: z.string().optional(),
         repoPath: z.string().min(1).optional(),
+        requiredFor: z.array(z.string().min(1)).max(3).optional(),
       }).strict(),
     ),
     warnings: z.array(z.string().min(1)),

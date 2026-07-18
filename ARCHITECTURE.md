@@ -179,44 +179,42 @@ and task-pack links. On runtimes with `node:sqlite` and FTS5, it uses SQLite
 FTS5. Otherwise it writes a deterministic lexical fallback index to the same
 `index.sqlite` path.
 
-`packages/shared/src/task-context.ts` contains the current
-`TaskContextAssembler`. It owns the shared context decision path for task-pack
-selection, read-first resources, warnings, verification issues, citations,
-confidence, context bundles, handoff bundles, and `query_docs` style responses.
-Task-pack selection combines generic goal-intent signals, task-pack text,
-required-page overlap with search results, source-backed query/content overlap,
-and a uniform negative penalty for strong intent mismatches. The content-overlap
-scoring uses generic evidence signals such as commands, environment/config
-terms, credentials, routes, schemas, mutations, cursors, webhooks, errors, and
-tests without package-specific or task-pack-ID-specific bonuses.
+`packages/shared/src/task-context.ts` contains the public
+`TaskContextAssembler` interface and its internal evidence-planning seam. It
+owns the shared context decision path for task-pack selection, read-first
+resources, warnings, verification issues, citations, confidence, context
+bundles, handoff bundles, and `query_docs` style responses. Task-pack selection
+is a navigational prior only: global search and bounded requirement-anchor
+searches remain available after a pack is selected. Evidence selection
+prioritizes deterministic requirement coverage and source specificity, with
+task-pack membership used only as a relevance signal.
 
-The assembler also applies a generic facet-safety pass for implementation
-context. Explicit requested facets and goal-inferred facets such as `version`,
-`router`, and `runtime` are used to filter source-ranked chunks, task-pack
-steps, gotchas, and code examples before `query_docs` returns them. If the
-available search results or selected task pack contain incompatible exclusive
-facet evidence, `query_docs` emits a `preferred_context_mismatch` warning and
-`verify_task_context` reports a critical issue. This is intended to prevent
-wrong-paradigm context, such as mixing App Router and Pages Router evidence,
-from being silently presented as safe. The behavior remains generic and does
-not add package-specific routing logic or change the generated `TaskPack`
-schema.
-The same decision now performs conservative task-readiness assessment. It
-extracts only high-signal facets, code-like symbols/configuration, and explicit
-constraints from the task text, then checks those claims against selected
-evidence. `query_docs` exposes only a compact readiness recommendation;
-`verify_task_context` exposes the full evidence-linked requirement assessments.
-Missing evidence produces `inspect`, while stale or contradictory context
-produces `stop`. This is evidence assurance, not a guarantee that generated
-code will pass arbitrary project tests.
+The assembler applies a corpus-derived facet-safety pass for implementation
+context. Explicit requested facets remain authoritative; inferred facets are
+limited to unambiguous values already present in the built artifacts, with no
+framework/package vocabulary embedded in serving code. If available evidence
+contains incompatible exclusive facet values, `query_docs` emits a
+`preferred_context_mismatch` warning and `verify_task_context` reports a
+critical issue.
+
+The same decision performs conservative task-readiness assessment over the
+complete goal and task text. It extracts code/configuration symbols, explicit
+constraints, and bounded high-signal phrases, then checks selected evidence
+and corpus candidates. `query_docs` exposes compact requirement gaps and
+required source reads; `verify_task_context` exposes full evidence-linked
+assessments. Missing candidates produce `stop`, candidate-but-unread evidence
+produces `inspect`, and complete compatible evidence produces `implement`.
+This is evidence assurance, not a guarantee that generated code will pass
+arbitrary project tests.
 `packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the
 shared result shapes.
 
 Generated agent guidance and evaluator prompts use the same generic evidence
-protocol: `implement` permits writing, `inspect` requires reading one cited
-source first, and `stop` requires resolving the warning before implementation.
+protocol: `implement` permits writing, `inspect` requires reading every
+required source reference, and `stop` requires resolving the warning before
+implementation.
 The MCP server remains stateless and exposes the existing two-tool compact
 profile; enforcement in the active evaluation runner is diagnostic and does not
 add package-specific routing logic.

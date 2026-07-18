@@ -38,6 +38,9 @@ export async function validateFixtureSnapshot(taskDir) {
   const missingRequiredFiles = requiredFiles.filter((file, index) => !filePresence[index]);
   const source = manifest.source ?? {};
   const issues = [];
+  if (manifest.evaluation?.status === "quarantined") {
+    issues.push(`fixture is quarantined: ${manifest.evaluation.quarantineReason ?? "no reason recorded"}`);
+  }
   const packageJson = JSON.parse(await readFile(path.join(taskDir, "package.json"), "utf8"));
   const dependencyRanges = Object.entries({
     ...(packageJson.dependencies ?? {}),
@@ -50,6 +53,9 @@ export async function validateFixtureSnapshot(taskDir) {
   if (missingEvidence.length > 0) issues.push(`missing required evidence: ${missingEvidence.join(", ")}`);
   if (dependencyRanges.length > 0) issues.push(`dependency versions must be exact: ${dependencyRanges.map(([name]) => name).join(", ")}`);
   if (missingRequiredFiles.length > 0) issues.push(`missing fixture files: ${missingRequiredFiles.join(", ")}`);
+  if (manifest.schemaVersion === 2) {
+    issues.push(...validateProvenanceManifest(manifest, files, contents));
+  }
   return {
     task: manifest.task,
     valid: issues.length === 0,
@@ -59,6 +65,50 @@ export async function validateFixtureSnapshot(taskDir) {
     corpusHash,
     missingEvidence,
   };
+}
+
+function validateProvenanceManifest(manifest, files, contents) {
+  const issues = [];
+  const sources = Array.isArray(manifest.sources) ? manifest.sources : [];
+  const fileRecords = Array.isArray(manifest.files) ? manifest.files : [];
+  if (sources.length === 0) issues.push("provenance manifest must declare sources");
+  if (fileRecords.length !== files.length) issues.push(`provenance file count mismatch: ${fileRecords.length} != ${files.length}`);
+  if (manifest.evaluation?.requiredEvidence !== undefined) {
+    issues.push("provenance manifests must not use oracle-shaped requiredEvidence");
+  }
+  const sourceById = new Map();
+  for (const source of sources) {
+    if (!source || typeof source.id !== "string" || source.id.length === 0) {
+      issues.push("each provenance source requires a non-empty id");
+      continue;
+    }
+    if (sourceById.has(source.id)) issues.push(`duplicate provenance source id: ${source.id}`);
+    sourceById.set(source.id, source);
+    if (typeof source.origin !== "string" || !/^https?:\/\//i.test(source.origin)) issues.push(`invalid origin for source ${source.id}`);
+    if (typeof source.capturedAt !== "string" || Number.isNaN(Date.parse(source.capturedAt))) issues.push(`source ${source.id} requires a capture timestamp`);
+    if (source.derived === true) issues.push(`source ${source.id} is marked derived`);
+  }
+  const expected = new Set(files);
+  const seen = new Set();
+  for (const [index, record] of fileRecords.entries()) {
+    if (!record || typeof record.path !== "string" || typeof record.sourceId !== "string" || typeof record.sourceUrl !== "string") {
+      issues.push(`provenance file record ${index + 1} is incomplete`);
+      continue;
+    }
+    if (!expected.has(record.path)) issues.push(`provenance file is not in docs: ${record.path}`);
+    if (seen.has(record.path)) issues.push(`duplicate provenance file: ${record.path}`);
+    seen.add(record.path);
+    const source = sourceById.get(record.sourceId);
+    if (!source) {
+      issues.push(`unknown provenance source ${record.sourceId} for ${record.path}`);
+    } else if (!record.sourceUrl.startsWith(String(source.origin).replace(/\/$/, ""))) {
+      issues.push(`source URL for ${record.path} is outside declared origin ${source.origin}`);
+    }
+    const actual = createHash("sha256").update(contents[files.indexOf(record.path)] ?? "").digest("hex");
+    if (record.sha256 !== actual) issues.push(`provenance hash mismatch: ${record.path}`);
+  }
+  for (const file of files) if (!seen.has(file)) issues.push(`missing provenance record: ${file}`);
+  return issues;
 }
 
 async function exists(filePath) {

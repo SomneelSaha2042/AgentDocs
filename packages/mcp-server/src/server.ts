@@ -30,13 +30,13 @@ type JsonRpcResponse = {
 };
 
 const TOOLS = [
-  tool("query_docs", "Preferred first call. Call once per task to get compact, evidence-linked steps and examples. Include specific API names, methods, and concepts in the goal for best routing. Do not repeat with rephrased goals unless evidence is missing.", {
+  tool("query_docs", "Preferred first call. Call once per task to get compact, evidence-linked steps and examples. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
     goal: stringProperty(),
     task: stringProperty(),
     facets: { type: "object", additionalProperties: { type: "string" } },
     limit: contextLimitProperty(),
   }, ["goal"]),
-  tool("read_page", "Read one cited source chunk or section when query_docs needs audit detail. Pass the exact citation ID into the 'chunkId' parameter (works for all citation types).", {
+  tool("read_page", "Read a cited source chunk or section when query_docs needs audit detail. For INSPECT responses, read every required follow-up reference before writing. Pass the exact citation ID into the 'chunkId' parameter (works for chunk, heading, and code-block citations).", {
     pageId: stringProperty("Optionally pass the exact page citation ID if reading a full page."),
     chunkId: stringProperty("The exact citation ID (e.g. heading_auth_123 or code_auth) or followUpRef chunkId to read."),
     heading: stringProperty("Optional heading name. Ignored if chunkId is provided."),
@@ -341,6 +341,10 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   if (result.warnings.length > 0) {
     lines.push("", "Warnings:", ...result.warnings.map((warning) => `- ${warning}`));
   }
+  if (result.readiness.gaps.length > 0) {
+    lines.push("", "Requirement gaps:", ...result.readiness.gaps.map((gap) =>
+      `- ${gap.status}: ${gap.requirement}${gap.ref === undefined ? "" : ` [read: ${gap.ref}]`}`));
+  }
   if (result.steps.length > 0) {
     lines.push("", "Steps:", ...result.steps.map((step, index) =>
       `${index + 1}. ${step.title}: ${step.text} ${evidenceLabel(step.evidence)}`));
@@ -356,11 +360,14 @@ function formatQueryDocs(result: QueryDocsResponse): string {
       `- ${gotcha.severity}: ${gotcha.text} ${evidenceLabel(gotcha.evidence)}`));
   }
   if (result.followUpRefs.length > 0) {
-    const followUpLabel = result.readiness.recommendation === "inspect"
-      ? "Read one cited source before implementation:"
+    const hasRequiredReads = result.followUpRefs.some((ref) => (ref.requiredFor?.length ?? 0) > 0);
+    const followUpLabel = hasRequiredReads
+      ? "Required source reads before implementation:"
+      : result.readiness.recommendation === "inspect"
+        ? "Read one cited source before implementation:"
       : "Read only if more source detail is needed:";
     lines.push("", followUpLabel, ...result.followUpRefs.map((ref) =>
-      `- ${ref.title}: ${ref.ref}`));
+      `- ${ref.title}: ${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
   }
   if (result.citations.length > 0) {
     lines.push("", "Citations:", ...result.citations.map((citation) => {

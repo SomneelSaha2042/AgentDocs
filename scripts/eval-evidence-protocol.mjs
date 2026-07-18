@@ -24,12 +24,14 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
     const readiness = response?.readiness;
     const recommendation = readiness?.recommendation ?? null;
     const referenceIds = referenceIdsFor(response);
+    const requiredReferenceIds = requiredReferenceIdsFor(response);
     state.queries.push({
       turn,
       recommendation,
       coverage: readiness?.coverage ?? null,
       issueCodes: Array.isArray(readiness?.issueCodes) ? readiness.issueCodes : [],
       referenceIds,
+      requiredReferenceIds,
       inspectedReferenceIds: [],
     });
   }
@@ -58,10 +60,7 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
       code = PROTOCOL_CODES.missingReadiness;
     } else if (latest.recommendation === "stop") {
       code = PROTOCOL_CODES.stopped;
-    } else if (
-      latest.recommendation === "inspect"
-      && latest.inspectedReferenceIds.length === 0
-    ) {
+    } else if (latest.recommendation === "inspect" && !requirementsInspected(latest)) {
       code = PROTOCOL_CODES.inspectionRequired;
     }
     if (code === undefined) {
@@ -83,7 +82,7 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
     const latest = state.queries.at(-1);
     let status = "missing_query_docs";
     if (latest?.recommendation === "stop") status = "readiness_stop";
-    else if (latest?.recommendation === "inspect" && latest.inspectedReferenceIds.length === 0) {
+    else if (latest?.recommendation === "inspect" && !requirementsInspected(latest)) {
       status = "inspection_required";
     } else if (latest?.recommendation === "implement" || latest?.inspectedReferenceIds.length > 0) {
       status = "ready";
@@ -120,6 +119,22 @@ function referenceIdsFor(response) {
   return [...new Set(ids)];
 }
 
+function requiredReferenceIdsFor(response) {
+  const ids = [];
+  for (const reference of response?.followUpRefs ?? []) {
+    if (!Array.isArray(reference.requiredFor) || reference.requiredFor.length === 0) continue;
+    const value = reference.chunkId ?? reference.pageId ?? reference.ref;
+    if (typeof value === "string" && value.length > 0) ids.push(value);
+  }
+  return [...new Set(ids)];
+}
+
+function requirementsInspected(query) {
+  const required = query.requiredReferenceIds ?? [];
+  if (required.length === 0) return query.inspectedReferenceIds.length > 0;
+  return required.every((referenceId) => query.inspectedReferenceIds.includes(referenceId));
+}
+
 function readReferenceId(args = {}) {
   return args.chunkId ?? args.pageId ?? args.heading ?? "";
 }
@@ -134,7 +149,7 @@ function protocolMessage(code) {
   if (code === PROTOCOL_CODES.stopped) {
     return "Documentation readiness is STOP. Resolve the conflict or missing evidence before writing implementation files.";
   }
-  return "Documentation readiness is INSPECT. Call read_page using one cited page, chunk, heading, or code-block ID before writing files.";
+  return "Documentation readiness is INSPECT. Call read_page for every required source reference before writing files.";
 }
 
 export { PROTOCOL_CODES };

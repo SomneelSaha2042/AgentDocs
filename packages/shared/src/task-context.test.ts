@@ -38,7 +38,7 @@ describe("TaskContextAssembler", () => {
     expect(JSON.stringify(result)).toContain("code_auth");
   });
 
-  it("marks selected context for an undocumented symbol as inspectable", () => {
+  it("stops when an explicit symbol has no source candidate", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
     const decision = assembler.buildContextDecision({
       goal: "authenticate requests with `createSession()`",
@@ -60,12 +60,78 @@ describe("TaskContextAssembler", () => {
     });
 
     expect(decision.verification.coverage).toBe("partial");
-    expect(decision.verification.recommendation).toBe("inspect");
+    expect(decision.verification.recommendation).toBe("stop");
     expect(decision.verification.requirements).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "symbol", value: "createSession", status: "missing" }),
     ]));
-    expect(decision.query.readiness.recommendation).toBe("inspect");
+    expect(decision.query.readiness.recommendation).toBe("stop");
     expect(decision.query.answer).not.toContain("sufficient to implement");
+  });
+
+  it("inspects when no task pack matches but no explicit requirement is blocked", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = assembler.buildContextDecision({
+      goal: "deploy a widget",
+      task: "use the documented deployment path",
+      search: { query: "deploy a widget", results: [], warnings: [] },
+    });
+
+    expect(decision.selectedTaskPack).toBeUndefined();
+    expect(decision.verification.recommendation).toBe("inspect");
+    expect(decision.verification.requirements.every((requirement) => requirement.status !== "missing")).toBe(true);
+  });
+
+  it("keeps exact evidence outside a selected task pack reachable", () => {
+    const map = fixtureMap();
+    const hash = "b".repeat(64);
+    map.pages.push({
+      id: "page_adapter",
+      sourceType: "local_markdown",
+      repoPath: "docs/adapter.md",
+      title: "Database adapter",
+      markdown: "# Database adapter\nUse @example/adapter for the documented auth adapter.\n\n```ts\nimport { Adapter } from \"@example/adapter\";\n```\n",
+      headings: [{ id: "heading_adapter", depth: 1, text: "Database adapter", slug: "database-adapter", position: {} }],
+      links: [],
+      codeBlocks: [{ id: "code_adapter", language: "ts", value: "import { Adapter } from \"@example/adapter\";", sourceHeadingId: "heading_adapter" }],
+      contentHash: hash,
+      discoveredAt: "1970-01-01T00:00:00.000Z",
+      versionHints: [],
+      facets: [],
+      normalization: { mode: "strict", warnings: [] },
+    });
+    map.chunks.push({
+      id: "chunk_adapter",
+      pageId: "page_adapter",
+      headingPath: ["Database adapter"],
+      text: "Use @example/adapter for the documented auth adapter.",
+      tokenEstimate: 10,
+      links: [],
+      entityIds: [],
+      contentHash: hash,
+      facets: [],
+    });
+    const result = new TaskContextAssembler({ agentMap: AgentMapSchema.parse(map) }).queryDocs({
+      goal: "authenticate requests",
+      task: "authentication with @example/adapter",
+      search: {
+        query: "authenticate requests authentication with @example/adapter",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+      limit: 3,
+    });
+
+    expect(JSON.stringify(result)).toContain("@example/adapter");
+    expect(result.readiness.gaps).toEqual([]);
   });
 
   it("reads bounded sections by default and respects maxChars", () => {
@@ -331,27 +397,27 @@ describe("TaskContextAssembler", () => {
 
 
 describe("TaskContextAssembler facet safety", () => {
-  it("filters wrong-router evidence for App Router implementation goals", () => {
+  it("filters wrong-router evidence for Modern Router implementation goals", () => {
     const hash = "f".repeat(64);
     const appFacet = {
       key: "router",
-      value: "app-router",
-      evidence: [{ source: "heading" as const, pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+          value: "modern-router",
+      evidence: [{ source: "heading" as const, pageId: "page_app", headingId: "heading_app", repoPath: "docs/modern-router.md" }],
     };
     const pagesFacet = {
       key: "router",
-      value: "pages-router",
-      evidence: [{ source: "heading" as const, pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" }],
+          value: "legacy-router",
+      evidence: [{ source: "heading" as const, pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/legacy-router.md" }],
     };
     const map = AgentMapSchema.parse({
       schemaVersion: "0.2.0",
       pages: [{
         id: "page_app",
         sourceType: "local_markdown",
-        repoPath: "docs/app-router.md",
-        title: "App Router webhook route handlers",
-        markdown: "# App Router webhook route handlers\nUse a route handler and read the raw body with req.text().\n",
-        headings: [{ id: "heading_app", depth: 1, text: "App Router webhook route handlers", slug: "app-router-webhook-route-handlers", position: {} }],
+            repoPath: "docs/modern-router.md",
+        title: "Modern Router webhook route handlers",
+        markdown: "# Modern Router webhook route handlers\nUse a route handler and read the raw body with req.text().\n",
+        headings: [{ id: "heading_app", depth: 1, text: "Modern Router webhook route handlers", slug: "modern-router-webhook-route-handlers", position: {} }],
         links: [],
         codeBlocks: [{
           id: "code_app_webhook",
@@ -366,15 +432,15 @@ describe("TaskContextAssembler facet safety", () => {
       }, {
         id: "page_pages",
         sourceType: "local_markdown",
-        repoPath: "docs/pages-router.md",
-        title: "Pages Router webhook API routes",
-        markdown: "# Pages Router webhook API routes\nUse NextApiRequest and disable bodyParser in API route config.\n",
-        headings: [{ id: "heading_pages", depth: 1, text: "Pages Router webhook API routes", slug: "pages-router-webhook-api-routes", position: {} }],
+            repoPath: "docs/legacy-router.md",
+        title: "Legacy Router webhook API routes",
+        markdown: "# Legacy Router webhook API routes\nUse LegacyRequest and disable legacyBodyParser in API route config.\n",
+        headings: [{ id: "heading_pages", depth: 1, text: "Legacy Router webhook API routes", slug: "legacy-router-webhook-api-routes", position: {} }],
         links: [],
         codeBlocks: [{
           id: "code_pages_webhook",
           language: "ts",
-          value: "import type { NextApiRequest, NextApiResponse } from 'next'; export const config = { api: { bodyParser: false } };",
+          value: "import type { LegacyRequest, LegacyResponse } from 'legacy'; export const config = { api: { legacyBodyParser: false } };",
           sourceHeadingId: "heading_pages",
         }],
         contentHash: hash,
@@ -385,8 +451,8 @@ describe("TaskContextAssembler facet safety", () => {
       chunks: [{
         id: "chunk_app",
         pageId: "page_app",
-        headingPath: ["App Router webhook route handlers"],
-        text: "In App Router, export async function POST(req: Request) and read the raw request body with await req.text() before signature verification.",
+        headingPath: ["Modern Router webhook route handlers"],
+        text: "In Modern Router, export async function POST(req: Request) and read the raw request body with await req.text() before signature verification.",
         tokenEstimate: 30,
         links: [],
         entityIds: [],
@@ -395,8 +461,8 @@ describe("TaskContextAssembler facet safety", () => {
       }, {
         id: "chunk_pages",
         pageId: "page_pages",
-        headingPath: ["Pages Router webhook API routes"],
-        text: "In Pages Router, use NextApiRequest, NextApiResponse, and export const config = { api: { bodyParser: false } }.",
+        headingPath: ["Legacy Router webhook API routes"],
+        text: "In Legacy Router, use LegacyRequest, LegacyResponse, and export const config = { api: { legacyBodyParser: false } }.",
         tokenEstimate: 26,
         links: [],
         entityIds: [],
@@ -413,46 +479,46 @@ describe("TaskContextAssembler facet safety", () => {
         requiredPages: ["page_app", "page_pages"],
         relatedEntities: [],
         steps: [{
-          title: "Use App Router route handlers",
+          title: "Use Modern Router route handlers",
           description: "Export async function POST(req: Request) and read the raw body with req.text().",
-          evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+          evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/modern-router.md" }],
         }, {
-          title: "Use Pages Router API config",
-          description: "Use NextApiRequest and export const config with bodyParser disabled.",
-          evidence: [{ source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" }],
+          title: "Use Legacy Router API config",
+          description: "Use LegacyRequest and export const config with legacyBodyParser disabled.",
+          evidence: [{ source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/legacy-router.md" }],
         }],
         gotchas: [],
         codeExamples: [],
-        evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" }],
+        evidence: [{ source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/modern-router.md" }],
         context: {
-          facets: { router: ["app-router", "pages-router"] },
+          facets: { router: ["modern-router", "legacy-router"] },
           conflicts: [{
             key: "router",
-            values: ["app-router", "pages-router"],
+            values: ["modern-router", "legacy-router"],
             evidence: [
-              { source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/app-router.md" },
-              { source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/pages-router.md" },
+              { source: "heading", pageId: "page_app", headingId: "heading_app", repoPath: "docs/modern-router.md" },
+              { source: "heading", pageId: "page_pages", headingId: "heading_pages", repoPath: "docs/legacy-router.md" },
             ],
           }],
         },
       }],
     });
     const search = {
-      query: "Stripe webhook Next.js App Router route handler",
+      query: "Example webhook Modern Router route handler",
       results: [{
-        title: "Pages Router webhook API routes",
-        repoPath: "docs/pages-router.md",
-        headingPath: ["Pages Router webhook API routes"],
-        snippet: "Use NextApiRequest and bodyParser false.",
+        title: "Legacy Router webhook API routes",
+        repoPath: "docs/legacy-router.md",
+        headingPath: ["Legacy Router webhook API routes"],
+        snippet: "Use LegacyRequest and legacyBodyParser false.",
         score: 100,
         pageId: "page_pages",
         chunkId: "chunk_pages",
         facets: [pagesFacet],
       }, {
-        title: "App Router webhook route handlers",
-        repoPath: "docs/app-router.md",
-        headingPath: ["App Router webhook route handlers"],
-        snippet: "Export async function POST and read req.text().",
+        title: "Modern Router webhook route handlers",
+        repoPath: "docs/modern-router.md",
+        headingPath: ["Modern Router webhook route handlers"],
+        snippet: "Export async function POST and read request.text().",
         score: 90,
         pageId: "page_app",
         chunkId: "chunk_app",
@@ -462,22 +528,22 @@ describe("TaskContextAssembler facet safety", () => {
     };
     const assembler = new TaskContextAssembler({ agentMap: map });
     const result = assembler.queryDocs({
-      goal: "Write a Next.js App Router app/api/webhooks/route.ts webhook route handler",
+      goal: "Write a Modern Router webhook route handler",
       task: "webhooks",
       search,
     });
     const verification = assembler.verifyContext({
-      goal: "Write a Next.js App Router app/api/webhooks/route.ts webhook route handler",
+      goal: "Write a Modern Router webhook route handler",
       task: "webhooks",
       search,
     });
 
     expect(result.task).toBe("webhooks");
     expect(JSON.stringify(result.steps)).toContain("req.text");
-    expect(JSON.stringify(result.steps)).not.toContain("NextApiRequest");
+    expect(JSON.stringify(result.steps)).not.toContain("LegacyRequest");
     expect(result.codeExamples[0]?.value).toContain("POST(req: Request)");
-    expect(result.codeExamples[0]?.value).not.toContain("bodyParser");
-    expect(result.warnings.some((warning) => warning.startsWith("preferred_context_mismatch: router=app-router"))).toBe(true);
+    expect(result.codeExamples[0]?.value).not.toContain("legacyBodyParser");
+    expect(result.warnings.some((warning) => warning.startsWith("preferred_context_mismatch: router=modern-router"))).toBe(true);
     expect(verification.status).toBe("fail");
     expect(verification.issues.map((issue) => issue.code)).toContain("preferred_context_mismatch");
     expect(verification.issues.map((issue) => issue.code)).toContain("mixed_context");

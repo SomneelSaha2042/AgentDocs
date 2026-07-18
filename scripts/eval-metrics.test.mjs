@@ -10,7 +10,7 @@ test("operational failures are visible separately from completed task success", 
       seed: 3,
       passed: false,
       outcome: "operational_failure",
-      failure: { code: "provider_tpm_limit" },
+      failure: { code: "token_budget_overflow" },
     }),
   ]);
 
@@ -20,7 +20,7 @@ test("operational failures are visible separately from completed task success", 
   assert.equal(summary.completedN, 2);
   assert.equal(summary.taskSuccessRate, 1 / 2);
   assert.equal(summary.operationalFailureCount, 1);
-  assert.deepEqual(summary.operationalFailureCodes, { provider_tpm_limit: 1 });
+  assert.deepEqual(summary.operationalFailureCodes, { token_budget_overflow: 1 });
 });
 
 test("dual gate makes incomplete control comparisons inconclusive", () => {

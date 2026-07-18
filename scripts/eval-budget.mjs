@@ -47,8 +47,9 @@ export function classifyProviderFailure(status, text = "") {
     const lower = normalized.toLowerCase();
     if (tokenLimit || lower.includes("tokens per minute") || lower.includes("request too large")) {
       return {
-        code: "provider_tpm_limit",
+        code: "token_budget_overflow",
         retryable: false,
+        providerFailure: "provider_tpm_limit",
         ...(tokenLimit ?? {}),
       };
     }

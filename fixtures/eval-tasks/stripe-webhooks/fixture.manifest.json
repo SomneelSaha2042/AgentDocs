@@ -7,13 +7,14 @@
     "capturedAt": null,
     "provenance": "Existing local snapshot; capture timestamp was not recorded.",
     "format": "markdown",
-    "pageCount": 102,
-    "byteCount": 717325,
-    "corpusHash": "f647c0c9839ff8e1ed3044a48542ca086d1f3f1366310d3a36fdd2e2fac2dde5"
+    "pageCount": 100,
+    "byteCount": 715281,
+    "corpusHash": "354d029dde8de03e1ee5c1ea61b044a4f39b94336480549ce2e68803a26653e8"
   },
   "evaluation": {
     "oracle": "evaluation/private-test.mjs",
     "visibleTest": "test.mjs",
-    "requiredEvidence": ["constructEvent", "raw body", "checkout.session.completed", "request.text()", "headers.get"]
+    "status": "quarantined",
+    "quarantineReason": "Legacy fixture includes manually derived cross-source guidance and is excluded from north-star metrics."
   }
 }

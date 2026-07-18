@@ -46,3 +46,21 @@ test("implement readiness permits writing without an extra documentation call", 
   });
   assert.deepEqual(protocol.beforeWrite({ turn: 2 }), { allowed: true });
 });
+
+test("inspect readiness requires every explicitly required source", () => {
+  const protocol = createEvidenceProtocol();
+  protocol.observeQuery({
+    turn: 1,
+    response: {
+      readiness: { recommendation: "inspect", coverage: "partial", issueCodes: ["missing_task_requirement_evidence"] },
+      followUpRefs: [
+        { type: "chunk", ref: "agentdocs://pages/page_1.md#chunk_1", pageId: "page_1", chunkId: "chunk_1", title: "Provider", requiredFor: ["provider"] },
+        { type: "chunk", ref: "agentdocs://pages/page_2.md#chunk_2", pageId: "page_2", chunkId: "chunk_2", title: "Adapter", requiredFor: ["adapter"] },
+      ],
+    },
+  });
+  protocol.observeReadPage({ turn: 2, args: { chunkId: "chunk_1" }, result: { section: {} } });
+  assert.equal(protocol.beforeWrite({ turn: 3 }).code, "inspection_required");
+  protocol.observeReadPage({ turn: 4, args: { chunkId: "chunk_2" }, result: { section: {} } });
+  assert.deepEqual(protocol.beforeWrite({ turn: 5 }), { allowed: true });
+});

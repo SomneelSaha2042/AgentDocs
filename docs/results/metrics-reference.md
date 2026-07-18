@@ -94,7 +94,7 @@ search controls. Its token fields are separate from dogfood routing metrics.
 | `contextDecisions` | Structured readiness observations captured from AgentDocs `query_docs` calls. Missing observations remain unknown. |
 | `evidenceProtocol` | Evaluator-only evidence-use telemetry: readiness observations, cited references read, first-write timing, and blocked writes. It contains IDs and statuses, not source text. |
 | `outcome` | Run classification: `success`, `task_failure`, `operational_failure`, or `dry_run`. |
-| `failure.code` | Structured operational failure reason, such as `context_budget_exceeded`, `provider_tpm_limit`, or `provider_rate_limit`. |
+| `failure.code` | Structured operational failure reason, such as `context_budget_exceeded`, `token_budget_overflow`, or `provider_rate_limit`. A token-budget overflow retains `failure.details.providerFailure=provider_tpm_limit`. |
 | `tokenBudget` | Input/output request budgets and the peak estimated request-context tokens. |
 | `rawCorpusFilesLoaded` | Number of text-like documentation files exposed to a raw control, including intentionally messy captured source material. |
 

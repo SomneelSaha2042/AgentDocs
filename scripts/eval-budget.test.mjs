@@ -35,8 +35,9 @@ test("request budget rejects an oversized context before provider submission", (
 test("provider token-limit errors are classified separately from retryable rate limits", () => {
   const oversized = classifyProviderFailure(429, "Request too large for gpt-4o. Limit 30000, Requested 31429.");
   assert.deepEqual(oversized, {
-    code: "provider_tpm_limit",
+    code: "token_budget_overflow",
     retryable: false,
+    providerFailure: "provider_tpm_limit",
     limitTokens: 30000,
     requestedTokens: 31429,
   });

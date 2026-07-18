@@ -121,8 +121,14 @@ Every provider request has a deterministic input-context guard. The default
 30,000-token organization limit. A request that exceeds the guard is persisted
 as an `operational_failure` with `failure.code=context_budget_exceeded`; a
 provider 429 caused by the same condition is recorded as
-`failure.code=provider_tpm_limit`. These runs have `passed=false`, and the
+`failure.code=token_budget_overflow` with provider detail
+`providerFailure=provider_tpm_limit`. These runs have `passed=false`, and the
 suite continues to the next planned run instead of crashing.
+
+North-star fixtures must use provenance-complete manifests: every source file
+maps to an immutable official origin and capture record. Legacy or manually
+derived fixtures are quarantined from aggregate metrics and may only be used
+for compiler regression tests.
 
 ## Telemetry Captured
 

@@ -95,11 +95,25 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
   const links: Link[] = [];
   const codeBlocks: CodeBlock[] = [];
   let currentHeadingId: string | undefined;
+  let ignoredEmptyHeadingCount = 0;
 
   visit(tree, (node) => {
     if (node.type === "heading") {
       const text = nodeText(node).trim();
-      const slug = slugify(text);
+      if (text.length === 0) {
+        // Empty headings occur in generated/reference Markdown (for example
+        // `####` list entries). They are not usable structural anchors. Keep
+        // the source text in the normalized Markdown, but leave the current
+        // section in place so links/code remain evidence-linked to a real
+        // heading.
+        ignoredEmptyHeadingCount += 1;
+        return;
+      }
+      // Punctuation-only headings (for example `/` used as a home-page
+      // title) are meaningful headings even though slugification removes
+      // every character. Keep them addressable with a deterministic fallback
+      // instead of emitting an invalid empty slug.
+      const slug = slugify(text) || `section-${hash(`${pageId}:${headings.length}:${text}`).slice(0, 12)}`;
       const id = `heading_${hash(`${pageId}:${headings.length}:${slug}`).slice(0, 16)}`;
       headings.push({
         id,
@@ -136,6 +150,16 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
       });
     }
   });
+
+  if (ignoredEmptyHeadingCount > 0) {
+    normalization = {
+      ...normalization,
+      warnings: [
+        ...normalization.warnings,
+        `Ignored ${ignoredEmptyHeadingCount} empty Markdown heading${ignoredEmptyHeadingCount === 1 ? "" : "s"}.`,
+      ],
+    };
+  }
 
   const title =
     stringValue(frontmatter?.title) ??
