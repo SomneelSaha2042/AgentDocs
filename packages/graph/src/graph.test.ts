@@ -20,7 +20,9 @@ pnpm add @acme/sdk
     const setup = normalizeMarkdown({
       markdown: `# Setup
 
-Use GET /v1/widgets with v2.
+Use v2.
+
+GET /v1/widgets
 
 \`\`\`ts
 import { Client } from "@acme/sdk";
@@ -99,5 +101,27 @@ import { Client } from "@acme/sdk";
     expect(graph.edges.some((edge) =>
       edge.type === "links_to" && edge.from === index.id && edge.to === setup.id
     )).toBe(true);
+  });
+
+  it("does not create API entities from conversational route-like prose", () => {
+    const page = normalizeMarkdown({
+      markdown: `# Routes
+
+You can GET / fetch the data in a broad conceptual sense.
+
+\`\`\`http
+POST /v1/users
+\`\`\`
+`,
+      repoPath: "routes.md",
+    });
+
+    const graph = buildAgentMap({
+      pages: [page],
+      chunks: chunkMarkdownByHeading(page),
+    });
+
+    expect(graph.entities.filter((entity) => entity.type === "api").map((entity) => entity.name))
+      .toEqual(["POST /v1/users"]);
   });
 });

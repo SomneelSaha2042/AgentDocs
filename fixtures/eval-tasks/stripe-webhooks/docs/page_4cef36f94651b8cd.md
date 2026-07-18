@@ -1,0 +1,311 @@
+# [Create an account](/api/accounts/create)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+POST /v1/accounts
+
+With [Connect](/connect), you can create Stripe accounts for your users. To do this, you’ll first need to [register your platform](https://dashboard.stripe.com/account/applications/settings).
+
+If you’ve already collected information for your connected accounts, you [can prefill that information](/connect/best-practices#onboarding) when creating the account. Connect Onboarding won’t ask for the prefilled information during account onboarding. You can prefill any information on the account.
+
+### Parameters
+
+-   #### 
+    
+    business\_typeenum
+    
+    The business type. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Possible enum values
+    
+    `company`
+    
+    `government_entity`
+    
+    US only
+    
+    `individual`
+    
+    `non_profit`
+    
+-   #### 
+    
+    capabilitiesobjectRequired conditionally
+    
+    Each key of the dictionary represents a capability, and each capability maps to its settings (for example, whether it has been requested or not). Each capability is inactive until you have provided its specific requirements and Stripe has verified them. An account might have some of its requested capabilities be active and some be inactive.
+    
+    Required when [account.controller.stripe\_dashboard.type](/api/accounts/create#create_account-controller-dashboard-type) is `none`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    companyobject
+    
+    Information about the company or business. This field is available for any `business_type`. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    controllerobject
+    
+    A hash of configuration describing the account controller’s attributes.
+    
+    Show child parameters
+    
+-   #### 
+    
+    countrystringdefault is your own country
+    
+    The country in which the account holder resides, or in which the business is legally established. This should be an ISO 3166-1 alpha-2 country code. For example, if you are in the United States and the business for which you’re creating an account is legally represented in Canada, you would use `CA` as the country for the account being created. Available countries include [Stripe’s global markets](https://stripe.com/global) as well as countries where [cross-border payouts](https://stripe.com/docs/connect/cross-border-payouts) are supported.
+    
+-   #### 
+    
+    emailstring
+    
+    The email address of the account holder. This is only to make the account easier to identify to you. If [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts, Stripe doesn’t email the account without your consent.
+    
+    The maximum length is 800 characters.
+    
+-   #### 
+    
+    individualobject
+    
+    Information about the person represented by the account. This field is null unless `business_type` is set to `individual`. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    metadataobject
+    
+    Set of [key-value pairs](/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format. Individual keys can be unset by posting an empty value to them. All keys can be unset by posting an empty value to `metadata`.
+    
+-   #### 
+    
+    tos\_acceptanceobject
+    
+    Details on the account’s acceptance of the [Stripe Services Agreement](/connect/updating-accounts#tos-acceptance). This property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts. This property defaults to a `full` service agreement when empty.
+    
+    Show child parameters
+    
+
+### More parameters
+
+Expand all
+
+-   #### 
+    
+    account\_tokenstring
+    
+-   #### 
+    
+    business\_profileobject
+    
+-   #### 
+    
+    default\_currencyenum
+    
+-   #### 
+    
+    documentsobject
+    
+-   #### 
+    
+    external\_accountstring
+    
+-   #### 
+    
+    groupsobject
+    
+-   #### 
+    
+    settingsobject
+    
+-   #### 
+    
+    typeenumDeprecated
+    
+
+### Returns
+
+Returns an [`Account`](/api/accounts/object) object if the call succeeds.
+
+```
+curl https://api.stripe.com/v1/accounts \  -u "sk_test_tR3PYbc...96tH88S4VQ2usk_test_tR3PYbcVNZZ796tH88S4VQ2u:" \  -d country=US \  --data-urlencode "email=jenny.rosen@example.com" \  -d "controller[fees][payer]=application" \  -d "controller[losses][payments]=application" \  -d "controller[stripe_dashboard][type]=express"
+```
+
+Response
+
+```
+{  "id": "acct_1Nv0FGQ9RKHgCVdK",  "object": "account",  "business_profile": {    "annual_revenue": null,    "estimated_worker_count": null,    "mcc": null,    "name": null,    "product_description": null,    "support_address": null,    "support_email": null,    "support_phone": null,    "support_url": null,    "url": null  },  "business_type": null,  "capabilities": {},  "charges_enabled": false,  "controller": {    "fees": {      "payer": "application"    },    "is_controller": true,    "losses": {      "payments": "application"    },    "requirement_collection": "stripe",    "stripe_dashboard": {      "type": "express"    },    "type": "application"  },  "country": "US",  "created": 1695830751,  "default_currency": "usd",  "details_submitted": false,  "email": "jenny.rosen@example.com",  "external_accounts": {    "object": "list",    "data": [],    "has_more": false,    "total_count": 0,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/external_accounts"  },  "future_requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [],    "disabled_reason": null,    "errors": [],    "eventually_due": [],    "past_due": [],    "pending_verification": []  },  "login_links": {    "object": "list",    "total_count": 0,    "has_more": false,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/login_links",    "data": []  },  "metadata": {},  "payouts_enabled": false,  "requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "disabled_reason": "requirements.past_due",    "errors": [],    "eventually_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "past_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "pending_verification": []  },  "settings": {    "bacs_debit_payments": {      "display_name": null,      "service_user_number": null    },    "branding": {      "icon": null,      "logo": null,      "primary_color": null,      "secondary_color": null    },    "card_issuing": {      "tos_acceptance": {        "date": null,        "ip": null      }    },    "card_payments": {      "decline_on": {        "avs_failure": false,        "cvc_failure": false      },      "statement_descriptor_prefix": null,      "statement_descriptor_prefix_kanji": null,      "statement_descriptor_prefix_kana": null    },    "dashboard": {      "display_name": null,      "timezone": "Etc/UTC"    },    "invoices": {      "default_account_tax_ids": null    },    "payments": {      "statement_descriptor": null,      "statement_descriptor_kana": null,      "statement_descriptor_kanji": null    },    "payouts": {      "debit_negative_balances": true,      "schedule": {        "delay_days": 2,        "interval": "daily"      },      "statement_descriptor": null    },    "sepa_debit_payments": {}  },  "tos_acceptance": {    "date": null,    "ip": null,    "user_agent": null  },  "type": "none"}
+```
+
+# [Update an account](/api/accounts/update)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+POST /v1/accounts/:id
+
+Updates a [connected account](/connect/accounts) by setting the values of the parameters passed. Any parameters not provided are left unchanged.
+
+For accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts, you can update any information on the account.
+
+For accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `stripe`, which includes Standard and Express accounts, you can update all information until you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions) to start Connect onboarding, after which some properties can no longer be updated.
+
+To update your own account, use the [Dashboard](https://dashboard.stripe.com/settings/account). Refer to our [Connect](/connect/updating-accounts) documentation to learn more about updating accounts.
+
+### Parameters
+
+-   #### 
+    
+    business\_typeenum
+    
+    The business type. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Possible enum values
+    
+    `company`
+    
+    `government_entity`
+    
+    US only
+    
+    `individual`
+    
+    `non_profit`
+    
+-   #### 
+    
+    capabilitiesobject
+    
+    Each key of the dictionary represents a capability, and each capability maps to its settings (for example, whether it has been requested or not). Each capability is inactive until you have provided its specific requirements and Stripe has verified them. An account might have some of its requested capabilities be active and some be inactive.
+    
+    Required when [account.controller.stripe\_dashboard.type](/api/accounts/create#create_account-controller-dashboard-type) is `none`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    companyobject
+    
+    Information about the company or business. This field is available for any `business_type`. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    emailstring
+    
+    The email address of the account holder. This is only to make the account easier to identify to you. If [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts, Stripe doesn’t email the account without your consent.
+    
+    The maximum length is 800 characters.
+    
+-   #### 
+    
+    individualobject
+    
+    Information about the person represented by the account. This field is null unless `business_type` is set to `individual`. Once you create an [Account Link](/api/account_links) or [Account Session](/api/account_sessions), this property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts.
+    
+    Show child parameters
+    
+-   #### 
+    
+    metadataobject
+    
+    Set of [key-value pairs](/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format. Individual keys can be unset by posting an empty value to them. All keys can be unset by posting an empty value to `metadata`.
+    
+-   #### 
+    
+    tos\_acceptanceobject
+    
+    Details on the account’s acceptance of the [Stripe Services Agreement](/connect/updating-accounts#tos-acceptance). This property can only be updated for accounts where [controller.requirement\_collection](/api/accounts/object#account_object-controller-requirement_collection) is `application`, which includes Custom accounts. This property defaults to a `full` service agreement when empty.
+    
+    Show child parameters
+    
+
+### More parameters
+
+Expand all
+
+-   #### 
+    
+    account\_tokenstring
+    
+-   #### 
+    
+    business\_profileobject
+    
+-   #### 
+    
+    default\_currencyenum
+    
+-   #### 
+    
+    documentsobject
+    
+-   #### 
+    
+    external\_accountstring
+    
+-   #### 
+    
+    groupsobject
+    
+-   #### 
+    
+    settingsobject
+    
+
+### Returns
+
+Returns an [`Account`](#account_object) object if the call succeeds. If the account ID does not exist or another issue occurs, this call raises [an error](/api/errors). Some validations will not raise an error but will instead populate the [`requirements.errors`](#account_object-requirements-errors) array.
+
+```
+curl https://api.stripe.com/v1/accounts/{{ACCOUNT_ID}} \  -u "sk_test_tR3PYbc...96tH88S4VQ2usk_test_tR3PYbcVNZZ796tH88S4VQ2u:" \  -d "metadata[order_id]=6735"
+```
+
+Response
+
+```
+{  "id": "acct_1Nv0FGQ9RKHgCVdK",  "object": "account",  "business_profile": {    "annual_revenue": null,    "estimated_worker_count": null,    "mcc": null,    "name": null,    "product_description": null,    "support_address": null,    "support_email": null,    "support_phone": null,    "support_url": null,    "url": null  },  "business_type": null,  "capabilities": {},  "charges_enabled": false,  "controller": {    "fees": {      "payer": "application"    },    "is_controller": true,    "losses": {      "payments": "application"    },    "requirement_collection": "stripe",    "stripe_dashboard": {      "type": "express"    },    "type": "application"  },  "country": "US",  "created": 1695830751,  "default_currency": "usd",  "details_submitted": false,  "email": "jenny.rosen@example.com",  "external_accounts": {    "object": "list",    "data": [],    "has_more": false,    "total_count": 0,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/external_accounts"  },  "future_requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [],    "disabled_reason": null,    "errors": [],    "eventually_due": [],    "past_due": [],    "pending_verification": []  },  "login_links": {    "object": "list",    "total_count": 0,    "has_more": false,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/login_links",    "data": []  },  "metadata": {    "order_id": "6735"  },  "payouts_enabled": false,  "requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "disabled_reason": "requirements.past_due",    "errors": [],    "eventually_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "past_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "pending_verification": []  },  "settings": {    "bacs_debit_payments": {      "display_name": null,      "service_user_number": null    },    "branding": {      "icon": null,      "logo": null,      "primary_color": null,      "secondary_color": null    },    "card_issuing": {      "tos_acceptance": {        "date": null,        "ip": null      }    },    "card_payments": {      "decline_on": {        "avs_failure": false,        "cvc_failure": false      },      "statement_descriptor_prefix": null,      "statement_descriptor_prefix_kanji": null,      "statement_descriptor_prefix_kana": null    },    "dashboard": {      "display_name": null,      "timezone": "Etc/UTC"    },    "invoices": {      "default_account_tax_ids": null    },    "payments": {      "statement_descriptor": null,      "statement_descriptor_kana": null,      "statement_descriptor_kanji": null    },    "payouts": {      "debit_negative_balances": true,      "schedule": {        "delay_days": 2,        "interval": "daily"      },      "statement_descriptor": null    },    "sepa_debit_payments": {}  },  "tos_acceptance": {    "date": null,    "ip": null,    "user_agent": null  },  "type": "none"}
+```
+
+# [Retrieve account](/api/accounts/retrieve)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+GET /v1/accounts/:id
+
+Retrieves the details of an account.
+
+### Parameters
+
+No parameters.
+
+### Returns
+
+Returns an [`Account`](/api/accounts/object) object if the call succeeds. If the account ID does not exist, this call raises [an error](/api/errors).
+
+```
+curl https://api.stripe.com/v1/accounts/{{ACCOUNT_ID}} \  -u "sk_test_tR3PYbc...96tH88S4VQ2usk_test_tR3PYbcVNZZ796tH88S4VQ2u:"
+```
+
+Response
+
+```
+{  "id": "acct_1Nv0FGQ9RKHgCVdK",  "object": "account",  "business_profile": {    "annual_revenue": null,    "estimated_worker_count": null,    "mcc": null,    "name": null,    "product_description": null,    "support_address": null,    "support_email": null,    "support_phone": null,    "support_url": null,    "url": null  },  "business_type": null,  "capabilities": {},  "charges_enabled": false,  "controller": {    "fees": {      "payer": "application"    },    "is_controller": true,    "losses": {      "payments": "application"    },    "requirement_collection": "stripe",    "stripe_dashboard": {      "type": "express"    },    "type": "application"  },  "country": "US",  "created": 1695830751,  "default_currency": "usd",  "details_submitted": false,  "email": "jenny.rosen@example.com",  "external_accounts": {    "object": "list",    "data": [],    "has_more": false,    "total_count": 0,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/external_accounts"  },  "future_requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [],    "disabled_reason": null,    "errors": [],    "eventually_due": [],    "past_due": [],    "pending_verification": []  },  "login_links": {    "object": "list",    "total_count": 0,    "has_more": false,    "url": "/v1/accounts/acct_1Nv0FGQ9RKHgCVdK/login_links",    "data": []  },  "metadata": {},  "payouts_enabled": false,  "requirements": {    "alternatives": [],    "current_deadline": null,    "currently_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "disabled_reason": "requirements.past_due",    "errors": [],    "eventually_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "past_due": [      "business_profile.mcc",      "business_profile.url",      "business_type",      "external_account",      "representative.first_name",      "representative.last_name",      "tos_acceptance.date",      "tos_acceptance.ip"    ],    "pending_verification": []  },  "settings": {    "bacs_debit_payments": {      "display_name": null,      "service_user_number": null    },    "branding": {      "icon": null,      "logo": null,      "primary_color": null,      "secondary_color": null    },    "card_issuing": {      "tos_acceptance": {        "date": null,        "ip": null      }    },    "card_payments": {      "decline_on": {        "avs_failure": false,        "cvc_failure": false      },      "statement_descriptor_prefix": null,      "statement_descriptor_prefix_kanji": null,      "statement_descriptor_prefix_kana": null    },    "dashboard": {      "display_name": null,      "timezone": "Etc/UTC"    },    "invoices": {      "default_account_tax_ids": null    },    "payments": {      "statement_descriptor": null,      "statement_descriptor_kana": null,      "statement_descriptor_kanji": null    },    "payouts": {      "debit_negative_balances": true,      "schedule": {        "delay_days": 2,        "interval": "daily"      },      "statement_descriptor": null    },    "sepa_debit_payments": {}  },  "tos_acceptance": {    "date": null,    "ip": null,    "user_agent": null  },  "type": "none"}
+```

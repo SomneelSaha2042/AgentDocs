@@ -39,7 +39,7 @@ describe("try CLI", () => {
       context: { goal: "install the SDK" },
       readiness: { score: expect.any(Number) },
       next: {
-        command: "agentdocs --out .agentdocs serve-mcp",
+        command: "agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page",
         prompt: "Use the AgentDocs MCP server and install the SDK.",
       },
     });
@@ -48,8 +48,10 @@ describe("try CLI", () => {
     expect(result.context.search.results.length).toBeGreaterThan(0);
     expect(formatTryResult(result)).toContain(`Best context for goal "install the SDK":
 - agentdocs://task-packs/installation.md`);
+    expect(formatTryResult(result)).toContain("Selected task pack: installation");
+    expect(formatTryResult(result)).toContain("Warnings:");
     expect(formatTryResult(result)).toContain(
-      "1. Run: agentdocs --out .agentdocs serve-mcp",
+      "1. Run: agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page",
     );
     await expect(readFile(path.join(cwd, ".agentdocs", "reports", "agent-readiness.md"), "utf8"))
       .resolves.toContain("# Agent-readiness report");

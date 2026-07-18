@@ -37,10 +37,12 @@ Use AgentDocs when:
 
 > **Usable beta:** AgentDocs is published on npm as
 > `@somneelsaha/agentdocs` and can be installed today with Node.js 20 or later.
-> MVP phases 0-9, the June 2026 hardening work, and the agent workflow layer
-> are implemented for real-repository testing.
+> The core compile, audit, search, handoff, freshness, and MCP workflows are
+> implemented for real-repository testing. The active build plan now focuses on
+> v1 product hardening: tighter context selection, generic compiler behavior,
+> source contract closure, and publishable proof runs.
 >
-> It is still beta software: OpenAPI Ingestion is not implemented, and large or
+> It is still beta software: OpenAPI ingestion is deferred and rejected early, and large or
 > unusual docs sites may need scoped crawl settings. Local and repo ingestion
 > compiles Markdown/MDX, Sphinx/reST (including Django-style `.txt` files), and
 > AsciiDoc/Antora formats, with deterministic transclusion and skip telemetry.
@@ -109,6 +111,9 @@ Reuse the built context without crawling again:
 ```bash
 agentdocs status
 agentdocs handoff "implement authentication"
+agentdocs setup-agent --client codex
+agentdocs serve-mcp --tools query_docs,read_page
+agentdocs verify-context --task "implement authentication"
 ```
 
 `handoff` is the recommended multi-session command. It wraps the compact
@@ -116,7 +121,8 @@ agentdocs handoff "implement authentication"
 setup commands, and MCP tool/resource suggestions, so an agent can start from
 current, scoped, evidence-backed context instead of raw search results. The
 older `agentdocs context "<goal>"` command remains available for the smaller
-bundle.
+bundle. Human output for the workflow highlights read-first resources, selected
+task evidence, freshness, warnings, and the exact MCP command to launch.
 
 For a maintained project configuration, start from the repository whose docs
 you want to compile:
@@ -243,13 +249,15 @@ Expose only built AgentDocs artifacts to an MCP-compatible coding agent:
 
 ```bash
 agentdocs setup-agent --client codex
-agentdocs serve-mcp
+agentdocs serve-mcp --tools query_docs,read_page
 ```
 
 The server provides read-only tools for search, pages, task packs, task handoff,
 context verification, setup commands, version policy, code examples, and related
 pages. It cannot crawl, execute documentation commands, or read arbitrary
-filesystem paths.
+filesystem paths. When `serve-mcp --tools` is used to restrict exposed tools,
+the allowlist is enforced both when listing tools and when a client attempts to
+call a hidden tool.
 
 For multi-session work, run `agentdocs status` before starting. Reuse existing
 artifacts when fresh, or run `agentdocs rebuild --changed` after local docs
@@ -344,6 +352,8 @@ Release gates cover:
 
 Latest dogfood metrics are published in the
 [Phase 5 full dogfood rerun](https://somneelsaha2042.github.io/AgentDocs/results/full-dogfood-rerun-phase-5).
+The maintainer runbook for isolated agent evaluations is in the
+[evaluation sandbox guide](docs/guide/evaluation-sandbox.md).
 
 ## Configuration
 
@@ -385,9 +395,8 @@ See the [configuration guide](https://somneelsaha2042.github.io/AgentDocs/refere
 
 ## Current Limitations
 
-- OpenAPI ingestion is recognized but not implemented.
-- Additional inspect targets beyond entities, links, and task-pack explanations
-  are planned.
+- OpenAPI ingestion is deferred to a future opt-in adapter; this build rejects configured OpenAPI sources and direct OpenAPI file ingestion early with a clear message.
+- Inspect currently covers entities, links, and task-pack explanations.
 - Broken-link checks validate generated heading fragments for collected pages;
   custom framework anchors may still require review.
 - The crawler is intended for public, statically accessible documentation.

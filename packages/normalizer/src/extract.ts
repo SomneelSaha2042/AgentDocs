@@ -5,6 +5,7 @@ const PACKAGE_MANAGERS =
 const HTTP_METHODS = "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT";
 const VERSION_PATTERN =
   /(?<!\/)\b(?:v\d+(?:\.\d+){0,2}|version\s+\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/gi;
+const HTTP_ROUTE_PATTERN = new RegExp(`\\b(${HTTP_METHODS})\\s+(/[^\\s\`"'<>)]*)`, "gi");
 
 export type DeterministicExtraction = {
   packages: string[];
@@ -43,14 +44,20 @@ function isShellControl(value: string): boolean {
 export function extractImports(value: string): string[] {
   const imports: string[] = [];
   const patterns = [
-    /\b(?:import|export)\s+(?:[^"'`]*?\s+from\s+)?["']([^"']+)["']/g,
+    /\b(?:import|export)\s+(?:[^"'`]*?\s+from\s+)?["']([^"']+)["']/gs,
     /\brequire\(\s*["']([^"']+)["']\s*\)/g,
     /\bimport\(\s*["']([^"']+)["']\s*\)/g,
   ];
+  const sources = stableUnique([
+    ...codeLikeSegments(value),
+    ...rawImportStatements(value),
+  ]);
   for (const pattern of patterns) {
-    for (const match of value.matchAll(pattern)) {
-      if (match[1] !== undefined) {
-        imports.push(match[1]);
+    for (const source of sources) {
+      for (const match of source.matchAll(pattern)) {
+        if (match[1] !== undefined) {
+          imports.push(match[1]);
+        }
       }
     }
   }
@@ -81,9 +88,11 @@ export function extractCliCommands(value: string): string[] {
 }
 
 export function extractHttpRoutes(value: string): string[] {
-  const routes = [...value.matchAll(new RegExp(`\\b(?:${HTTP_METHODS})\\s+(/[^\\s\`"'<>)]*)`, "gi"))]
-    .map((match) => `${match[0]!.split(/\s+/, 1)[0]!.toUpperCase()} ${match[1]}`)
-    .filter((route) => route.length > 2);
+  const routes = [
+    ...codeLikeSegments(value).flatMap(extractRouteMatches),
+    ...extractStandaloneRouteLines(value),
+    ...extractTableRoutes(value),
+  ];
   return stableUnique(routes);
 }
 
@@ -192,6 +201,128 @@ function collectDirectiveBlock(lines: string[], start: number): string {
     block.push(line.trim());
   }
   return block.join("\n").trim();
+}
+
+function codeLikeSegments(value: string, rawCodeHint?: RegExp): string[] {
+  const segments: string[] = [];
+  const ranges: Array<[number, number]> = [];
+  const fencePattern = /^\s*(`{3,}|~{3,})[^\r\n]*\r?\n/gm;
+  let fenceMatch: RegExpExecArray | null;
+  while ((fenceMatch = fencePattern.exec(value)) !== null) {
+    const openingFence = fenceMatch[1]!;
+    const bodyStart = fencePattern.lastIndex;
+    const closePattern = new RegExp(`^\\s*${escapeRegExp(openingFence[0]!.repeat(openingFence.length))}${escapeRegExp(openingFence[0]!)}*\\s*$`, "gm");
+    closePattern.lastIndex = bodyStart;
+    const closeMatch = closePattern.exec(value);
+    const bodyEnd = closeMatch?.index ?? value.length;
+    segments.push(value.slice(bodyStart, bodyEnd));
+    ranges.push([fenceMatch.index, closeMatch === null ? value.length : closePattern.lastIndex]);
+    fencePattern.lastIndex = closeMatch === null ? value.length : closePattern.lastIndex;
+  }
+
+  for (const match of value.matchAll(/`([^`\r\n]+)`/g)) {
+    const start = match.index ?? 0;
+    const end = start + match[0]!.length;
+    if (!ranges.some(([rangeStart, rangeEnd]) => start >= rangeStart && end <= rangeEnd)) {
+      segments.push(match[1]!);
+    }
+  }
+
+  if (segments.length === 0 && rawCodeHint !== undefined) {
+    rawCodeHint.lastIndex = 0;
+    if (rawCodeHint.test(value)) {
+      rawCodeHint.lastIndex = 0;
+      segments.push(value);
+    }
+  }
+  return segments;
+}
+
+function rawImportStatements(value: string): string[] {
+  const statements: string[] = [];
+  const lines = value.split(/\r?\n/);
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (current.length === 0) {
+      if (!isImportStatementStart(line)) continue;
+      current = [line];
+    } else {
+      current.push(line);
+    }
+
+    const statement = current.join("\n");
+    if (isCompleteImportStatement(statement)) {
+      statements.push(statement);
+      current = [];
+    }
+  }
+
+  return statements;
+}
+
+function isImportStatementStart(line: string): boolean {
+  return /^\s*(?:import|export)\b/.test(line)
+    || /^\s*(?:const|let|var)\s+[\w\s,{}[\]$]+\s*=\s*(?:await\s+)?(?:require|import)\s*\(/.test(line)
+    || /^\s*(?:require|import)\s*\(/.test(line);
+}
+
+function isCompleteImportStatement(value: string): boolean {
+  return /\bfrom\s*["'][^"']+["']\s*;?\s*$/.test(value)
+    || /^\s*import\s*["'][^"']+["']\s*;?\s*$/.test(value)
+    || /\brequire\(\s*["'][^"']+["']\s*\)\s*;?\s*$/.test(value)
+    || /\bimport\(\s*["'][^"']+["']\s*\)\s*;?\s*$/.test(value);
+}
+
+function extractRouteMatches(value: string): string[] {
+  HTTP_ROUTE_PATTERN.lastIndex = 0;
+  return [...value.matchAll(HTTP_ROUTE_PATTERN)]
+    .map((match) => `${match[1]!.toUpperCase()} ${cleanRoutePath(match[2]!)}`)
+    .filter((route) => route.length > 2);
+}
+
+function extractStandaloneRouteLines(value: string): string[] {
+  const routes: string[] = [];
+  for (const line of value.split(/\r?\n/)) {
+    const normalized = line
+      .trim()
+      .replace(/^>\s*/, "")
+      .replace(/^[-*]\s+/, "")
+      .trim();
+    const match = normalized.match(new RegExp(`^(?:${HTTP_METHODS})\\s+(/[^\\s\`"'<>)]*)\\s*(?:[#;].*)?$`, "i"));
+    if (match !== null) {
+      routes.push(`${normalized.split(/\s+/, 1)[0]!.toUpperCase()} ${cleanRoutePath(match[1]!)}`);
+    }
+  }
+  return routes;
+}
+
+function extractTableRoutes(value: string): string[] {
+  const routes: string[] = [];
+  for (const line of value.split(/\r?\n/)) {
+    if (!line.trim().startsWith("|")) continue;
+    const cells = line
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((cell) => cell.trim());
+    for (let index = 0; index < cells.length - 1; index += 1) {
+      const method = cells[index]!;
+      const route = cells[index + 1]!;
+      if (new RegExp(`^(?:${HTTP_METHODS})$`, "i").test(method) && route.startsWith("/")) {
+        routes.push(`${method.toUpperCase()} ${cleanRoutePath(route)}`);
+      }
+    }
+  }
+  return routes;
+}
+
+function cleanRoutePath(value: string): string {
+  return value.replace(/[.,;:]+$/g, "");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stableUnique(values: string[]): string[] {

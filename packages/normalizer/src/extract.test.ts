@@ -78,4 +78,67 @@ This endpoint is deprecated and no longer supported.
   it("does not consume the next line after an argument-less install command", () => {
     expect(extractPackages("npm install\ncd /docs\nnpm install\nnpm start")).toEqual([]);
   });
+
+  it("extracts multiline imports from code-like content", () => {
+    const value = `\`\`\`ts
+import {
+  Client,
+  type Options,
+} from "@acme/sdk";
+export {
+  helper,
+} from "./helper.js";
+const lazy = await import("@acme/plugin");
+\`\`\`
+`;
+
+    expect(extractImports(value)).toEqual([
+      "./helper.js",
+      "@acme/plugin",
+      "@acme/sdk",
+    ]);
+  });
+
+  it("extracts raw multiline imports even when inline code exists", () => {
+    const value = `Use \`client.request()\` for calls.
+
+import {
+  Client,
+} from "@acme/sdk";
+`;
+
+    expect(extractImports(value)).toEqual(["@acme/sdk"]);
+  });
+
+  it("does not extract imports from explanatory prose", () => {
+    const value = "Use import { Client } from \"@acme/sdk\" in your application code.";
+
+    expect(extractImports(value)).toEqual([]);
+  });
+
+  it("extracts HTTP routes from structured route evidence only", () => {
+    const value = `Use this endpoint when you need users. You can GET / fetch information in examples.
+
+\`POST /v1/users\`
+
+| Method | Path |
+| --- | --- |
+| GET | /v1/users/{id} |
+
+\`\`\`http
+PATCH /v1/users/{id}
+\`\`\`
+`;
+
+    expect(extractHttpRoutes(value)).toEqual([
+      "GET /v1/users/{id}",
+      "PATCH /v1/users/{id}",
+      "POST /v1/users",
+    ]);
+  });
+
+  it("does not extract conversational prose as HTTP routes", () => {
+    expect(extractHttpRoutes("Once you GET / fetch the data, POST / to update it."))
+      .toEqual([]);
+  });
 });

@@ -135,6 +135,14 @@ describe("ingestLocalMarkdown", () => {
     expect(adocPage?.markdown).toContain("> [!WARNING]");
   });
 
+  it("rejects direct OpenAPI files with an explicit unsupported-source message", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-openapi-"));
+    await writeFile(path.join(cwd, "openapi.yaml"), "openapi: 3.1.0\ninfo:\n  title: Example API\n  version: 1.0.0\npaths: {}\n", "utf8");
+
+    await expect(ingestLocalMarkdown({ cwd, out: ".agentdocs", source: "openapi.yaml" }))
+      .rejects.toThrowError(/OpenAPI ingestion is planned but not supported in this build/);
+  });
   it("reports full coverage for supported Markdown and MDX sources", async () => {
     const { mkdtemp } = await import("node:fs/promises");
     const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-md-"));

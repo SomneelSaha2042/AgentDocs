@@ -6,8 +6,6 @@ import { ArtifactService } from "@agentdocs/mcp-server";
 import {
   AgentSetupSnippetSchema,
   BuildStateSchema,
-  ContextVerificationSchema,
-  HandoffBundleSchema,
   StatusReportSchema,
   type AgentDocsConfig,
   type AgentSetupSnippet,
@@ -19,10 +17,9 @@ import {
 } from "@agentdocs/shared";
 import { minimatch } from "minimatch";
 
-import { buildContextBundle } from "./context.js";
 
 export const PERSISTENT_AGENT_PROMPT =
-  "Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.";
+  "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.";
 
 type ConfiguredSource = AgentDocsConfig["sources"][number];
 
@@ -45,19 +42,21 @@ const ARTIFACT_PATHS = [
   "manifest.json",
 ];
 
+const CORE_MCP_TOOLS = "query_docs,read_page";
+
 export function mcpCommand(out: string): string {
-  return `agentdocs --out ${quoteArgument(out)} serve-mcp`;
+  return `agentdocs --out ${quoteArgument(out)} serve-mcp --tools ${CORE_MCP_TOOLS}`;
 }
 
 export function setupSnippets(out: string, client?: AgentSetupSnippet["client"]): AgentSetupSnippet[] {
-  const args = ["--out", out, "serve-mcp"];
+  const args = ["--out", out, "serve-mcp", "--tools", CORE_MCP_TOOLS];
   const json = `${JSON.stringify({ mcpServers: { agentdocs: { command: "agentdocs", args } } }, null, 2)}\n`;
   const snippets = [
     AgentSetupSnippetSchema.parse({
       client: "codex",
       title: "Codex MCP config",
       format: "toml",
-      contents: `[mcp_servers.agentdocs]\ncommand = "agentdocs"\nargs = ["--out", ${JSON.stringify(out)}, "serve-mcp"]\n`,
+      contents: `[mcp_servers.agentdocs]\ncommand = "agentdocs"\nargs = ["--out", ${JSON.stringify(out)}, "serve-mcp", "--tools", ${JSON.stringify(CORE_MCP_TOOLS)}]\n`,
       prompt: PERSISTENT_AGENT_PROMPT,
     }),
     AgentSetupSnippetSchema.parse({
@@ -219,34 +218,10 @@ export function formatStatusReport(report: StatusReport): string {
 
 export async function buildHandoffBundle(context: WorkflowContext, goal: string): Promise<HandoffBundle> {
   const service = new ArtifactService({ cwd: context.cwd, out: context.out });
-  const bundle = await buildContextBundle({ cwd: context.cwd, goal, out: context.out });
   const freshness = await readStatusReport(context);
-  const setup = await service.getSetupCommands();
-  const taskPack = bundle.selectedTaskPack === undefined
-    ? undefined
-    : await service.getTaskPack(bundle.selectedTaskPack.id);
-  const warnings = [
-    freshness.state === "fresh" ? undefined : `Freshness ${freshness.state}: ${freshness.summary}`,
-    ...bundle.goalBundle.warnings.map((warning) => `${warning.code}: ${warning.key}=${warning.values.join(",")}`),
-    ...(taskPack?.context.conflicts.map((conflict) => `context_conflict: ${conflict.key}=${conflict.values.join(",")}`) ?? []),
-    taskPack?.confidence === "low" ? "Task-pack evidence is weak." : undefined,
-  ].filter((item): item is string => item !== undefined);
-  return HandoffBundleSchema.parse({
-    schemaVersion: 1,
-    goal,
-    context: bundle,
+  return service.getTaskContext(goal, undefined, {
     freshness,
-    selectedTaskPack: bundle.selectedTaskPack,
-    topSources: bundle.search.results.slice(0, 5),
-    gotchas: taskPack?.gotchas.map((gotcha) => gotcha.text) ?? bundle.goalBundle.gotchas,
-    setupCommands: setup.commands,
-    mcp: {
-      command: mcpCommand(context.out),
-      prompt: PERSISTENT_AGENT_PROMPT,
-      suggestedTools: ["get_task_context", "verify_task_context", "search_docs", "find_code_examples"],
-      resources: bundle.readFirst,
-    },
-    warnings,
+    mcpCommand: mcpCommand(context.out),
   });
 }
 
@@ -260,7 +235,10 @@ export function formatHandoffBundle(bundle: HandoffBundle): string {
   const warnings = bundle.warnings.length === 0
     ? "- No context warnings."
     : bundle.warnings.map((warning) => `- ${warning}`).join("\n");
-  return `AgentDocs handoff: ${bundle.goal}\n\nFreshness: ${bundle.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n${bundle.context.summary}\n\nRead first:\n${bundle.context.readFirst.map((resource) => `- ${resource}`).join("\n")}\n\nTop source pages:\n${sources}\n\nGotchas:\n${gotchas}\n\nMCP:\n- Command: ${bundle.mcp.command}\n- Tools: ${bundle.mcp.suggestedTools.join(", ")}\n- Prompt: ${bundle.mcp.prompt}\n\nWarnings:\n${warnings}\n`;
+  const selectedTaskPack = bundle.selectedTaskPack === undefined
+    ? "Selected task pack: none"
+    : `Selected task pack: ${bundle.selectedTaskPack.id} (${bundle.selectedTaskPack.confidence} confidence)`;
+  return `AgentDocs handoff: ${bundle.goal}\n\nFreshness: ${bundle.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n${bundle.context.summary}\n${selectedTaskPack}\n\nRead first:\n${bundle.context.readFirst.map((resource) => `- ${resource}`).join("\n")}\n\nTop source pages:\n${sources}\n\nGotchas:\n${gotchas}\n\nMCP:\n- Command: ${bundle.mcp.command}\n- Tools: ${bundle.mcp.suggestedTools.join(", ")}\n- Prompt: ${bundle.mcp.prompt}\n\nWarnings:\n${warnings}\n`;
 }
 
 export async function verifyContext(
@@ -270,103 +248,17 @@ export async function verifyContext(
 ): Promise<ContextVerification> {
   const service = new ArtifactService({ cwd: context.cwd, out: context.out });
   const freshness = await readStatusReport(context);
-  const start = await service.getAgentStartContext(task, facets);
-  const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
-  const pack = taskId === undefined ? undefined : await service.getTaskPack(taskId);
-  const search = await service.searchDocs(task, 8, taskId, facets);
-  const issues: ContextVerification["issues"] = [];
-  if (freshness.state !== "fresh") {
-    issues.push({
-      code: "stale_context",
-      severity: freshness.state === "stale" ? "critical" : "warning",
-      message: freshness.summary,
-      evidence: [],
-    });
-  }
-  if (pack === undefined) {
-    issues.push({
-      code: "missing_task_pack",
-      severity: "critical",
-      message: "No matching task pack was found for this task.",
-      evidence: [],
-    });
-  } else {
-    if (pack.confidence === "low") {
-      issues.push({
-        code: "weak_evidence",
-        severity: "warning",
-        message: `Task pack "${pack.id}" has low confidence.`,
-        evidence: pack.evidence,
-      });
-    }
-    for (const conflict of pack.context.conflicts) {
-      issues.push({
-        code: "mixed_context",
-        severity: "critical",
-        message: `Task pack mixes ${conflict.key} values: ${conflict.values.join(", ")}.`,
-        evidence: conflict.evidence,
-      });
-    }
-    for (const [key, value] of Object.entries(facets ?? {})) {
-      const values = pack.context.facets[key] ?? [];
-      if (values.length > 0 && !values.includes(value)) {
-        issues.push({
-          code: "preferred_context_mismatch",
-          severity: "critical",
-          message: `Task pack does not match requested ${key}=${value}.`,
-          evidence: pack.evidence,
-        });
-      }
-    }
-    if (pack.requiredPages.length === 0) {
-      issues.push({
-        code: "missing_canonical_source",
-        severity: "critical",
-        message: "Task pack has no required source pages.",
-        evidence: pack.evidence,
-      });
-    }
-    for (const gotcha of pack.gotchas.filter((item) => /deprecated/i.test(item.text))) {
-      issues.push({
-        code: "deprecated_evidence",
-        severity: "warning",
-        message: gotcha.text,
-        evidence: gotcha.evidence,
-      });
-    }
-  }
-  for (const warning of search.warnings) {
-    issues.push({
-      code: "mixed_search_context",
-      severity: "warning",
-      message: `Search results mix ${warning.key} values: ${warning.values.join(", ")}.`,
-      evidence: [],
-    });
-  }
-  const status = issues.some((issue) => issue.severity === "critical")
-    ? "fail"
-    : issues.length > 0
-      ? "warn"
-      : "pass";
-  return ContextVerificationSchema.parse({
-    schemaVersion: 1,
-    task,
-    status,
-    summary: status === "pass"
-      ? "Context is safe to use for this task."
-      : status === "fail"
-        ? "Context has critical issues. Stop and refresh or narrow context before using it."
-        : "Context has warnings. Review before using it.",
-    issues,
-    freshness,
-  });
+  return service.verifyTaskContext(task, facets, freshness);
 }
 
 export function formatContextVerification(result: ContextVerification): string {
   const issues = result.issues.length === 0
     ? "- No issues found."
     : result.issues.map((issue) => `- ${issue.severity.toUpperCase()} ${issue.code}: ${issue.message}`).join("\n");
-  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nIssues:\n${issues}\n`;
+  const requirements = result.requirements.length === 0
+    ? "- No deterministic task requirements extracted."
+    : result.requirements.map((requirement) => `- ${requirement.status.toUpperCase()} ${requirement.kind}: ${requirement.value}`).join("\n");
+  return `Context verification: ${result.status.toUpperCase()}\n${result.summary}\n\nRecommendation: ${result.recommendation.toUpperCase()}\nCoverage: ${result.coverage}\nFreshness: ${result.freshness?.state.toUpperCase() ?? "UNKNOWN"}\n\nRequirements:\n${requirements}\n\nIssues:\n${issues}\n`;
 }
 
 async function writeAgentBrief(context: WorkflowContext): Promise<void> {
@@ -383,7 +275,8 @@ ${context.config?.name ?? "Unknown project"}${context.config?.version === undefi
 ## First Steps
 
 - Start the MCP server with: \`${mcpCommand(context.out)}\`
-- Use \`get_task_context\` before reading broad search results.
+- Use \`query_docs\` once before reading broad search results.
+- Use \`read_page\` only when the query response cites a page or chunk that needs more detail.
 - Use \`verify_task_context\` before implementing with retrieved context.
 
 ## Persistent Agent Prompt

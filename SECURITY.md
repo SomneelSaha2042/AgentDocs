@@ -26,3 +26,16 @@ AgentDocs treats documentation, HTML, code blocks, configuration, and MCP
 arguments as untrusted input. It must not execute commands found in docs, write
 outside configured output directories, or expose arbitrary filesystem reads
 through MCP.
+
+For v1, the mandatory security boundaries are:
+
+- crawled or ingested docs are parsed as data and never executed;
+- generated setup commands are suggestions only and are not run by AgentDocs;
+- output paths must stay inside the configured output directory;
+- export destinations must not be the active output directory or a child of it;
+- MCP tools may read built AgentDocs artifacts only;
+- MCP resource and tool arguments must be validated before filesystem access;
+- MCP tool allowlists must be enforced when tools are called, not only when
+  listing tools;
+- network access happens only during explicit crawl/try operations or other
+  user-requested collection steps.

@@ -95,6 +95,17 @@ sources:
 
     expect(config.sources[0]).toMatchObject({ type: "repo", path: "." });
   });
+  it("rejects OpenAPI sources with an explicit unsupported-source message", () => {
+    expect(() =>
+      parseConfig(`
+name: Example Docs
+slug: example-docs
+sources:
+  - type: openapi
+    path: ./openapi.yaml
+`),
+    ).toThrowError(/OpenAPI ingestion is planned but not supported in this build/);
+  });
 
   it("parses local and repo source limits for large-repo shards", () => {
     const config = parseConfig(`

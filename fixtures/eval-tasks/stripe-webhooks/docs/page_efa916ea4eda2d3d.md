@@ -1,0 +1,139 @@
+# [Account Links](/api/account_links)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+Account Links are the means by which a Connect platform grants a connected account permission to access Stripe-hosted applications, such as Connect Onboarding.
+
+Related guide: [Connect Onboarding](/connect/custom/hosted-onboarding)
+
+Was this section helpful?YesNo
+
+[](/api/account_links/create)
+
+Create an account link
+
+POST/v1/account\_links
+
+# [The Account Link object](/api/account_links/object)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+### Attributes
+
+-   #### 
+    
+    expires\_attimestamp
+    
+    The timestamp at which this account link will expire.
+    
+-   #### 
+    
+    urlstring
+    
+    The URL for the account link.
+    
+
+### More attributes
+
+Expand all
+
+-   #### 
+    
+    objectstring
+    
+-   #### 
+    
+    createdtimestamp
+    
+
+The Account Link object
+
+```
+{  "object": "account_link",  "created": 1680577733,  "expires_at": 1680578033,  "url": "https://connect.stripe.com/setup/c/acct_1Mt0CORHFI4mz9Rw/TqckGNUHg2mG"}
+```
+
+# [Create an account link](/api/account_links/create)
+
+Ask about this section
+
+Copy for LLM
+
+View as Markdown
+
+POST /v1/account\_links
+
+Creates an AccountLink object that includes a single-use Stripe URL that the platform can redirect their user to in order to take them through the Connect Onboarding flow.
+
+### Parameters
+
+-   #### 
+    
+    accountstringRequired
+    
+    The identifier of the account to create an account link for.
+    
+-   #### 
+    
+    typeenumRequired
+    
+    The type of account link the user is requesting.
+    
+    You can create Account Links of type `account_update` only for connected accounts where your platform is responsible for collecting requirements, including Custom accounts. You can’t create them for accounts that have access to a Stripe-hosted Dashboard. If you use [Connect embedded components](/connect/get-started-connect-embedded-components), you can include components that allow your connected accounts to update their own information. For an account without Stripe-hosted Dashboard access where Stripe is liable for negative balances, you must use embedded components.
+    
+    Possible enum values
+    
+    `account_onboarding`
+    
+    Provides a form for inputting outstanding requirements. Send the user to the form in this mode to just collect the new information you need.
+    
+    `account_update`
+    
+    Displays the fields that are already populated on the account object, and allows your user to edit previously provided information. Consider framing this as “edit my profile” or “update my verification information”.
+    
+-   #### 
+    
+    refresh\_urlstringRequired
+    
+    The URL the user will be redirected to if the account link is expired, has been previously-visited, or is otherwise invalid. The URL you specify should attempt to generate a new account link with the same parameters used to create the original account link, then redirect the user to the new account link’s URL so they can continue with Connect Onboarding. If a new account link cannot be generated or the redirect fails you should display a useful error to the user.
+    
+-   #### 
+    
+    return\_urlstringRequired
+    
+    The URL that the user will be redirected to upon leaving or completing the linked flow.
+    
+
+### More parameters
+
+Expand all
+
+-   #### 
+    
+    collectenumDeprecated
+    
+-   #### 
+    
+    collection\_optionsobject
+    
+
+### Returns
+
+Returns an account link object if the call succeeded.
+
+```
+curl https://api.stripe.com/v1/account_links \  -u "sk_test_tR3PYbc...96tH88S4VQ2usk_test_tR3PYbcVNZZ796tH88S4VQ2u:" \  -d account={{ACCOUNT_ID}} \  --data-urlencode "refresh_url=https://example.com/reauth" \  --data-urlencode "return_url=https://example.com/return" \  -d type=account_onboarding
+```
+
+Response
+
+```
+{  "object": "account_link",  "created": 1680577733,  "expires_at": 1680578033,  "url": "https://connect.stripe.com/setup/c/acct_1Mt0CORHFI4mz9Rw/TqckGNUHg2mG"}
+```

@@ -18,7 +18,7 @@ describe("agent workflow CLI", () => {
     const cwd = await createFixtureProject();
     const output = await captureStdout(async () => {
       await createProgram().exitOverride().parseAsync([
-        "node", "agentdocs", "--cwd", cwd, "--json", "setup-agent", "--client", "codex",
+        "node", "agentdocs", "--cwd", cwd, "--out", ".custom-agentdocs", "--json", "setup-agent", "--client", "codex",
       ]);
     });
 
@@ -27,7 +27,18 @@ describe("agent workflow CLI", () => {
     const snippet = AgentSetupSnippetSchema.parse(parsed.snippets[0]);
     expect(snippet.client).toBe("codex");
     expect(snippet.contents).toContain("[mcp_servers.agentdocs]");
+    expect(snippet.contents).toContain(".custom-agentdocs");
+    expect(snippet.contents).toContain('"--tools", "query_docs,read_page"');
     expect(snippet.prompt).toContain("Use the AgentDocs MCP server before web search.");
+
+    const human = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "--out", ".custom-agentdocs", "setup-agent", "--client", "codex",
+      ]);
+    });
+    expect(human).toContain("[mcp_servers.agentdocs]");
+    expect(human).toContain(".custom-agentdocs");
+    expect(human).toContain("Agent prompt:");
   });
 
   it("reports fresh, stale, and refreshed status for configured local docs", async () => {
@@ -121,11 +132,23 @@ doctor:
 
     const handoff = HandoffBundleSchema.parse(JSON.parse(await captureStdout(async () => {
       await createProgram().exitOverride().parseAsync([
-        "node", "agentdocs", "--cwd", cwd, "--json", "handoff", "authenticate with api key",
+        "node", "agentdocs", "--cwd", cwd, "--out", ".agentdocs", "--json", "handoff", "authenticate with api key",
       ]);
     })));
-    expect(handoff.mcp.suggestedTools).toContain("get_task_context");
+    expect(handoff.mcp.suggestedTools).toContain("query_docs");
+    expect(handoff.mcp.command).toBe("agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page");
+    expect(handoff.selectedTaskPack?.id).toBe("authentication");
+    expect(handoff.context.selectedTaskPack?.id).toBe(handoff.selectedTaskPack?.id);
     expect(handoff.topSources.length).toBeGreaterThan(0);
+
+    const humanHandoff = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "handoff", "authenticate with api key",
+      ]);
+    });
+    expect(humanHandoff).toContain("Selected task pack: authentication (medium confidence)");
+    expect(humanHandoff).toContain("Read first:");
+    expect(humanHandoff).toContain("Warnings:");
 
     const verification = ContextVerificationSchema.parse(JSON.parse(await captureStdout(async () => {
       await createProgram().exitOverride().parseAsync([
@@ -134,6 +157,16 @@ doctor:
     })));
     expect(["pass", "warn", "fail"]).toContain(verification.status);
     expect(verification.freshness?.state).toBe("fresh");
+    expect(verification.issues.map((issue) => issue.code)).not.toContain("missing_task_pack");
+
+    const humanVerification = await captureStdout(async () => {
+      await createProgram().exitOverride().parseAsync([
+        "node", "agentdocs", "--cwd", cwd, "verify-context", "--task", "authenticate with api key",
+      ]);
+    });
+    expect(humanVerification).toContain("Context verification:");
+    expect(humanVerification).toContain("Freshness:");
+    expect(humanVerification).toContain("Issues:");
   });
 
   it("supports one-cycle watch checks", async () => {

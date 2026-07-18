@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildFromSources } from "./build.js";
 import { createProgram } from "./cli.js";
+import { formatContextBundle } from "./context.js";
 import { ingestLocalMarkdown } from "./ingest.js";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -31,6 +32,9 @@ describe("context CLI", () => {
     expect(result.selectedTaskPack?.id).toBe("installation");
     expect(result.search.results.length).toBeGreaterThan(0);
     expect(result.goalBundle.steps.length).toBeGreaterThan(0);
+    expect(formatContextBundle(result)).toContain("Selected task pack: installation");
+    expect(formatContextBundle(result)).toContain("Read first");
+    expect(formatContextBundle(result)).toContain("Warnings");
   });
 
   it("falls back to source search when no task pack matches", async () => {
@@ -43,7 +47,7 @@ describe("context CLI", () => {
     try {
       await createProgram().exitOverride().parseAsync([
         "node", "agentdocs", "--cwd", REPOSITORY_ROOT, "--out", output,
-        "--json", "context", "EXAMPLE_API_KEY",
+        "--json", "context", "timeoutMs",
       ]);
     } finally {
       write.mockRestore();

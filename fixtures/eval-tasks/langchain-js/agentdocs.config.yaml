@@ -1,0 +1,7 @@
+name: LangChain JS Task
+slug: langchain-js
+sources:
+  - type: local_markdown
+    path: docs
+doctor:
+  minScore: 0

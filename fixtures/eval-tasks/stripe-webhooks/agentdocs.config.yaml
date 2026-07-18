@@ -1,0 +1,7 @@
+name: Stripe Webhooks Task
+slug: stripe-webhooks
+sources:
+  - type: local_markdown
+    path: docs
+doctor:
+  minScore: 0

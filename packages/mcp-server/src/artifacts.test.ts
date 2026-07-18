@@ -33,6 +33,56 @@ describe("ArtifactService", () => {
       .toMatchObject({ pageId: "page_setup", relationship: "links_to" });
   });
 
+  it("does not use free-form query_docs task text as a task-pack search filter", async () => {
+    const out = await writeFixtureArtifacts();
+    const service = new ArtifactService({ cwd: out, out: "." });
+
+    const result = await service.queryDocs(
+      "authenticate requests",
+      "Configure a client that sends an API key with every request",
+      undefined,
+      3,
+    );
+
+    expect(result.task).toBe("authentication");
+    expect(result.steps[0]?.text).toContain("API key");
+    expect(result.steps[0]?.evidence[0]?.pageId).toBe("page_auth");
+  });
+
+  it("serves matching context, handoff, query, and verification decisions", async () => {
+    const out = await writeFixtureArtifacts();
+    const service = new ArtifactService({ cwd: out, out: "." });
+
+    const context = await service.getContextBundle("configure authentication");
+    const handoff = await service.getTaskContext("configure authentication");
+    const query = await service.queryDocs("configure authentication", undefined, undefined, 3);
+    const verification = await service.verifyTaskContext("configure authentication");
+
+    expect(context.selectedTaskPack?.id).toBe("authentication");
+    expect(handoff.selectedTaskPack?.id).toBe(context.selectedTaskPack?.id);
+    expect(query.task).toBe(context.selectedTaskPack?.id);
+    expect(verification.issues.map((issue) => issue.code)).not.toContain("missing_task_pack");
+    expect(handoff.context.readFirst).toEqual(context.readFirst);
+    expect(handoff.warnings).toContain("Freshness unknown: Freshness is unknown because build-state.json is missing or invalid.");
+  });
+
+  it("carries query warnings into handoff and verification context", async () => {
+    const out = await writeFixtureArtifacts();
+    const service = new ArtifactService({ cwd: out, out: "." });
+
+    const handoff = await service.getTaskContext("implement React mutation invalidation");
+    const query = await service.queryDocs("implement React mutation invalidation", undefined, undefined, 3);
+    const verification = await service.verifyTaskContext("implement React mutation invalidation");
+
+    expect(query.task).toBe("query-invalidation");
+    expect(query.warnings.length).toBeGreaterThan(0);
+    for (const warning of query.warnings) {
+      expect(handoff.warnings).toContain(warning);
+    }
+    expect(verification.status).toBe("warn");
+    expect(verification.issues.map((issue) => issue.code)).toContain("weak_evidence");
+  });
+
   it("serves only allowlisted and validated resources", async () => {
     const out = await writeFixtureArtifacts();
     const service = new ArtifactService({ cwd: out, out: "." });

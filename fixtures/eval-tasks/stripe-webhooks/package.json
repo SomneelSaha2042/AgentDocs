@@ -1,0 +1,10 @@
+{
+  "name": "stripe-webhooks-task",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "stripe": "15.0.0"
+  }
+}

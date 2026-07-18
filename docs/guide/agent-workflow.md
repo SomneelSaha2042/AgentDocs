@@ -23,6 +23,7 @@ Build once:
 ```bash
 agentdocs build
 agentdocs setup-agent --client codex
+agentdocs serve-mcp
 ```
 
 Start a later session by checking freshness:
@@ -110,6 +111,10 @@ and next actions.
 - MCP resources to read first;
 - recommended MCP tools to call next.
 
+The human output is intentionally redundant across the golden workflow: `try`,
+`context`, `handoff`, `verify-context`, and `status` all surface the decision a
+coding agent needs next instead of requiring the user to inspect raw artifacts.
+
 `agentdocs context "<goal>"` remains supported for compatibility. `handoff` is
 the preferred name for agent workflows because it describes the job better:
 carry enough state from the docs compiler into the coding session.
@@ -141,7 +146,7 @@ developer stays in control of where it is installed.
 The persistent prompt is:
 
 ```txt
-Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
 ```
 
 The MCP server is still read-only. New workflow tools expose richer built
@@ -149,12 +154,17 @@ artifact behavior, but they do not crawl, execute commands from docs, or read
 arbitrary files:
 
 - `list_available_tasks`
+- `query_docs`
+- `read_page`
 - `get_task_context`
 - `verify_task_context`
 - `explain_warning`
 - `get_setup_commands`
 - `get_version_policy`
 - `find_code_examples`
+
+If `serve-mcp --tools` is used, hidden tools are rejected at call time as well
+as omitted from `tools/list`.
 
 ## Generated Agent Brief
 

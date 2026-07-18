@@ -85,7 +85,8 @@ describe("agentdocs CLI", () => {
     );
     expect(parseConfig(contents).slug).toBe("my-project");
     expect(contents).toContain("# Website source example:");
-    expect(contents).toContain("# OpenAPI source example:");
+    expect(contents).toContain("OpenAPI ingestion is planned but not supported in this build.");
+    expect(contents).not.toContain("type: openapi");
     expect(contents).toContain("# Repository source example:");
   });
 
@@ -178,6 +179,23 @@ doctor:
       .resolves.toContain("slug: my-project");
   });
 
+  it("rejects configured OpenAPI sources before collection", async () => {
+    const cwd = await createTemporaryDirectory();
+    await writeFile(path.join(cwd, "agentdocs.config.yaml"), `
+name: OpenAPI Docs
+slug: openapi-docs
+sources:
+  - type: openapi
+    path: ./openapi.yaml
+`, "utf8");
+
+    await expect(createProgram().exitOverride().parseAsync([
+      "node", "agentdocs", "--cwd", cwd, "--quiet", "build",
+    ])).rejects.toThrowError(/OpenAPI ingestion is planned but not supported in this build/);
+
+    await expect(access(path.join(cwd, ".agentdocs", "agent-map.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("builds configured local sources without a separate ingest command", async () => {
     const cwd = await createTemporaryDirectory();
     const { mkdir } = await import("node:fs/promises");

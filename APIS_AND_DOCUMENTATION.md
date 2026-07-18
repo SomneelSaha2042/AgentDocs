@@ -100,6 +100,9 @@ agentdocs setup-agent --client claude --json
 ```
 
 Supported clients are `codex`, `claude`, `cursor`, and `generic`.
+Generated setup snippets expose the compact `query_docs,read_page` MCP tool
+profile. Users can run `serve-mcp` without `--tools` when they need the full
+read-only tool surface.
 
 ### 2.0.4 `agentdocs status`
 
@@ -241,22 +244,23 @@ Supported inputs:
 ```txt
 .md
 .mdx
+.rst
+.txt, when detected as reST-like docs
+.adoc
+.asciidoc
 ```
 
 Local and repo ingestion also records source coverage for docs-like files in
-the configured scope. Supported files are `.md` and `.mdx`. Unsupported
-docs-like files are counted, not parsed: `.rst`, likely Sphinx/reST `.txt`,
-`.adoc`, and `.asciidoc`. The ingest manifest reports compiled, degraded,
-skipped, failed, supported, unsupported, and coverage-ratio counts so a tiny
-Markdown subset in a larger reST or AsciiDoc corpus is not treated as full
-coverage.
+the configured scope. The ingest manifest reports compiled, degraded, skipped,
+failed, supported, unsupported, and coverage-ratio counts so a tiny supported
+slice in a larger docs corpus is not treated as full coverage.
 
 MDX ingestion is tolerant by default. Strict parsing is attempted first. On
 failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
 file-level diagnostics. `--strict` disables this fallback.
 
-OpenAPI ingestion is planned for Phase 10.
+OpenAPI ingestion is deferred in this build. Configured OpenAPI sources and direct OpenAPI file ingestion attempts fail early with an actionable unsupported-source message instead of producing generic chunks. OpenAPI files encountered inside mixed docs directories are not compiled into context.
 
 ### 2.4 `agentdocs build`
 
@@ -389,7 +393,9 @@ agentdocs inspect task-pack <id>
 
 `task-pack <id>` explains why a generated task pack exists using its validated
 confidence, required pages, steps, related entities, and source evidence.
-Additional inspect targets are planned.
+Current inspect targets cover generated entities, links, and task-pack
+explanations. New inspect targets should be added only when they expose product
+debugging value that is not already visible through existing workflow commands.
 
 ### 2.8 `agentdocs export`
 
@@ -422,19 +428,23 @@ Starts a local MCP server over stdio.
 ```bash
 agentdocs serve-mcp
 agentdocs serve-mcp --out .agentdocs
+agentdocs serve-mcp --tools query_docs,read_page,verify_task_context
 ```
 
 Behavior:
 
 - reads generated artifacts;
 - exposes tools/resources;
+- when `--tools` is supplied, exposes and permits only those tool names;
 - does not crawl;
 - does not write unless a future explicit tool supports it;
 - does not execute commands from docs.
 
-The MVP implements the required MCP JSON-RPC surface directly over stdio. Tool
+The current v1 path implements the required MCP JSON-RPC surface directly over stdio. Tool
 errors return structured `code` and `message` fields. Resource and tool
 arguments are validated and cannot be used as arbitrary filesystem paths.
+Disallowed allowlisted tool calls return a structured `TOOL_NOT_ALLOWED` tool
+error before artifact access.
 
 ## 3. Configuration file
 
@@ -471,8 +481,8 @@ sources:
     exclude:
       - "**/drafts/**"
 
-  - type: openapi
-    path: ./openapi.yaml
+  # OpenAPI ingestion is planned as a future opt-in adapter. This build rejects
+  # OpenAPI sources early instead of compiling schemas into generic context.
 
 output:
   dir: .agentdocs
@@ -554,6 +564,8 @@ type RepoSource = {
   exclude?: string[];
 };
 ```
+
+`OpenApiSource` is reserved for a future opt-in adapter. This build rejects OpenAPI sources during config validation or direct source collection with an actionable unsupported-source message.
 
 ### 4.1.1 Missing metric reason
 
@@ -1015,7 +1027,7 @@ type BuildState = {
 
 ## 6. SQLite index
 
-MVP database file:
+v1 database file:
 
 ```txt
 .agentdocs/index.sqlite
@@ -1089,6 +1101,8 @@ The MCP server reads from generated artifacts and the SQLite index.
 Implemented tools:
 
 ```txt
+query_docs
+read_page
 search_docs
 get_page
 get_task_pack
@@ -1102,6 +1116,98 @@ get_version_policy
 get_code_examples
 find_code_examples
 get_related_pages
+```
+
+#### `query_docs`
+
+Preferred first-call interface for implementation goals. It returns compact,
+extractive, evidence-linked task context without dumping full pages.
+
+Input:
+
+```json
+{
+  "goal": "implement pagination with Octokit",
+  "task": "Use the current cursor API and preserve the documented next-page token.",
+  "facets": {
+    "runtime": "node"
+  },
+  "limit": 5
+}
+```
+
+Output:
+
+```json
+{
+  "goal": "implement pagination with Octokit",
+  "task": "pagination",
+  "answer": "Use the Pagination task context for this goal.",
+  "confidence": "medium",
+  "steps": [],
+  "codeExamples": [],
+  "gotchas": [],
+  "citations": [],
+  "followUpRefs": [],
+  "warnings": [],
+  "readiness": {
+    "recommendation": "inspect",
+    "coverage": "partial",
+    "issueCodes": ["missing_task_requirement_evidence"],
+    "gaps": [
+      { "requirement": "next-page token", "status": "partial", "ref": "agentdocs://pages/page_pagination.md#chunk_pagination" }
+    ]
+  },
+  "estimatedTokens": 420
+}
+```
+
+Every step, code example, gotcha, and citation must have source evidence.
+Unsupported steps are omitted rather than invented.
+The `task` field may contain detailed constraints or an exact task-pack ID. A
+task-pack match is a relevance hint; it never restricts corpus search. The
+assembler searches the complete goal/task text and returns a bounded evidence
+set. `readiness.recommendation` is `implement` only when selected evidence is
+fresh, compatible, and complete for the deterministically extracted task
+requirements. Use `inspect` when a source candidate exists but requires audit;
+read every `followUpRefs` entry whose `requiredFor` is present. Use `stop` when
+an explicit requirement has no source candidate or context is stale or
+contradictory. The full requirement evidence is returned by
+`verify_task_context` and CLI `verify-context`.
+
+#### `read_page`
+
+Reads a bounded source section by page or chunk ID. `chunkId` may also be a
+cited code block ID returned by `query_docs`. By default it returns the matching
+chunk/section, not the full normalized page. Full pages are available only when
+`fullPage` is explicitly true.
+
+Input:
+
+```json
+{
+  "pageId": "page_123",
+  "chunkId": "chunk_456",
+  "heading": "Pagination",
+  "maxChars": 4000,
+  "fullPage": false
+}
+```
+
+Output:
+
+```json
+{
+  "section": {
+    "pageId": "page_123",
+    "chunkId": "chunk_456",
+    "title": "Pagination",
+    "headingPath": ["Guides", "Pagination"],
+    "text": "...",
+    "truncated": false,
+    "evidence": []
+  }
+}
 ```
 
 #### `search_docs`
@@ -1340,6 +1446,8 @@ agentdocs://pages/{pageId}.md
 - MCP tools must not crawl the web.
 - MCP tools must not read arbitrary files outside `.agentdocs`.
 - MCP tools must not expose secrets from local config.
+- MCP tool allowlists must be enforced when tools are called, not only when
+  tools are listed.
 - MCP tool outputs should include source URLs/paths where possible.
 
 ## 8. Readiness checks

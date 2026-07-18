@@ -5,6 +5,9 @@ benchmark runs. The fields are stable enough for public interpretation during
 the beta, but historical rows may omit newer fields. Missing historical values
 should be labeled, not treated as zero.
 
+Active evaluator result files use schema version 4. Older result files remain
+readable through normalization but may not contain outcome or budget fields.
+
 ## Summary Artifacts
 
 Each `pnpm regression:dogfood` run writes local machine-readable evidence:
@@ -70,6 +73,44 @@ Routing classifications are deterministic:
 | `unsafe_mixed_context` | Verification found mixed task or search context, such as multiple versions or frameworks. |
 
 Routing benchmarks are report-only unless a run declares `--expect-route`.
+
+## Active Evaluation Token Fields
+
+The active evaluation harness compares AgentDocs MCP with raw local and web-style
+search controls. Its token fields are separate from dogfood routing metrics.
+
+| Field | Meaning |
+| --- | --- |
+| `toolSchemaTokenEstimate` | Estimated tokens for all tools exposed to the model in a run. Kept for backward compatibility. |
+| `toolSchemaMetrics.docsToolSchemaTokenEstimate` | Estimated tokens for AgentDocs MCP tool definitions such as `query_docs` and `read_page`. |
+| `toolSchemaMetrics.rawDocsToolSchemaTokenEstimate` | Estimated tokens for raw-doc control tools such as `search_raw_docs`, `read_raw_doc`, `web_search`, and `fetch_webpage`. |
+| `hotTokenEstimates.coldTotalTokens` | Provider-reported total tokens for the run. |
+| `hotTokenEstimates.docsSchemaRepeatedTaxEstimate` | Analytical estimate of repeated AgentDocs MCP tool-schema tokens across turns. |
+| `hotTokenEstimates.hotAdjustedTotalTokensEstimate` | Analytical estimate for an already-loaded AgentDocs session: cold total tokens minus repeated AgentDocs MCP tool-schema overhead. This is not a billing figure. |
+| `retrievalPayloadTokenEstimate` | Estimated tokens returned by documentation retrieval tools. |
+| `docsBytesReturned` | UTF-8 bytes returned by documentation retrieval tools. |
+| `verification.publicSmokePassed` | Whether the visible fixture smoke test passed. |
+| `verification.privateOraclePassed` | Whether the hidden final fixture oracle passed. This is the task-success gate used by north-star runs. |
+| `contextDecisions` | Structured readiness observations captured from AgentDocs `query_docs` calls. Missing observations remain unknown. |
+| `evidenceProtocol` | Evaluator-only evidence-use telemetry: readiness observations, cited references read, first-write timing, and blocked writes. It contains IDs and statuses, not source text. |
+| `outcome` | Run classification: `success`, `task_failure`, `operational_failure`, or `dry_run`. |
+| `failure.code` | Structured operational failure reason, such as `context_budget_exceeded`, `token_budget_overflow`, or `provider_rate_limit`. A token-budget overflow retains `failure.details.providerFailure=provider_tpm_limit`. |
+| `tokenBudget` | Input/output request budgets and the peak estimated request-context tokens. |
+| `rawCorpusFilesLoaded` | Number of text-like documentation files exposed to a raw control, including intentionally messy captured source material. |
+
+North-star suite decisions are based on the hidden-oracle task result. A run
+with `outcome=operational_failure` is a reliability failure and remains
+`passed=false`, but it is not interpreted as a completed task attempt. The
+aggregator reports planned-run reliability, task success among completed runs,
+and whether each task/control comparison is comparable. Readiness
+is diagnostic: an `implement` recommendation followed by a failed oracle is a
+false-confidence signal, while `inspect` or `stop` followed by a successful
+oracle is conservative behavior. Neither signal is converted into a success
+score.
+
+The dual gate emits `PASS`, `DO NOT ADVANCE`, or `INCONCLUSIVE`. Control TPM
+overflows remain visible reliability failures; they cannot become task passes
+or create a regression when the control lacks the required completed sample.
 
 ## Agent Task Field
 

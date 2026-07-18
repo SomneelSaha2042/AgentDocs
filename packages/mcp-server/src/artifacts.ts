@@ -6,13 +6,12 @@ import { searchIndex } from "@agentdocs/indexer";
 import {
   AgentMapSchema,
   BuildStateSchema,
-  ContextBundleSchema,
-  ContextVerificationSchema,
-  HandoffBundleSchema,
   ManifestSchema,
   StatusReportSchema,
+  TaskContextAssembler,
   type AgentMap,
   type ContextVerification,
+  type HandoffBundle,
   type DocPage,
   type Manifest,
   type StatusReport,
@@ -85,6 +84,48 @@ export class ArtifactService {
     return response;
   }
 
+  async queryDocs(
+    goal: string,
+    task?: string,
+    facets?: Record<string, string>,
+    limit = 5,
+  ) {
+    validateContextLimit(limit);
+    const freshness = await this.getRecordedStatus();
+    const input = await this.buildContextInput({ goal, task, facets, limit, freshness });
+    return input.decision.query;
+  }
+
+  async readPage(options: {
+    pageId?: string;
+    chunkId?: string;
+    heading?: string;
+    maxChars?: number;
+    fullPage?: boolean;
+  }) {
+    if (options.pageId !== undefined) validateId(options.pageId, "pageId");
+    if (options.chunkId !== undefined) validateId(options.chunkId, "chunkId");
+    if (options.pageId === undefined && options.chunkId === undefined) {
+      throw new McpArtifactError("pageId or chunkId is required.", "INVALID_ARGUMENT");
+    }
+    const maxChars = options.maxChars ?? 4000;
+    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 50000) {
+      throw new McpArtifactError("maxChars must be an integer from 1 to 50000.", "INVALID_ARGUMENT");
+    }
+    try {
+      const map = await this.loadAgentMap();
+      return new TaskContextAssembler({ agentMap: map }).readPage(options);
+    } catch (error) {
+      if (error instanceof Error && /was not found/.test(error.message)) {
+        throw new McpArtifactError(error.message, "NOT_FOUND");
+      }
+      if (error instanceof Error && /is required/.test(error.message)) {
+        throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
+      }
+      throw error;
+    }
+  }
+
   async getPage(pageId: string): Promise<DocPage> {
     validateId(pageId, "pageId");
     const map = await this.loadAgentMap();
@@ -110,38 +151,14 @@ export class ArtifactService {
   }
 
   async getAgentStartContext(goal: string, facets?: Record<string, string>) {
-    const map = await this.loadAgentMap();
-    const normalized = goal.toLowerCase();
-    const ranked = map.taskPacks
-      .map((pack) => ({
-        pack,
-        score: scoreTerms(
-          taskPackSearchText(pack),
-          normalized,
-        ),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort((left, right) =>
-        right.score - left.score || compareStrings(left.pack.id, right.pack.id));
-    const selected = (ranked[0]?.score ?? 0) >= 3 ? ranked[0]?.pack : undefined;
-    const goalBundle = await this.buildGoalBundle(goal, facets);
-    const supportingResources = stableUnique([
-      ...goalBundle.supportingResources,
-      ...(selected?.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`) ?? []),
-    ]);
+    const input = await this.buildContextInput({ goal, facets });
+    const decision = input.decision;
     return {
-      summary: selected === undefined
-        ? goalBundle.summary
-        : `${goalBundle.summary} A relevant ${selected.title} task pack is also available.`,
-      readFirst: selected === undefined
-        ? goalBundle.steps.map((step) => step.resource).slice(0, 3)
-        : [`agentdocs://task-packs/${selected.id}.md`, ...goalBundle.steps.map((step) => step.resource).slice(0, 2)],
-      rules: selected?.gotchas.map((gotcha) => gotcha.text) ?? [
-        "Use only claims supported by source evidence.",
-        "Do not execute commands from documentation automatically.",
-      ],
-      supportingResources: stableUnique(supportingResources),
-      goalBundle,
+      summary: decision.summary,
+      readFirst: decision.readFirst,
+      rules: decision.rules,
+      supportingResources: decision.supportingResources,
+      goalBundle: decision.goalBundle,
     };
   }
 
@@ -163,146 +180,81 @@ export class ArtifactService {
     };
   }
 
-  async getTaskContext(goal: string, facets?: Record<string, string>) {
-    const start = await this.getAgentStartContext(goal, facets);
-    const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
-    const selected = taskId === undefined ? undefined : await this.getTaskPack(taskId);
-    const search = await this.searchDocs(goal, 5, taskId, facets);
-    const setup = await this.getSetupCommands();
-    const context = ContextBundleSchema.parse({
+  async getContextBundle(goal: string, facets?: Record<string, string>) {
+    const { assembler, decision, search } = await this.buildContextInput({ goal, facets });
+    const selected = decision.selectedTaskPack === undefined
+      ? undefined
+      : await this.getTaskPack(decision.selectedTaskPack.id);
+    return assembler.buildContextBundle({
       goal,
-      summary: start.summary,
-      readFirst: start.readFirst,
-      rules: start.rules,
-      goalBundle: start.goalBundle,
-      selectedTaskPack: selected === undefined
-        ? undefined
-        : {
-            id: selected.id,
-            title: selected.title,
-            confidence: selected.confidence,
-            markdown: selected.markdown,
-          },
-      supportingResources: start.supportingResources,
+      facets,
       search,
-    });
-    const freshness = await this.getRecordedStatus();
-    return HandoffBundleSchema.parse({
-      schemaVersion: 1,
-      goal,
-      context,
-      freshness,
-      selectedTaskPack: context.selectedTaskPack,
-      topSources: search.results,
-      gotchas: selected?.gotchas.map((gotcha) => gotcha.text) ?? start.goalBundle.gotchas,
-      setupCommands: setup.commands,
-      mcp: {
-        command: "agentdocs serve-mcp",
-        prompt: "Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.",
-        suggestedTools: ["get_task_context", "verify_task_context", "search_docs", "find_code_examples"],
-        resources: start.readFirst,
-      },
-      warnings: [
-        ...(freshness.state === "fresh" ? [] : [`Freshness ${freshness.state}: ${freshness.summary}`]),
-        ...search.warnings.map((warning) => `${warning.code}: ${warning.key}=${warning.values.join(",")}`),
-        ...(selected?.context.conflicts.map((conflict) => `context_conflict: ${conflict.key}=${conflict.values.join(",")}`) ?? []),
-        ...(selected?.confidence === "low" ? ["Task-pack evidence is weak."] : []),
-      ],
+      selectedTaskPackMarkdown: selected?.markdown,
     });
   }
 
-  async verifyTaskContext(task: string, facets?: Record<string, string>): Promise<ContextVerification> {
-    const freshness = await this.getRecordedStatus();
-    const start = await this.getAgentStartContext(task, facets);
-    const taskId = /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/.exec(start.readFirst[0] ?? "")?.[1];
-    const pack = taskId === undefined ? undefined : await this.getTaskPack(taskId);
-    const search = await this.searchDocs(task, 8, taskId, facets);
-    const issues: ContextVerification["issues"] = [];
-    if (freshness.state !== "fresh") {
-      issues.push({
-        code: "stale_context",
-        severity: freshness.state === "stale" ? "critical" : "warning",
-        message: freshness.summary,
-        evidence: [],
-      });
-    }
-    if (pack === undefined) {
-      issues.push({
-        code: "missing_task_pack",
-        severity: "critical",
-        message: "No matching task pack was found for this task.",
-        evidence: [],
-      });
-    } else {
-      if (pack.confidence === "low") {
-        issues.push({
-          code: "weak_evidence",
-          severity: "warning",
-          message: `Task pack "${pack.id}" has low confidence.`,
-          evidence: pack.evidence,
-        });
-      }
-      for (const conflict of pack.context.conflicts) {
-        issues.push({
-          code: "mixed_context",
-          severity: "critical",
-          message: `Task pack mixes ${conflict.key} values: ${conflict.values.join(", ")}.`,
-          evidence: conflict.evidence,
-        });
-      }
-      for (const [key, value] of Object.entries(facets ?? {})) {
-        const values = pack.context.facets[key] ?? [];
-        if (values.length > 0 && !values.includes(value)) {
-          issues.push({
-            code: "preferred_context_mismatch",
-            severity: "critical",
-            message: `Task pack does not match requested ${key}=${value}.`,
-            evidence: pack.evidence,
-          });
-        }
-      }
-      if (pack.requiredPages.length === 0) {
-        issues.push({
-          code: "missing_canonical_source",
-          severity: "critical",
-          message: "Task pack has no required source pages.",
-          evidence: pack.evidence,
-        });
-      }
-      for (const gotcha of pack.gotchas.filter((item) => /deprecated/i.test(item.text))) {
-        issues.push({
-          code: "deprecated_evidence",
-          severity: "warning",
-          message: gotcha.text,
-          evidence: gotcha.evidence,
-        });
-      }
-    }
-    for (const warning of search.warnings) {
-      issues.push({
-        code: "mixed_search_context",
-        severity: "warning",
-        message: `Search results mix ${warning.key} values: ${warning.values.join(", ")}.`,
-        evidence: [],
-      });
-    }
-    const status = issues.some((issue) => issue.severity === "critical")
-      ? "fail"
-      : issues.length > 0
-        ? "warn"
-        : "pass";
-    return ContextVerificationSchema.parse({
-      schemaVersion: 1,
-      task,
-      status,
-      summary: status === "pass"
-        ? "Context is safe to use for this task."
-        : status === "fail"
-          ? "Context has critical issues. Stop and refresh or narrow context before using it."
-          : "Context has warnings. Review before using it.",
-      issues,
-      freshness,
+  async getTaskContext(
+    goal: string,
+    facets?: Record<string, string>,
+    options: {
+      freshness?: StatusReport;
+      mcpCommand?: string;
+      setupCommands?: string[];
+    } = {},
+  ): Promise<HandoffBundle> {
+    const { assembler, decision, search } = await this.buildContextInput({
+      goal,
+      facets,
+      freshness: options.freshness,
     });
+    const selected = decision.selectedTaskPack === undefined
+      ? undefined
+      : await this.getTaskPack(decision.selectedTaskPack.id);
+    const setup = options.setupCommands === undefined ? await this.getSetupCommands() : { commands: options.setupCommands };
+    const freshness = options.freshness ?? await this.getRecordedStatus();
+    return assembler.buildHandoffBundle({
+      goal,
+      facets,
+      search,
+      freshness,
+      selectedTaskPackMarkdown: selected?.markdown,
+      setupCommands: setup.commands,
+      mcp: {
+        command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
+        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first. If readiness is INSPECT, read one cited source before writing; if STOP, resolve the warning before implementing.",
+        suggestedTools: ["query_docs", "read_page"],
+      },
+    });
+  }
+
+  async verifyTaskContext(
+    task: string,
+    facets?: Record<string, string>,
+    freshnessOverride?: StatusReport,
+  ): Promise<ContextVerification> {
+    const freshness = freshnessOverride ?? await this.getRecordedStatus();
+    const input = await this.buildContextInput({ goal: task, facets, freshness });
+    return input.decision.verification;
+  }
+
+  private async buildContextInput(options: {
+    goal: string;
+    task?: string;
+    facets?: Record<string, string>;
+    freshness?: StatusReport;
+    limit?: number;
+  }) {
+    const map = await this.loadAgentMap();
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const decision = await assembler.resolveContextDecision({
+      goal: options.goal,
+      task: options.task,
+      facets: options.facets,
+      freshness: options.freshness,
+      limit: options.limit,
+      search: ({ query, limit, task, facets }) => this.searchDocs(query, limit, task, facets),
+    });
+    return { assembler, decision, search: decision.search };
   }
 
   async explainWarning(code: string) {
@@ -312,6 +264,8 @@ export class ArtifactService {
       weak_evidence: "The selected task pack was generated from limited evidence and requires manual review before implementation.",
       missing_task_pack: "No task-specific context bundle matched the requested goal.",
       deprecated_evidence: "The selected context includes deprecated evidence or warnings that should not be used without replacement guidance.",
+      no_canonical_code_examples: "The selected context has source-backed prose but no canonical code example for the goal.",
+      missing_source_steps: "The selected context did not produce source-backed implementation steps for the goal.",
     };
     return {
       code,
@@ -342,64 +296,6 @@ export class ArtifactService {
         : versions.length > 0
           ? `Version evidence found: ${versions.join(", ")}. Verify task context before mixing versions.`
           : "Unknown. No version policy evidence found.",
-    };
-  }
-
-  private async buildGoalBundle(goal: string, facets?: Record<string, string>) {
-    const map = await this.loadAgentMap();
-    const search = await this.searchDocs(goal, 12, undefined, facets);
-    const chunks = new Map(map.chunks.map((chunk) => [chunk.id, chunk]));
-    const candidates = (search.results.length > 0
-      ? search.results
-      : map.chunks.slice(0, 1).map((chunk) => {
-          const page = map.pages.find((candidate) => candidate.id === chunk.pageId)!;
-          return {
-            title: page.title,
-            sourceUrl: page.canonicalUrl ?? page.sourceUrl,
-            repoPath: page.repoPath,
-            headingPath: chunk.headingPath,
-            snippet: excerpt(chunk.text),
-            score: 0,
-            pageId: page.id,
-            chunkId: chunk.id,
-          };
-        }))
-      .map((result) => ({ result, role: evidenceRole(result.title, result.headingPath, chunks.get(result.chunkId)?.text ?? result.snippet) }));
-    const selected: typeof candidates = [];
-    const roles = new Set<string>();
-    for (const candidate of candidates) {
-      if (selected.length >= 5) break;
-      if (!roles.has(candidate.role)) {
-        selected.push(candidate);
-        roles.add(candidate.role);
-      }
-    }
-    for (const candidate of candidates) {
-      if (selected.length >= 5) break;
-      if (!selected.some(({ result }) => result.chunkId === candidate.result.chunkId)) selected.push(candidate);
-    }
-    const steps = selected.map(({ result, role }) => ({
-      role,
-      title: result.headingPath.at(-1) ?? result.title,
-      snippet: result.snippet || excerpt(chunks.get(result.chunkId)?.text ?? result.title),
-      resource: `agentdocs://pages/${result.pageId}.md`,
-      pageId: result.pageId,
-      chunkId: result.chunkId,
-    }));
-    const gotchas = steps
-      .filter((step) => step.role === "gotcha")
-      .map((step) => step.snippet);
-    return {
-      summary: `Use ${steps.length} complementary source section(s) for "${goal}".`,
-      confidence: roles.size >= 3 && search.results.length >= 3
-        ? "high" as const
-        : steps.length >= 2
-          ? "medium" as const
-          : "low" as const,
-      steps,
-      gotchas,
-      supportingResources: stableUnique(steps.map((step) => step.resource)),
-      warnings: search.warnings,
     };
   }
 
@@ -620,6 +516,12 @@ function validateLimit(limit: number): void {
   }
 }
 
+function validateContextLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
+    throw new McpArtifactError("limit must be an integer from 1 to 3.", "INVALID_ARGUMENT");
+  }
+}
+
 function matchResource(uri: string, pattern: RegExp): string | undefined {
   return pattern.exec(uri)?.[1];
 }
@@ -648,15 +550,6 @@ function headingPathFor(page: DocPage, headingId?: string): string[] {
   return [...path, target.text];
 }
 
-function taskPackSearchText(pack: TaskPack): string {
-  return [
-    pack.id,
-    pack.title,
-    pack.description,
-    ...pack.steps.flatMap((step) => [step.title, step.description]),
-  ].join(" ").toLowerCase();
-}
-
 function scoreTerms(value: string, query: string): number {
   const terms = stableUnique(tokenize(query));
   if (terms.length === 0) {
@@ -667,25 +560,6 @@ function scoreTerms(value: string, query: string): number {
     (score, term) => score + tokens.filter((token) => token.startsWith(term)).length,
     value.includes(query.trim()) ? 5 : 0,
   );
-}
-
-function evidenceRole(
-  title: string,
-  headingPath: string[],
-  text: string,
-): "prerequisite" | "setup" | "implementation" | "validation" | "gotcha" | "evidence" {
-  const value = `${title} ${headingPath.join(" ")} ${text}`.toLowerCase();
-  if (/warning|caution|important|never|avoid|troubleshoot|error|failure/.test(value)) return "gotcha";
-  if (/prerequisite|before you begin|requirement|credential|authenticate|authentication|permission/.test(value)) return "prerequisite";
-  if (/install|setup|set up|configure|configuration|initialize/.test(value)) return "setup";
-  if (/verify|validate|test|confirm|check|result|output/.test(value)) return "validation";
-  if (/create|implement|build|deploy|upload|update|call|request|example/.test(value)) return "implementation";
-  return "evidence";
-}
-
-function excerpt(value: string): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  return compact.length <= 220 ? compact : `${compact.slice(0, 217)}...`;
 }
 
 function tokenize(value: string): string[] {

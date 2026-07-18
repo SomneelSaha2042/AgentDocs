@@ -49,6 +49,7 @@ export default defineConfig({
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
           { text: "Live Dogfood Runs", link: "/guide/live-dogfood" },
           { text: "Dogfood Workflow Matrix", link: "/guide/workflow-matrix" },
+          { text: "Evaluation Sandbox", link: "/guide/evaluation-sandbox" },
         ],
       },
       {
@@ -63,6 +64,8 @@ export default defineConfig({
           { text: "Routing Benchmarks", link: "/results/routing-benchmarks-phase-3" },
           { text: "Routing Improvements", link: "/results/routing-improvements-phase-4-5" },
           { text: "Full Dogfood Rerun", link: "/results/full-dogfood-rerun-phase-5" },
+          { text: "V1 Phase 0 Baseline", link: "/results/v1-phase-0-baseline" },
+          { text: "V1 Phase 1 Workflow", link: "/results/v1-phase-1-golden-workflow" },
           { text: "Methodology", link: "/results/methodology" },
         ],
       },

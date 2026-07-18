@@ -35,6 +35,27 @@ throw new Error("must not execute");
     expect(normalizeMarkdown(input)).toEqual(normalizeMarkdown(input));
   });
 
+  it("ignores empty headings without creating invalid structural evidence", () => {
+    const page = normalizeMarkdown({
+      markdown: "# Attributes\n\n- ####\n  idstring\n\n- #### name\n  namestring\n",
+      repoPath: "docs/reference.md",
+    });
+
+    expect(page.headings.map((heading) => heading.text)).toEqual(["Attributes", "name"]);
+    expect(page.headings.every((heading) => heading.text.length > 0 && heading.slug.length > 0)).toBe(true);
+    expect(page.normalization.warnings).toContain("Ignored 1 empty Markdown heading.");
+  });
+
+  it("keeps punctuation-only headings addressable", () => {
+    const page = normalizeMarkdown({
+      markdown: "# /\n\nUseful home-page content.\n",
+      repoPath: "index.md",
+    });
+
+    expect(page.headings[0]).toMatchObject({ text: "/" });
+    expect(page.headings[0]?.slug).toMatch(/^section-[a-f0-9]{12}$/);
+  });
+
   it("accepts HTML comments and permissive raw HTML in Markdown", () => {
     const markdown = `<!-- markdownlint-disable -->
 # Raw HTML
@@ -185,6 +206,34 @@ const literal = <Component value={expression} />
     expect(page.normalization.omittedCharacterRatio).toBeGreaterThan(0);
     expect(normalizeMarkdown({ markdown, format: "mdx", repoPath: "docs/client.mdx" }))
       .toEqual(page);
+  });
+
+  it("keeps readable multiline MDX component text during fallback", () => {
+    const markdown = `# Tabs
+
+<Steps
+  items={[
+    "Install",
+    "Configure",
+  ]}
+>
+Install the package, then configure the client.
+</Steps>
+
+{unfinished(
+
+\`\`\`tsx
+const literal = <Widget options={{ mode: "strict" }} />
+\`\`\`
+`;
+
+    const page = normalizeMarkdown({ markdown, format: "mdx", repoPath: "docs/tabs.mdx" });
+
+    expect(page.normalization.mode).toBe("mdx-fallback");
+    expect(page.markdown).toContain("Install the package, then configure the client.");
+    expect(page.markdown).toContain("AgentDocs omitted MDX JSX");
+    expect(page.markdown).toContain("AgentDocs omitted MDX expression");
+    expect(page.codeBlocks[0]?.value).toContain("<Widget options={{ mode: \"strict\" }} />");
   });
 
   it("fails malformed MDX when strict mode is requested", () => {

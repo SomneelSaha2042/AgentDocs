@@ -1,0 +1,7 @@
+name: Auth.js v5 Task
+slug: authjs-v5
+sources:
+  - type: local_markdown
+    path: docs
+doctor:
+  minScore: 0

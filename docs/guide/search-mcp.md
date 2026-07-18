@@ -40,7 +40,7 @@ context verification, setup commands, version policy, code examples, and related
 pages. Prefer this flow inside an agent:
 
 ```txt
-Use the AgentDocs MCP server before web search. Prefer get_task_context or verify_task_context for implementation tasks, and stop if AgentDocs reports stale, mixed-version, deprecated, or weak evidence.
+Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
 ```
 
 For multi-session work:
@@ -53,4 +53,6 @@ agentdocs rebuild --changed
 ```
 
 The server reads only validated built artifacts. It cannot crawl, execute code,
-or provide arbitrary filesystem access.
+or provide arbitrary filesystem access. Tool allowlists configured with
+`serve-mcp --tools query_docs,read_page` are enforced when tools are listed and
+when clients call tools directly.

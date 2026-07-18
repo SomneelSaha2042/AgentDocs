@@ -26,16 +26,30 @@ a run explicitly says it was a live recrawl.
 
 ## June 26, 2026 Active Evaluation Sandbox
 
-These targets benchmarked the active evaluation sandbox harness using the `dummy-sdk` and a newly created `octokit-pagination` task (running 14 pages of local Octokit REST documentation).
+These targets benchmarked the active evaluation sandbox harness under three distinct setups to evaluate different documentation retrieval patterns:
+1. **Control Group (Grep)**: Access to raw workspace markdown/documentation files using a local text grep search tool.
+2. **Control Group (Web Search/Fetch)**: Workspace docs deleted; agent is equipped with simulated `web_search` and `fetch_webpage` tools (returning raw crawled HTML pages from the `.dogfood/` cache) to mimic a normal web-searching agent harness.
+3. **Experimental Group (AgentDocs MCP)**: Workspace docs deleted; agent is equipped only with the read-only AgentDocs MCP server.
 
-| Task | Model | Control Group | Experimental (MCP) | Turns Saved | Success Delta | Result |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| Dummy SDK | `gpt-4o` | Passed (7 turns) | Passed (5 turns) | 2 | 0% | Experimental used `search_docs` and `get_page` to compile exactly what was needed. |
-| Octokit Pagination | `gpt-4o` | Failed (10 turns) | Passed (7 turns) | 3 | +100% | Control failed on ESM module boundaries; Experimental passed in 7 turns. Optimized get_page cut token usage by 74.4% (from 55k to 14.1k tokens). |
-| Fastify Validation | `gpt-4o` | Failed (10 turns) | Passed (5 turns) | 5 | +100% | Control forgot schema nesting; Experimental passed in 5 turns. Optimized get_page cut token usage by 48.7% (from 66.3k to 33.9k tokens). |
-| AgentDocs Config | `gpt-4o-mini` | Passed (4 turns) | Passed (5 turns) | -1 | 0% | Custom API discovery. Control "peeked" at the import snippet directly inside the grep match output. |
-| Next.js App Router | `gpt-4o` | Passed (8 turns) | Passed (7 turns) | 1 | 0% | Complex Pages-to-App Router migration. Experimental saved 1 turn, but schema overhead added 17% more tokens. |
-| AWS JS SDK v3 | `gpt-4o` | Passed (4 turns) | Passed (3 turns) | 1 | 0% | DynamoDB client pagination. Experimental saved 1 turn and 9.8k tokens (72% saved!) by avoiding grep context bloat. |
+### Benchmark Results
+
+| Task | Model | Control (Grep) | Control (Web Search/Fetch) | Experimental (MCP) | Turns Saved (vs Web) | Token Savings (vs Web) |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| Dummy SDK | `gpt-4o` | Passed (7 turns) | N/A | Passed (5 turns) | 2 | N/A |
+| Octokit Pagination | `gpt-4o` | Failed (10 turns) | Passed (7 turns) | Passed (7 turns) | 0 | -8% |
+| Fastify Validation | `gpt-4o` | Passed (3 turns) | Passed (5 turns) | Passed (5 turns) | 0 | -27% |
+| AgentDocs Config | `gpt-4o-mini` | Passed (4 turns) | N/A | Passed (5 turns) | -1 | N/A |
+| Next.js App Router | `gpt-4o` | Passed (8 turns) | Passed (8 turns) | Passed (7 turns) | 1 | -8% |
+| AWS JS SDK v3 | `gpt-4o` | Passed (4 turns) | Passed (5 turns) | Passed (3 turns) | 2 | 40% |
+| Kubernetes Deployment | `gpt-4o` | Passed (3 turns) | Passed (3 turns) | Passed (3 turns) | 0 | -32% |
+
+### Key Observations from Simulated Web Search
+- **Realistic Search Fragility**: The initial search query parser did not handle multi-word inputs well. Hardening `performMockSearch` to use tokenized keyword search and keyword intersection scoring was necessary to let the agent find pages using normal search phrases (e.g., `"Octokit pagination example"`), mimicking a realistic search engine.
+- **Token Efficiency**: Historical single-run tasks like `aws-js-v3` suggested
+  token and turn savings from serving compact MCP context instead of broad raw
+  retrieval. These numbers are now treated as directional because the original
+  control-web harness reused AgentDocs-compiled routing data; clean isolated
+  reruns are required for publishable deltas.
 
 ## June 23, 2026 Parser Format Expansion Rerun
 
