@@ -68,6 +68,39 @@ describe("TaskContextAssembler", () => {
     expect(decision.query.answer).not.toContain("sufficient to implement");
   });
 
+  it("stops when an explicit facet has no source evidence", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = assembler.buildContextDecision({
+      goal: "authenticate requests",
+      task: "Use the Next.js App Router implementation.",
+      facets: { framework: "Next.js", router: "app" },
+      search: {
+        query: "authenticate requests Next.js App Router",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.recommendation).toBe("stop");
+    expect(decision.verification.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "missing_task_requirement_evidence",
+        severity: "critical",
+        message: expect.stringContaining("framework=Next.js"),
+      }),
+    ]));
+    expect(decision.query.readiness.recommendation).toBe("stop");
+  });
+
   it("inspects when no task pack matches but no explicit requirement is blocked", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
     const decision = assembler.buildContextDecision({

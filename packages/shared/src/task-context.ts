@@ -735,7 +735,10 @@ export class TaskContextAssembler {
     for (const requirement of incompleteRequirements) {
       issues.push({
         code: "missing_task_requirement_evidence",
-        severity: requirement.status === "missing" ? "critical" : "warning",
+        severity: requirement.status === "missing"
+          || (requirement.status === "unknown" && requirement.source === "explicit")
+          ? "critical"
+          : "warning",
         message: requirement.message,
         evidence: requirement.evidence,
       });
