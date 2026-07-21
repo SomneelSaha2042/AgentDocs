@@ -237,6 +237,7 @@ Ingests a local docs folder or file.
 agentdocs ingest ./docs
 agentdocs ingest ./README.md
 agentdocs ingest ./docs --strict
+agentdocs ingest ./docs --source-manifest ./docs.provenance.json
 ```
 
 Supported inputs:
@@ -259,6 +260,14 @@ MDX ingestion is tolerant by default. Strict parsing is attempted first. On
 failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
 file-level diagnostics. `--strict` disables this fallback.
+
+For captured/offline documentation, `--source-manifest <path>` accepts a local
+JSON provenance sidecar. Each listed file must include its source URL and
+SHA-256; AgentDocs verifies the hash before normalization, attaches the URL to
+the generated page, and copies the validated sidecar to
+`.agentdocs/sources/provenance-manifest.json`. Files without a sidecar record
+remain ingestible but receive an explicit provenance warning. No network fetch
+is performed to fill missing records.
 
 OpenAPI ingestion is deferred in this build. Configured OpenAPI sources and direct OpenAPI file ingestion attempts fail early with an actionable unsupported-source message instead of producing generic chunks. OpenAPI files encountered inside mixed docs directories are not compiled into context.
 
@@ -475,6 +484,7 @@ sources:
 
   - type: local_markdown
     path: ./docs
+    sourceManifest: ./docs.provenance.json
     include:
       - "**/*.md"
       - "**/*.mdx"

@@ -304,6 +304,7 @@ export function createProgram(): Command {
     .option("--max-bytes <n>", "Maximum bytes of supported Markdown/MDX to read", parseInteger)
     .option("--max-pages <n>", "Maximum supported pages to ingest", parseInteger)
     .option("--max-elapsed-ms <n>", "Maximum elapsed time for local ingestion", parseInteger)
+    .option("--source-manifest <path>", "Validate and attach a local provenance sidecar")
     .option("--strict", "Fail on unsupported MDX instead of using the tolerant fallback")
     .action(async (
       source: string,
@@ -312,6 +313,7 @@ export function createProgram(): Command {
         maxElapsedMs?: number;
         maxFiles?: number;
         maxPages?: number;
+        sourceManifest?: string;
         strict?: boolean;
       },
       command: Command,
@@ -323,6 +325,7 @@ export function createProgram(): Command {
         out: context.out,
         source,
         limits: limitOptions(options),
+        sourceManifest: options.sourceManifest,
         mdxMode: options.strict ? "strict" : context.config?.normalization.mdx,
         onProgress: progressLogger(globals),
       });
@@ -663,6 +666,7 @@ async function collectConfiguredSources(
         include: source.include,
         exclude: source.exclude,
         facets: source.facets,
+        sourceManifest: source.sourceManifest,
         contextRules: config.context.rules,
         mdxMode: config.normalization.mdx,
         limits: source.limits,
@@ -679,6 +683,7 @@ async function collectConfiguredSources(
         include: source.include,
         exclude: source.exclude,
         facets: source.facets,
+        sourceManifest: source.sourceManifest,
         contextRules: config.context.rules,
         mdxMode: config.normalization.mdx,
         limits: source.limits,

@@ -7,8 +7,10 @@ import {
   DocPageSchema,
   IngestManifestSchema,
   SourceLimitDiagnosticsSchema,
+  SourceProvenanceManifestSchema,
   type DocPage,
   type IngestManifest,
+  type SourceProvenanceManifest,
   type SourceLimitConfig,
   type SourceLimitDiagnostics,
   type SourceCoverage,
@@ -30,6 +32,7 @@ export type IngestOptions = {
   mdxMode?: "tolerant" | "strict";
   onProgress?: (event: IngestProgressEvent) => void;
   sourceType?: "local_markdown" | "repo";
+  sourceManifest?: string;
 };
 
 export type IngestProgressEvent = {
@@ -61,12 +64,21 @@ type SourceFile = {
   supported: boolean;
 };
 
+type ProvenanceFile = SourceProvenanceManifest["files"][number];
+
+type LoadedProvenance = {
+  manifest: SourceProvenanceManifest;
+  manifestPath: string;
+  files: Map<string, ProvenanceFile>;
+};
+
 export async function ingestLocalMarkdown(
   options: IngestOptions,
 ): Promise<IngestResult> {
   const startedAt = Date.now();
   const sourcePath = path.resolve(options.cwd, options.source);
   const outputRoot = path.resolve(options.cwd, options.out);
+  const provenance = await loadProvenanceManifest(options.cwd, options.sourceManifest);
   const sourceIdentity = isWithin(options.cwd, sourcePath)
     ? toPosixPath(path.relative(options.cwd, sourcePath) || ".")
     : toPosixPath(sourcePath);
@@ -78,6 +90,9 @@ export async function ingestLocalMarkdown(
     "state",
     `ingest-${hash(sourceIdentity)}.json`,
   );
+  const provenancePath = provenance === undefined
+    ? undefined
+    : path.posix.join("sources", "provenance-manifest.json");
   const sourceStats = await statSource(sourcePath);
   const sourceRoot = sourceStats.isDirectory() ? sourcePath : path.dirname(sourcePath);
   const scopedSourceFiles = await discoverSourceFiles(
@@ -117,6 +132,8 @@ export async function ingestLocalMarkdown(
       sourceType: options.sourceType ?? "local_markdown",
       limits: selection.diagnostics,
       stateManifestPath,
+      provenancePath,
+      provenanceManifest: provenance?.manifest,
     });
     throw new IngestError(
       selection.diagnostics.reached.length > 0
@@ -167,6 +184,22 @@ export async function ingestLocalMarkdown(
         ? path.join(configuredSourcePath, sourceRelativePath)
         : configuredSourcePath
       : sourceRelativePath;
+    const provenanceFile = provenanceFileFor(
+      provenance,
+      toPosixPath(sourceRelativePath),
+      toPosixPath(repoPath),
+    );
+    if (provenanceFile !== undefined) {
+      const actualHash = createHash("sha256").update(initialContent, "utf8").digest("hex");
+      if (actualHash !== provenanceFile.sha256) {
+        throw new IngestError(
+          `Provenance hash mismatch for ${toPosixPath(repoPath)}: expected ${provenanceFile.sha256}, got ${actualHash}. Refresh the sidecar or restore the captured source.`,
+        );
+      }
+    }
+    const provenanceWarning = provenance !== undefined && provenanceFile === undefined
+      ? [`No provenance record found for ${toPosixPath(repoPath)}.`]
+      : [];
     try {
       const page = normalizeSourceFile({
         markdown,
@@ -175,6 +208,8 @@ export async function ingestLocalMarkdown(
         context: { fixed: options.facets, rules: options.contextRules },
         mdxMode: options.mdxMode ?? "tolerant",
         sourceType: options.sourceType ?? "local_markdown",
+        sourceUrl: provenanceFile?.sourceUrl,
+        canonicalUrl: provenanceFile?.canonicalUrl,
       });
       const skipReason = classifySkip(page, unresolved);
       if (skipReason !== undefined) {
@@ -182,7 +217,7 @@ export async function ingestLocalMarkdown(
           repoPath: toPosixPath(repoPath),
           status: "skipped",
           mode: page.normalization.mode,
-          warnings: page.normalization.warnings,
+          warnings: [...page.normalization.warnings, ...provenanceWarning],
           message: skipReason === "empty"
             ? "No useful prose, headings, or fenced code remained after normalization."
             : `Unresolved include directive: ${skipReason}`,
@@ -196,7 +231,7 @@ export async function ingestLocalMarkdown(
         repoPath: toPosixPath(repoPath),
         status: page.normalization.mode === "mdx-fallback" ? "degraded" : "usable",
         mode: page.normalization.mode,
-        warnings: page.normalization.warnings,
+        warnings: [...page.normalization.warnings, ...provenanceWarning],
         includeTargets: unresolved.length > 0 ? unresolved.map((u) => u.target) : undefined,
       });
     } catch (error) {
@@ -237,6 +272,7 @@ export async function ingestLocalMarkdown(
     schemaVersion: 1,
     sourceType: options.sourceType ?? "local_markdown",
     sourcePath: sourceIdentity,
+    provenancePath,
     pageCount: pages.length,
     counts: {
       usable: diagnostics.filter((item) => item.status === "usable").length,
@@ -262,6 +298,9 @@ export async function ingestLocalMarkdown(
   await mkdir(pagesDirectory, { recursive: true });
   await mkdir(path.dirname(stateManifestPath), { recursive: true });
   await removeStaleIngestPages(stateManifestPath, outputRoot, new Set(manifestPages.map((page) => page.outputPath)));
+  if (provenance === undefined) {
+    await removeOutputFile(outputRoot, path.posix.join("sources", "provenance-manifest.json"));
+  }
   for (const [index, page] of validatedPages.entries()) {
     await writeJson(
       path.join(outputRoot, ...manifestPages[index]!.outputPath.split("/")),
@@ -270,6 +309,9 @@ export async function ingestLocalMarkdown(
   }
   await writeJson(manifestPath, manifest);
   await writeJson(stateManifestPath, manifest);
+  if (provenance !== undefined && provenancePath !== undefined) {
+    await writeJson(path.join(outputRoot, ...provenancePath.split("/")), provenance.manifest);
+  }
 
   if (validatedPages.length === 0) {
     throw new IngestError(
@@ -316,6 +358,52 @@ function hasUsefulPageContent(page: DocPage): boolean {
     .length >= 24;
 }
 
+async function loadProvenanceManifest(
+  cwd: string,
+  configuredPath: string | undefined,
+): Promise<LoadedProvenance | undefined> {
+  if (configuredPath === undefined) return undefined;
+  const manifestPath = path.resolve(cwd, configuredPath);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new IngestError(`Unable to read provenance manifest ${manifestPath}: ${message}`);
+  }
+  let manifest: SourceProvenanceManifest;
+  try {
+    manifest = SourceProvenanceManifestSchema.parse(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new IngestError(`Invalid provenance manifest ${manifestPath}: ${message}`);
+  }
+  const files = new Map<string, ProvenanceFile>();
+  for (const file of manifest.files) {
+    const key = toPosixPath(file.path).replace(/^\.\//, "");
+    if (files.has(key)) {
+      throw new IngestError(`Invalid provenance manifest ${manifestPath}: duplicate file path ${key}.`);
+    }
+    files.set(key, file);
+  }
+  return { manifest, manifestPath, files };
+}
+
+function provenanceFileFor(
+  provenance: LoadedProvenance | undefined,
+  sourceRelativePath: string,
+  repoPath: string,
+): ProvenanceFile | undefined {
+  if (provenance === undefined) return undefined;
+  const direct = provenance.files.get(sourceRelativePath) ?? provenance.files.get(repoPath);
+  if (direct !== undefined) return direct;
+  const suffix = `/${sourceRelativePath}`;
+  const matches = [...provenance.files.entries()]
+    .filter(([key]) => key.endsWith(suffix))
+    .map(([, file]) => file);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 
 async function statSource(sourcePath: string) {
   try {
@@ -348,11 +436,14 @@ async function writeEmptyIngestManifest(options: {
   sourceIdentity: string;
   sourceType: IngestManifest["sourceType"];
   stateManifestPath: string;
+  provenancePath?: string;
+  provenanceManifest?: SourceProvenanceManifest;
 }): Promise<IngestManifest> {
   const manifest = IngestManifestSchema.parse({
     schemaVersion: 1,
     sourceType: options.sourceType,
     sourcePath: options.sourceIdentity,
+    provenancePath: options.provenancePath,
     pageCount: 0,
     counts: options.counts,
     sourceCoverage: options.sourceCoverage,
@@ -363,8 +454,17 @@ async function writeEmptyIngestManifest(options: {
   await mkdir(path.dirname(options.manifestPath), { recursive: true });
   await mkdir(path.dirname(options.stateManifestPath), { recursive: true });
   await removeStaleIngestPages(options.stateManifestPath, options.outputRoot, new Set());
+  if (options.provenanceManifest === undefined) {
+    await removeOutputFile(options.outputRoot, path.posix.join("sources", "provenance-manifest.json"));
+  }
   await writeJson(options.manifestPath, manifest);
   await writeJson(options.stateManifestPath, manifest);
+  if (options.provenancePath !== undefined && options.provenanceManifest !== undefined) {
+    await writeJson(
+      path.join(options.outputRoot, ...options.provenancePath.split("/")),
+      options.provenanceManifest,
+    );
+  }
   return manifest;
 }
 
@@ -662,6 +762,8 @@ type NormalizeSourceFileOptions = {
   context: ApplyContextFacetsOptions;
   mdxMode: "tolerant" | "strict";
   sourceType: "local_markdown" | "repo";
+  sourceUrl?: string;
+  canonicalUrl?: string;
 };
 
 function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
@@ -675,6 +777,8 @@ function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
         context: options.context,
         mdxMode: options.mdxMode,
         sourceType: options.sourceType,
+        sourceUrl: options.sourceUrl,
+        canonicalUrl: options.canonicalUrl,
       });
     case "rst":
     case "restText":
@@ -684,6 +788,8 @@ function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
         repoPath: options.repoPath,
         context: options.context,
         sourceType: options.sourceType,
+        sourceUrl: options.sourceUrl,
+        canonicalUrl: options.canonicalUrl,
       });
     case "adoc":
     case "asciidoc":
@@ -693,6 +799,8 @@ function normalizeSourceFile(options: NormalizeSourceFileOptions): DocPage {
         repoPath: options.repoPath,
         context: options.context,
         sourceType: options.sourceType,
+        sourceUrl: options.sourceUrl,
+        canonicalUrl: options.canonicalUrl,
       });
   }
 }

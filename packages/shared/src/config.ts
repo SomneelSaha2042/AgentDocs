@@ -25,6 +25,7 @@ const LocalMarkdownSourceSchema = z
   .object({
     type: z.literal("local_markdown"),
     path: z.string().min(1),
+    sourceManifest: z.string().min(1).optional(),
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     facets: z.record(z.string().min(1)).optional(),
@@ -43,6 +44,7 @@ const RepoSourceSchema = z
   .object({
     type: z.literal("repo"),
     path: z.string().min(1),
+    sourceManifest: z.string().min(1).optional(),
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     facets: z.record(z.string().min(1)).optional(),

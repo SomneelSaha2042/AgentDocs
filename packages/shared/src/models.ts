@@ -809,6 +809,7 @@ export const IngestManifestSchema = z
     schemaVersion: z.literal(1),
     sourceType: z.enum(["local_markdown", "repo"]),
     sourcePath: z.string().min(1),
+    provenancePath: z.string().min(1).optional(),
     pageCount: z.number().int().nonnegative(),
     counts: z
       .object({
@@ -846,6 +847,55 @@ export const IngestManifestSchema = z
         })
         .strict(),
     ),
+  })
+  .strict();
+
+export const SourceProvenanceManifestSchema = z
+  .object({
+    schemaVersion: z.number().int().positive(),
+    task: z.string().min(1).optional(),
+    source: z
+      .object({
+        type: z.string().min(1).optional(),
+        origin: z.string().url().optional(),
+        capturedAt: z.string().datetime().optional(),
+        provenance: z.string().min(1).optional(),
+        format: z.string().min(1).optional(),
+        pageCount: z.number().int().nonnegative().optional(),
+        byteCount: z.number().int().nonnegative().optional(),
+        corpusHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+      })
+      .strict()
+      .optional(),
+    sources: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          origin: z.string().url(),
+          capturedAt: z.string().datetime().optional(),
+          format: z.string().min(1).optional(),
+          derived: z.boolean().optional(),
+        })
+        .strict(),
+    ).optional(),
+    files: z.array(
+      z
+        .object({
+          path: z.string().min(1),
+          sourceId: z.string().min(1).optional(),
+          sourceUrl: z.string().url(),
+          canonicalUrl: z.string().url().optional(),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .strict(),
+    ).min(1),
+    evaluation: z
+      .object({
+        oracle: z.string().min(1).optional(),
+        visibleTest: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -977,6 +1027,7 @@ export type ContextVerification = z.infer<typeof ContextVerificationSchema>;
 export type AgentSetupSnippet = z.infer<typeof AgentSetupSnippetSchema>;
 export type HandoffBundle = z.infer<typeof HandoffBundleSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
+export type SourceProvenanceManifest = z.infer<typeof SourceProvenanceManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;
 
 function upgradeSchemaVersion(value: unknown): unknown {

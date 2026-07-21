@@ -73,6 +73,13 @@ can compile them. Website crawling supports same-origin public HTML
 documentation, scoped discovery, sitemap discovery, raw snapshots, Markdown
 alternatives, and useful-page diagnostics.
 
+Local and repository ingestion can also consume an explicitly supplied,
+offline provenance sidecar. The sidecar is schema-validated, every matched
+file is SHA-256 checked before normalization, and its source/canonical URLs are
+carried onto `DocPage` records. The validated sidecar is copied beside the
+ingest manifest; missing records are warnings and never trigger network
+fetches.
+
 OpenAPI is present in the data contracts as a future evidence type but is not implemented as an ingestion path. Configured `type: openapi` sources and direct OpenAPI file ingestion attempts are rejected early with an actionable unsupported-source error so schemas cannot leak into generic context.
 
 ## Public CLI Surface
