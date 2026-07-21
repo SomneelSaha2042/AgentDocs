@@ -193,11 +193,12 @@ function taskPackContextConflicts(pack: TaskPack): string {
     : pack.context.conflicts.map((conflict) => `${conflict.key}=${conflict.values.join("|")}`).join(", ");
 }
 
-function hasCommandOrCodeEvidence(value: string): boolean {
-  return /\b(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(value)
-    || /\b(?:import|require|function|class|const|let|var|new\s+\w+|create\w*|await|return)\b/i.test(value)
-    || /\b(?:get|post|put|patch|delete|head|options)\s*(?:\(|\/[\w./:*-]*)/i.test(value)
-    || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(value);
+function hasCommandOrCodeEvidence(value: TaskPack["codeExamples"][number]): boolean {
+  const text = typeof value === "string" ? value : value.value;
+  return /\b(?:npm\s+(?:install|i)|yarn\s+add|pnpm\s+add|bun\s+add|pip(?:3)?\s+install|python\s+-m\s+pip\s+install|cargo\s+add|go\s+get)\b/i.test(text)
+    || /\b(?:import|require|function|class|const|let|var|new\s+\w+|create\w*|await|return)\b/i.test(text)
+    || /\b(?:get|post|put|patch|delete|head|options)\s*(?:\(|\/[\w./:*-]*)/i.test(text)
+    || /\.\s*(?:get|post|put|patch|delete|head|options)\s*\(/i.test(text);
 }
 
 function formatEvidence(evidence: Evidence): string {
