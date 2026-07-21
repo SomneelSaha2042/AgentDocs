@@ -99,6 +99,8 @@ describe("TaskContextAssembler", () => {
       }),
     ]));
     expect(decision.query.readiness.recommendation).toBe("stop");
+    expect(decision.query.steps).toHaveLength(0);
+    expect(decision.query.codeExamples).toHaveLength(0);
   });
 
   it("inspects when no task pack matches but no explicit requirement is blocked", () => {

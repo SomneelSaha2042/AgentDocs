@@ -791,7 +791,11 @@ export class TaskContextAssembler {
       .map((chunk) => {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
-        if (!facetsCompatible(chunk.facets, facets)) return undefined;
+        if (!facetsCompatible(
+          [...page.facets, ...chunk.facets],
+          facets,
+          `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`,
+        )) return undefined;
         const lexical = scoreTerms(`${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`, goal);
         const score = (byId.get(chunk.id) ?? 0)
           + lexical
@@ -847,7 +851,11 @@ export class TaskContextAssembler {
           chunk.pageId === page.id
           && (headingPath.length === 0 || arraysEqual(chunk.headingPath, headingPath)));
         const packMatch = pack?.codeExamples.some((example) => oneLine(example) === oneLine(block.value)) ?? false;
-        if (!facetsCompatible([...page.facets, ...(relatedChunk?.facets ?? [])], facets)) return undefined;
+        if (!facetsCompatible(
+          [...page.facets, ...(relatedChunk?.facets ?? [])],
+          facets,
+          `${page.title} ${headingPath.join(" ")} ${block.value}`,
+        )) return undefined;
         const score = scoreTerms(`${page.title} ${headingPath.join(" ")} ${block.value}`, goal)
           + (rankedPageIds.has(page.id) ? 6 : 0)
           + (relatedChunk !== undefined && rankedChunkIds.has(relatedChunk.id) ? 10 : 0)
@@ -877,14 +885,20 @@ export class TaskContextAssembler {
 
   private evidenceCompatibleWithRequestedFacets(evidence: Evidence[], requested: Record<string, string> | undefined): boolean {
     if (requested === undefined) return true;
-    const groups = evidence.flatMap((item) => {
+    return evidence.some((item) => {
       const page = item.pageId === undefined ? undefined : this.pages.get(item.pageId);
-      const chunks = item.pageId === undefined
-        ? []
-        : this.options.agentMap.chunks.filter((chunk) => chunk.pageId === item.pageId);
-      return [page?.facets ?? [], ...chunks.map((chunk) => chunk.facets)];
+      if (page === undefined) return false;
+      const chunks = this.options.agentMap.chunks.filter((chunk) => chunk.pageId === page.id);
+      const facets = [
+        ...page.facets,
+        ...chunks.flatMap((chunk) => chunk.facets),
+      ];
+      return facetsCompatible(
+        facets,
+        requested,
+        `${page.title} ${page.headings.map((heading) => heading.text).join(" ")} ${page.markdown}`,
+      );
     });
-    return contextFacetWarnings(groups, requested).length === 0;
   }
 
   private selectReadableSection(options: ReadPageOptions): {
@@ -1278,12 +1292,24 @@ function contextFacetWarnings(
 function formatContextFacetWarning(warning: ContextFacetWarning): string {
   return `preferred_context_mismatch: ${warning.key}=${warning.requested}; found=${warning.found.join(",")}`;
 }
-function facetsCompatible(facets: Chunk["facets"], requested?: Record<string, string>): boolean {
+function facetsCompatible(
+  facets: Chunk["facets"],
+  requested?: Record<string, string>,
+  text = "",
+): boolean {
   if (requested === undefined) return true;
   return Object.entries(requested).every(([key, value]) => {
     const values = facets.filter((facet) => facet.key === key).map((facet) => facet.value);
-    return values.length === 0 || values.includes(value);
+    if (values.length > 0) return values.includes(value);
+    return containsFacetValue(text, value);
   });
+}
+
+function containsFacetValue(text: string, value: string): boolean {
+  const normalizedText = normalizeFacetText(text);
+  const normalizedValue = normalizeFacetText(value);
+  if (normalizedText.length === 0 || normalizedValue.length === 0) return false;
+  return ` ${normalizedText} `.includes(` ${normalizedValue} `);
 }
 
 function confidenceFor(pack: TaskPack | undefined, chunks: RankedChunk[], steps: number, examples: number): "high" | "medium" | "low" {
