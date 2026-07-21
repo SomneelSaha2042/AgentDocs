@@ -1248,7 +1248,13 @@ function requestedFacetsFor(
   const inferred: Record<string, string> = {};
   const text = normalizeFacetText(taskTextFor(goal, task));
   const valuesByKey = new Map<string, Set<string>>();
-  for (const facet of agentMap.pages.flatMap((page) => page.facets)) {
+  // Facets can be attached to pages or to atomic evidence chunks (for
+  // example, a row in a framework/version compatibility table). Include both
+  // levels when inferring an unambiguous request from the task text.
+  for (const facet of [
+    ...agentMap.pages.flatMap((page) => page.facets),
+    ...agentMap.chunks.flatMap((chunk) => chunk.facets),
+  ]) {
     const values = valuesByKey.get(facet.key) ?? new Set<string>();
     values.add(facet.value);
     valuesByKey.set(facet.key, values);

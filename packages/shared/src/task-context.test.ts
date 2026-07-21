@@ -103,6 +103,46 @@ describe("TaskContextAssembler", () => {
     expect(decision.query.codeExamples).toHaveLength(0);
   });
 
+  it("infers an unambiguous facet from atomic chunk evidence", () => {
+    const map = fixtureMap();
+    const frameworkFacet = {
+      key: "framework",
+      value: "Next.js",
+      evidence: [{ source: "heading" as const, pageId: "page_auth", headingId: "heading_auth", repoPath: "docs/auth.md" }],
+    };
+    const routerFacet = {
+      key: "router",
+      value: "app",
+      evidence: [{ source: "heading" as const, pageId: "page_auth", headingId: "heading_auth", repoPath: "docs/auth.md" }],
+    };
+    map.chunks[0]!.facets = [frameworkFacet, routerFacet];
+    map.taskPacks[0]!.context.facets = { framework: ["Next.js"], router: ["app"] };
+
+    const decision = new TaskContextAssembler({ agentMap: map }).buildContextDecision({
+      goal: "authenticate requests",
+      task: "Use the Next.js App Router implementation.",
+      search: {
+        query: "authenticate requests Next.js App Router",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "facet", value: "framework=Next.js", status: "covered", source: "inferred" }),
+      expect.objectContaining({ kind: "facet", value: "router=app", status: "covered", source: "inferred" }),
+    ]));
+  });
+
   it("inspects when no task pack matches but no explicit requirement is blocked", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
     const decision = assembler.buildContextDecision({
@@ -136,6 +176,7 @@ describe("TaskContextAssembler", () => {
     });
     map.chunks.push({
       id: "chunk_adapter",
+      kind: "section",
       pageId: "page_adapter",
       headingPath: ["Database adapter"],
       text: "Use @example/adapter for the documented auth adapter.",
@@ -378,6 +419,7 @@ describe("TaskContextAssembler", () => {
     });
     map.chunks.push({
       id: "chunk_validate_body",
+      kind: "section",
       pageId: "page_routes",
       headingPath: ["Validate your data"],
       text: "To validate incoming request bodies, pass route options with schema.body as a JSON Schema object.",
