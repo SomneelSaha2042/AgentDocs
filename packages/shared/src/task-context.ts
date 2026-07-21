@@ -792,7 +792,7 @@ export class TaskContextAssembler {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
         if (!facetsCompatible(
-          [...page.facets, ...chunk.facets],
+          scopedFacetsForChunks(page, [chunk]),
           facets,
           `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`,
         )) return undefined;
@@ -854,7 +854,7 @@ export class TaskContextAssembler {
           oneLine(taskPackCodeExampleValue(example)) === oneLine(block.value));
         const packMatch = packExample !== undefined;
         if (!facetsCompatible(
-          [...page.facets, ...(relatedChunk?.facets ?? [])],
+          scopedFacetsForChunks(page, relatedChunk === undefined ? [] : [relatedChunk]),
           facets,
           `${page.title} ${headingPath.join(" ")} ${block.value}`,
         )) return undefined;
@@ -892,11 +892,26 @@ export class TaskContextAssembler {
     return evidence.some((item) => {
       const page = item.pageId === undefined ? undefined : this.pages.get(item.pageId);
       if (page === undefined) return false;
-      const chunks = this.options.agentMap.chunks.filter((chunk) => chunk.pageId === page.id);
-      const facets = [
-        ...page.facets,
-        ...chunks.flatMap((chunk) => chunk.facets),
-      ];
+      const pageChunks = this.options.agentMap.chunks.filter((chunk) => chunk.pageId === page.id);
+      const quotedChunks = item.quote === undefined
+        ? []
+        : pageChunks.filter((chunk) => {
+          const quote = item.quote!.trim();
+          const text = chunk.text.trim();
+          return quote.length > 0 && (text.includes(quote) || quote.includes(text));
+        });
+      const headingChunks = item.headingId === undefined
+        ? []
+        : pageChunks.filter((chunk) => arraysEqual(
+          chunk.headingPath,
+          headingPathFor(page, item.headingId),
+        ));
+      const chunks = quotedChunks.length > 0
+        ? quotedChunks
+        : headingChunks.length > 0
+          ? headingChunks
+          : pageChunks;
+      const facets = scopedFacetsForChunks(page, chunks);
       return facetsCompatible(
         facets,
         requested,
@@ -1318,6 +1333,15 @@ function facetsCompatible(
     if (values.length > 0) return values.includes(value);
     return containsFacetValue(text, value);
   });
+}
+
+function scopedFacetsForChunks(page: DocPage, chunks: Chunk[]): Chunk["facets"] {
+  const chunkFacets = chunks.flatMap((chunk) => chunk.facets);
+  const chunkKeys = new Set(chunkFacets.map((facet) => facet.key));
+  return [
+    ...page.facets.filter((facet) => !chunkKeys.has(facet.key)),
+    ...chunkFacets,
+  ];
 }
 
 function containsFacetValue(text: string, value: string): boolean {

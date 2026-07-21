@@ -641,6 +641,29 @@ describe("TaskContextAssembler facet safety", () => {
       }],
       warnings: [],
     };
+    map.chunks.push({
+      id: "chunk_app_legacy_row",
+      pageId: "page_app",
+      kind: "table_row",
+      headingPath: ["Modern Router webhook route handlers", "Legacy row on this page"],
+      text: "Legacy row on this page uses LegacyRequest and legacyBodyParser.",
+      tokenEstimate: 12,
+      links: [],
+      entityIds: [],
+      contentHash: hash,
+      facets: [pagesFacet],
+    });
+    map.taskPacks[0]!.steps.push({
+      title: "Wrong row on the same page",
+      description: "Legacy row on this page uses LegacyRequest.",
+      evidence: [{
+        source: "heading",
+        pageId: "page_app",
+        headingId: "heading_app",
+        repoPath: "docs/modern-router.md",
+        quote: "Legacy row on this page uses LegacyRequest and legacyBodyParser.",
+      }],
+    });
     const assembler = new TaskContextAssembler({ agentMap: map });
     const result = assembler.queryDocs({
       goal: "Write a Modern Router webhook route handler",
@@ -656,6 +679,7 @@ describe("TaskContextAssembler facet safety", () => {
     expect(result.task).toBe("webhooks");
     expect(JSON.stringify(result.steps)).toContain("req.text");
     expect(JSON.stringify(result.steps)).not.toContain("LegacyRequest");
+    expect(JSON.stringify(result.steps)).not.toContain("Wrong row on the same page");
     expect(result.codeExamples[0]?.value).toContain("POST(req: Request)");
     expect(result.codeExamples[0]?.value).not.toContain("legacyBodyParser");
     expect(result.warnings.some((warning) => warning.startsWith("preferred_context_mismatch: router=modern-router"))).toBe(true);
