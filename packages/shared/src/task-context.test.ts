@@ -181,14 +181,14 @@ describe("TaskContextAssembler", () => {
 
   it("caps non-full section reads even when maxChars is broad", () => {
     const map = fixtureMap();
-    map.chunks[0]!.text = "Use an API key for authentication. ".repeat(80);
+    map.chunks[0]!.text = "Use an API key for authentication. ".repeat(160);
     const result = new TaskContextAssembler({ agentMap: map }).readPage({
       pageId: "page_auth",
       maxChars: 5000,
     });
 
     expect(result.section.chunkId).toBe("chunk_auth");
-    expect(result.section.text.length).toBeLessThanOrEqual(1000);
+    expect(result.section.text.length).toBeLessThanOrEqual(4000);
     expect(result.section.truncated).toBe(true);
   });
 

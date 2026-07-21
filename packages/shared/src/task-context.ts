@@ -115,7 +115,7 @@ type TaskIntentRule = {
   pattern: RegExp;
 };
 
-const DEFAULT_SECTION_MAX_CHARS = 1000;
+const DEFAULT_SECTION_MAX_CHARS = 4000;
 
 const TASK_INTENT_RULES: TaskIntentRule[] = [
   { family: "installation", strength: 10, pattern: /\b(?:install|installation|add\s+(?:the\s+)?(?:package|dependency)|npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get)\b/i },
