@@ -98,6 +98,7 @@ export const ChunkSchema = z
   .object({
     id: z.string().min(1),
     pageId: z.string().min(1),
+    kind: z.enum(["section", "table_row"]).default("section"),
     headingPath: z.array(z.string().min(1)),
     text: z.string().min(1),
     tokenEstimate: z.number().int().positive(),

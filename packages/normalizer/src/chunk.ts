@@ -22,6 +22,17 @@ type Block = {
   text: string;
 };
 
+type TableRow = {
+  headers: string[];
+  cells: string[];
+  index: number;
+};
+
+type TableExtraction = {
+  rows: TableRow[];
+  remainingLines: string[];
+};
+
 const DEFAULT_MAX_TOKENS = 500;
 
 export function chunkMarkdownByHeading(
@@ -36,17 +47,36 @@ export function chunkMarkdownByHeading(
   const sections = splitIntoSections(page);
   const chunks: Chunk[] = [];
   for (const section of sections) {
+    const table = extractTableRows(section.lines);
     const links = page.links
       .filter((link) => link.sourceHeadingId === section.headingId)
       .map((link) => link.resolvedHref ?? link.href)
       .sort(compareStrings);
-    for (const text of splitSection(section.lines, maxTokens)) {
+    for (const row of table.rows) {
+      const text = serializeTableRow(row);
+      const contentHash = hash(text);
+      const extraction = extractDeterministicEntities(text);
+      chunks.push(ChunkSchema.parse({
+        id: `chunk_${hash(`${page.id}:${section.headingPath.join("/")}:table_row:${row.index}:${contentHash}`).slice(0, 16)}`,
+        pageId: page.id,
+        kind: "table_row",
+        headingPath: section.headingPath,
+        text,
+        tokenEstimate: estimateTokens(text),
+        links: tableRowLinks(page, row),
+        entityIds: extractionEntityIds(extraction),
+        contentHash,
+        facets: mergeFacets(page.facets, tableRowFacets(page, section, row, text)),
+      }));
+    }
+    for (const text of splitSection(table.remainingLines, maxTokens)) {
       const contentHash = hash(text);
       const extraction = extractDeterministicEntities(text);
       chunks.push(
         ChunkSchema.parse({
           id: `chunk_${hash(`${page.id}:${section.headingPath.join("/")}:${chunks.length}:${contentHash}`).slice(0, 16)}`,
           pageId: page.id,
+          kind: "section",
           headingPath: section.headingPath,
           text,
           tokenEstimate: estimateTokens(text),
@@ -113,6 +143,164 @@ function pushSection(sections: Section[], section: Section): void {
   if (section.lines.join("\n").trim().length > 0) {
     sections.push(section);
   }
+}
+
+function extractTableRows(lines: string[]): TableExtraction {
+  const consumed = new Set<number>();
+  const rows: TableRow[] = [];
+  for (let index = 0; index < lines.length - 2; index += 1) {
+    if (consumed.has(index)) continue;
+    const headers = tableCells(lines[index]!);
+    const separator = tableCells(lines[index + 1]!);
+    if (headers === undefined || separator === undefined || !isTableSeparator(separator) || headers.length < 2) {
+      continue;
+    }
+    const dataRows: string[][] = [];
+    let cursor = index + 2;
+    while (cursor < lines.length) {
+      const cells = tableCells(lines[cursor]!);
+      if (cells === undefined || cells.length === 0 || cells.length > headers.length) break;
+      dataRows.push(cells);
+      cursor += 1;
+    }
+    if (dataRows.length === 0) continue;
+    for (let consumedIndex = index; consumedIndex < cursor; consumedIndex += 1) {
+      consumed.add(consumedIndex);
+    }
+    const rowOffset = rows.length;
+    dataRows.forEach((cells, rowIndex) => {
+      rows.push({ headers, cells, index: rowOffset + rowIndex });
+    });
+  }
+  return {
+    rows,
+    remainingLines: lines.filter((_line, index) => !consumed.has(index)),
+  };
+}
+
+function tableCells(line: string): string[] | undefined {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || trimmed.startsWith("```") || trimmed.startsWith("~~~") || !trimmed.includes("|")) {
+    return undefined;
+  }
+  const withoutEdges = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed;
+  const edgeTrimmed = withoutEdges.endsWith("|")
+    ? withoutEdges.slice(0, -1)
+    : withoutEdges;
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  let code = false;
+  for (const character of edgeTrimmed) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      current += character;
+      escaped = true;
+      continue;
+    }
+    if (character === "`") {
+      code = !code;
+      current += character;
+      continue;
+    }
+    if (character === "|" && !code) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  cells.push(current.trim());
+  return cells.length < 2 ? undefined : cells;
+}
+
+function isTableSeparator(cells: string[]): boolean {
+  return cells.every((cell) => /^:?-{1,}:?$/.test(cell));
+}
+
+function serializeTableRow(row: TableRow): string {
+  return row.headers
+    .map((header, index) => `${header}: ${row.cells[index] ?? ""}`)
+    .filter((value) => value.trim().length > 0)
+    .join("\n");
+}
+
+function tableRowLinks(page: DocPage, row: TableRow): string[] {
+  const hrefs = new Set<string>();
+  const markdownLink = /\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^)]*)?\)/g;
+  const text = row.cells.join(" ");
+  for (const match of text.matchAll(markdownLink)) {
+    if (match[1] !== undefined) hrefs.add(match[1]);
+  }
+  return page.links
+    .filter((link) => hrefs.has(link.href))
+    .map((link) => link.resolvedHref ?? link.href)
+    .sort(compareStrings);
+}
+
+function tableRowFacets(
+  page: DocPage,
+  section: Section,
+  row: TableRow,
+  text: string,
+): Chunk["facets"] {
+  const facets: Chunk["facets"] = [];
+  const facetKeys = new Set([
+    "adapter",
+    "edition",
+    "framework",
+    "language",
+    "library",
+    "locale",
+    "platform",
+    "provider",
+    "router",
+    "runtime",
+    "version",
+  ]);
+  const evidence = {
+    source: "heading" as const,
+    pageId: page.id,
+    headingId: section.headingId,
+    url: page.canonicalUrl ?? page.sourceUrl,
+    repoPath: page.repoPath,
+    quote: text,
+  };
+  row.headers.forEach((header, index) => {
+    const key = header.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const rawValue = stripTableMarkup(row.cells[index] ?? "");
+    if (!facetKeys.has(key) || rawValue.length === 0) return;
+    const composite = key === "framework"
+      ? rawValue.match(/^(.+?)\s+(.+?)\s+router$/i)
+      : null;
+    if (composite !== null && composite[1] !== undefined && composite[2] !== undefined) {
+      facets.push({ key, value: composite[1].trim(), evidence: [evidence] });
+      facets.push({ key: "router", value: composite[2].trim().toLowerCase(), evidence: [evidence] });
+      return;
+    }
+    facets.push({ key, value: rawValue, evidence: [evidence] });
+  });
+  return facets;
+}
+
+function stripTableMarkup(value: string): string {
+  return value
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mergeFacets(left: Chunk["facets"], right: Chunk["facets"]): Chunk["facets"] {
+  const values = new Map<string, Chunk["facets"][number]>();
+  for (const facet of [...left, ...right]) {
+    values.set(`${facet.key}:${facet.value}`, facet);
+  }
+  return [...values.values()].sort((a, b) => compareStrings(`${a.key}:${a.value}`, `${b.key}:${b.value}`));
 }
 
 function splitSection(lines: string[], maxTokens: number): string[] {

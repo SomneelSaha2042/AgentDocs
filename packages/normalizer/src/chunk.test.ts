@@ -201,4 +201,34 @@ Use the paginate method to retrieve all pages.
     expect(chunk?.headingPath).toEqual(["Pagination"]);
     expect(chunk?.text).not.toContain("title:");
   });
+
+  it("emits linked table rows as atomic, context-faceted chunks", () => {
+    const page = normalizeMarkdown({
+      repoPath: "webhooks.md",
+      sourceUrl: "https://docs.example.test/webhooks",
+      markdown: `# Webhooks
+
+| Framework | Working example |
+| --- | --- |
+| Next.js App Router | [App route](https://github.com/example/app) |
+| Next.js Pages Router | [Pages route](https://github.com/example/pages) |
+
+Use the signature verification API.
+`,
+    });
+
+    const chunks = chunkMarkdownByHeading(page);
+    const rows = chunks.filter((chunk) => chunk.kind === "table_row");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.text).toContain("Framework: Next.js App Router");
+    expect(rows[0]?.links).toEqual(["https://github.com/example/app"]);
+    expect(rows[0]?.facets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "framework", value: "Next.js" }),
+      expect.objectContaining({ key: "router", value: "app" }),
+    ]));
+    expect(rows[1]?.links).toEqual(["https://github.com/example/pages"]);
+    expect(chunks.find((chunk) => chunk.kind === "section")?.text).toContain("signature verification");
+    expect(chunks.find((chunk) => chunk.kind === "section")?.text).not.toContain("Next.js App Router");
+  });
 });
