@@ -801,6 +801,8 @@ function installDependencies(workspaceDir) {
 
 async function buildAgentDocs(buildDir) {
   const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  console.log("Ingesting raw documentation in hidden build workspace...");
+  execSync(`"${process.execPath}" "${cliPath}" --cwd "${buildDir}" ingest ./docs`, { stdio: "inherit" });
   console.log("Building AgentDocs artifacts in hidden build workspace...");
   execSync(`"${process.execPath}" "${cliPath}" --cwd "${buildDir}" build`, { stdio: "inherit" });
   return hashPath(path.join(buildDir, ".agentdocs"));

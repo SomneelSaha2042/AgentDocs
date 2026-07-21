@@ -88,7 +88,7 @@ node scripts/eval-suite-runner.mjs --suite north-star-v1 \
   --max-input-tokens 24000 --max-output-tokens 2000
 ```
 
-It runs Auth.js v5, Stripe webhooks, and LangChain JavaScript against the
+It runs Auth.js v5, the provenance-complete Stripe webhook holdout, and LangChain JavaScript against the
 experimental `query_docs,read_page` surface and both raw-document controls.
 Each invocation receives a unique result directory. The runner validates each
 fixture's Markdown corpus hash and required evidence before making any model
@@ -101,7 +101,7 @@ Aggregate only the isolated run directory:
 ```bash
 node scripts/aggregate-metrics.mjs \
   --results-dir .dogfood/evals/<run-id>-north-star-v1 \
-  authjs-v5 stripe-webhooks langchain-js
+  authjs-v5 stripe-webhooks-holdout langchain-js
 ```
 
 The suite uses a dual gate. Operational failures remain failed reliability

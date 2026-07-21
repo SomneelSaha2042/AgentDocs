@@ -28,3 +28,6 @@ fixtures/eval-tasks/langchain-js/docs/*
 fixtures/eval-tasks/stripe-webhooks/docs/*
 !fixtures/eval-tasks/stripe-webhooks/docs/
 !fixtures/eval-tasks/stripe-webhooks/docs/**/*.md
+fixtures/eval-tasks/stripe-webhooks-holdout/docs/*
+!fixtures/eval-tasks/stripe-webhooks-holdout/docs/
+!fixtures/eval-tasks/stripe-webhooks-holdout/docs/**/*.md

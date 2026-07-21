@@ -11,7 +11,7 @@ import {
 test("north-star suite declares the matched dense-doc matrix", () => {
   assert.deepEqual(NORTH_STAR_SUITE.tasks, [
     "authjs-v5",
-    "stripe-webhooks",
+    "stripe-webhooks-holdout",
     "langchain-js",
   ]);
   assert.deepEqual(NORTH_STAR_SUITE.groups, CLEAN_EVAL_GROUPS);

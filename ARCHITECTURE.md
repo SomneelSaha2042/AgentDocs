@@ -297,6 +297,11 @@ into isolated seeded runs, while `scripts/eval-fixtures.mjs` validates source
 snapshot hashes and required evidence before any model call. The north-star
 pilot uses hidden final oracles in addition to visible fixture smoke tests;
 private oracle files and fixture manifests are excluded from agent workspaces.
+The Stripe webhook case is a provenance-complete holdout: its four Markdown
+snapshots are captured from distinct official Stripe documentation URLs with
+one capture timestamp, per-file hashes, and no task-specific required-evidence
+rules. Experimental runs ingest each fixture's raw docs before building the
+agent-facing artifacts, so they cannot silently reuse stale or prebuilt output.
 Raw controls preserve the captured text-like corpus, including intentionally
 messy Markdown/HTML/JSON and versioned source material when present. Each
 provider request has a deterministic input/output budget; context overages and

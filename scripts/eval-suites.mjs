@@ -6,7 +6,7 @@ export const CLEAN_EVAL_GROUPS = [
 
 export const NORTH_STAR_SUITE = Object.freeze({
   id: "north-star-v1",
-  tasks: Object.freeze(["authjs-v5", "stripe-webhooks", "langchain-js"]),
+  tasks: Object.freeze(["authjs-v5", "stripe-webhooks-holdout", "langchain-js"]),
   groups: Object.freeze([...CLEAN_EVAL_GROUPS]),
   seeds: Object.freeze([1, 2, 3]),
   model: "gpt-4o",

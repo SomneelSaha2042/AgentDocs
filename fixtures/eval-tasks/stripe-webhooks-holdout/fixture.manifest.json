@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 2,
+  "task": "stripe-webhooks-holdout",
+  "source": {
+    "type": "official_markdown_snapshot",
+    "origin": "https://docs.stripe.com/",
+    "capturedAt": "2026-07-19T06:49:04.353Z",
+    "provenance": "Captured directly from the official documentation endpoints listed below.",
+    "format": "markdown",
+    "pageCount": 4,
+    "byteCount": 53925,
+    "corpusHash": "feca6a0f04757080150e9067898544c932cff1ab50a2d59ec9f125d0aad96684"
+  },
+  "sources": [
+    {
+      "id": "stripe-webhooks-node",
+      "origin": "https://docs.stripe.com",
+      "capturedAt": "2026-07-19T06:49:04.353Z",
+      "format": "markdown",
+      "derived": false
+    },
+    {
+      "id": "stripe-webhook-signature-node",
+      "origin": "https://docs.stripe.com",
+      "capturedAt": "2026-07-19T06:49:04.353Z",
+      "format": "markdown",
+      "derived": false
+    },
+    {
+      "id": "stripe-checkout-fulfillment",
+      "origin": "https://docs.stripe.com",
+      "capturedAt": "2026-07-19T06:49:04.353Z",
+      "format": "markdown",
+      "derived": false
+    },
+    {
+      "id": "stripe-events-api",
+      "origin": "https://docs.stripe.com",
+      "capturedAt": "2026-07-19T06:49:04.353Z",
+      "format": "markdown",
+      "derived": false
+    }
+  ],
+  "files": [
+    {
+      "path": "stripe-webhooks.md",
+      "sourceId": "stripe-webhooks-node",
+      "sourceUrl": "https://docs.stripe.com/webhooks.md?lang=node",
+      "sha256": "025970e8ca355b9e8116a855ba6f31bfa6df31d232d651418b3306308da07fbe"
+    },
+    {
+      "path": "stripe-webhook-signature.md",
+      "sourceId": "stripe-webhook-signature-node",
+      "sourceUrl": "https://docs.stripe.com/webhooks/signature.md?lang=node",
+      "sha256": "642918e36f02ed9cd56dfc50349c4297b08d0fe1137e8e7d1ff25c4e5d933881"
+    },
+    {
+      "path": "stripe-checkout-fulfillment.md",
+      "sourceId": "stripe-checkout-fulfillment",
+      "sourceUrl": "https://docs.stripe.com/checkout/fulfillment.md",
+      "sha256": "4e557185de45581922793520598ffc592cca086d57339dd74cb7f9641b331791"
+    },
+    {
+      "path": "stripe-events-api.md",
+      "sourceId": "stripe-events-api",
+      "sourceUrl": "https://docs.stripe.com/api/events.md",
+      "sha256": "6de4bfb696c7d1ba0f96bdd1113f31368adb57646742c8eb48aa27d9ce78cdd1"
+    }
+  ],
+  "evaluation": {
+    "oracle": "evaluation/private-test.mjs",
+    "visibleTest": "test.mjs"
+  }
+}
