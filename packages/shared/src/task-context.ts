@@ -850,7 +850,9 @@ export class TaskContextAssembler {
         const relatedChunk = this.options.agentMap.chunks.find((chunk) =>
           chunk.pageId === page.id
           && (headingPath.length === 0 || arraysEqual(chunk.headingPath, headingPath)));
-        const packMatch = pack?.codeExamples.some((example) => oneLine(example) === oneLine(block.value)) ?? false;
+        const packExample = pack?.codeExamples.find((example) =>
+          oneLine(taskPackCodeExampleValue(example)) === oneLine(block.value));
+        const packMatch = packExample !== undefined;
         if (!facetsCompatible(
           [...page.facets, ...(relatedChunk?.facets ?? [])],
           facets,
@@ -863,7 +865,9 @@ export class TaskContextAssembler {
         return {
           language: block.language,
           value: excerptCode(block.value, 320),
-          evidence: compactEvidence([{
+          evidence: packExample !== undefined && typeof packExample !== "string"
+            ? compactEvidence(packExample.evidence)
+            : compactEvidence([{
             source: "code_block" as const,
             pageId: page.id,
             headingId: block.sourceHeadingId,
@@ -1128,9 +1132,14 @@ function taskPackSearchText(pack: TaskPack): string {
     pack.id,
     pack.title,
     pack.description,
+    ...pack.codeExamples.map(taskPackCodeExampleValue),
     ...pack.steps.flatMap((step) => [step.title, step.description]),
     ...pack.gotchas.map((gotcha) => gotcha.text),
   ].join(" ").toLowerCase();
+}
+
+function taskPackCodeExampleValue(example: TaskPack["codeExamples"][number]): string {
+  return typeof example === "string" ? example : example.value;
 }
 
 function taskIntentScores(query: string): Map<string, number> {
@@ -1174,7 +1183,7 @@ const EVIDENCE_OVERLAP_SIGNALS: EvidenceOverlapSignal[] = [
 
 function evidenceOverlapScoreForTask(pack: TaskPack, query: string, agentMap: AgentMap): number {
   const text = taskPackSearchText(pack);
-  const code = pack.codeExamples.join("\n");
+  const code = pack.codeExamples.map(taskPackCodeExampleValue).join("\n");
   const pages = pack.requiredPages
     .map((pageId) => agentMap.pages.find((page) => page.id === pageId))
     .filter((page): page is DocPage => page !== undefined);

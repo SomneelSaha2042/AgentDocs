@@ -6,6 +6,7 @@ import {
   type Evidence,
   type Manifest,
   type SourceCoverage,
+  type TaskCodeExample,
   type TaskPack,
   type Chunk,
   type CodeBlock,
@@ -137,7 +138,9 @@ type TaskShapeSignal = {
 };
 
 type ScoredCodeExample = {
+  evidence: Evidence[];
   implementationEvidence: boolean;
+  language?: string;
   relevance: number;
   source: "chunk" | "sibling";
   value: string;
@@ -401,6 +404,8 @@ function generateTaskPack(
     const codeBlocks = getChunkCodeBlocks(agentMap, chunk);
     if (codeBlocks.length > 0) {
       return codeBlocks.map<ScoredCodeExample>((block) => ({
+        evidence: [evidenceForCodeBlock(page, block)],
+        language: block.language,
         value: block.value,
         relevance: codeBlockRelevance(block, page, family, topChunkHeadingPath),
         implementationEvidence: codeBlockImplementationScore(block, family) > 0,
@@ -409,6 +414,8 @@ function generateTaskPack(
     }
 
     return getSiblingHeadingCodeBlocks(agentMap, chunk).map<ScoredCodeExample>((block) => ({
+      evidence: [evidenceForCodeBlock(page, block)],
+      language: block.language,
       value: block.value,
       relevance: codeBlockRelevance(block, page, family),
       implementationEvidence: codeBlockImplementationScore(block, family) > 0,
@@ -419,16 +426,23 @@ function generateTaskPack(
   const selectedExamples = scoredExamples
     .filter((ex) => ex.source === "chunk" ? ex.relevance >= -2 : ex.relevance > 0)
     .sort((a, b) => b.relevance - a.relevance);
-  const codeExamples = stableUniqueInOrder(
-    selectedExamples.map((ex) => ex.value)
-  ).slice(0, 4);
+  const codeExamples: TaskCodeExample[] = stableUniqueInOrder(
+    selectedExamples.map((ex) => ex.value),
+  ).slice(0, 4).map((value) => {
+    const selected = selectedExamples.find((example) => example.value === value)!;
+    return {
+      language: selected.language,
+      value,
+      evidence: selected.evidence,
+    };
+  });
 
   const context = taskContext(ranked.map(({ chunk }) => chunk.facets), exclusiveKeys);
   const hasImplementationEvidence = ranked.some((candidate) => candidate.shapeScore > 0)
     || selectedExamples.some((example) => example.implementationEvidence);
   const hasImplementationProse = ranked.some(({ chunk }) => hasImplementationShapedProse(chunk.text));
   const hasCodeOrCommandEvidence = selectedExamples.some((example) => example.implementationEvidence)
-    || codeExamples.some((example) => hasCommandOrCodeEvidence(example));
+    || codeExamples.some((example) => hasCommandOrCodeEvidence(example.value));
   const baseConfidence = strongest >= 6 && requiredPages.length >= 2 && hasImplementationEvidence && hasImplementationProse && hasCodeOrCommandEvidence
     ? "high"
     : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
@@ -599,6 +613,18 @@ function evidenceForChunk(
   };
 }
 
+function evidenceForCodeBlock(page: DocPage, block: CodeBlock): Evidence {
+  return {
+    source: "code_block",
+    pageId: page.id,
+    headingId: block.sourceHeadingId,
+    codeBlockId: block.id,
+    url: page.canonicalUrl ?? page.sourceUrl,
+    repoPath: page.repoPath,
+    quote: block.value,
+  };
+}
+
 function renderLlmsTxt(
   project: ProjectIdentity,
   agentMap: AgentMap,
@@ -711,7 +737,11 @@ ${pack.steps.map((step, index) => `${index + 1}. **${step.title}**: ${oneLine(st
 
 ## Code examples
 
-${pack.codeExamples.length === 0 ? "No canonical code examples found." : pack.codeExamples.map((example) => `\`\`\`text\n${example}\n\`\`\``).join("\n\n")}
+${pack.codeExamples.length === 0 ? "No canonical code examples found." : pack.codeExamples.map((example) => {
+    const value = typeof example === "string" ? example : example.value;
+    const language = typeof example === "string" ? "text" : example.language ?? "text";
+    return `\`\`\`${language}\n${value}\n\`\`\``;
+  }).join("\n\n")}
 
 ## Gotchas
 
@@ -1011,7 +1041,7 @@ function hasCommandOrCodeEvidence(value: string): boolean {
 }
 
 function weakEvidenceReason(options: {
-  codeExamples: string[];
+  codeExamples: Array<{ value: string }>;
   contextConflicts: number;
   hasCodeOrCommandEvidence: boolean;
   hasImplementationEvidence: boolean;

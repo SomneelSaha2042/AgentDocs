@@ -89,7 +89,7 @@ No exclusive context conflicts detected.
 
 ## Code examples
 
-\`\`\`text
+\`\`\`bash
 pnpm add @example/sdk
 \`\`\`
 
@@ -130,7 +130,7 @@ No exclusive context conflicts detected.
 
 ## Code examples
 
-\`\`\`text
+\`\`\`bash
 pnpm add @example/sdk
 \`\`\`
 

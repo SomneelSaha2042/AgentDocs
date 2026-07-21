@@ -30,7 +30,7 @@ The repository is a strict TypeScript pnpm workspace with these packages:
 | `@agentdocs/crawler` | Deterministic public website crawling, sitemap/link discovery, scope handling, raw HTML snapshots, and normalized Markdown page output. |
 | `@agentdocs/normalizer` | Markdown/MDX/HTML/reST/AsciiDoc normalization, heading/link/code extraction, context facets, deterministic entity extraction helpers, and heading-aware chunking. |
 | `@agentdocs/graph` | Entity and relationship graph construction from normalized pages, links (including already-captured cross-origin targets), extracted entities, and evidence. |
-| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, generic task packs with Markdown diagnostics, manifest, agent map, chunks JSONL, and artifact validation. |
+| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, generic task packs with Markdown diagnostics and evidence-linked code examples, manifest, agent map, chunks JSONL, and artifact validation. |
 | `@agentdocs/indexer` | Offline search index creation and querying. Uses Node SQLite/FTS5 when available and a deterministic lexical fallback otherwise. |
 | `@agentdocs/doctor` | Agent-readiness checks, scoring, JSON report, and Markdown report generation. |
 | `@agentdocs/mcp-server` | JSON-RPC stdio MCP surface over built artifacts and the local search index. |

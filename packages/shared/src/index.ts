@@ -47,6 +47,7 @@ export {
   SourceProvenanceManifestSchema,
   StatusReportSchema,
   TaskPackSchema,
+  TaskCodeExampleSchema,
   TaskStepSchema,
   TryResultSchema,
 } from "./models.js";
@@ -92,6 +93,7 @@ export type {
   SourceProvenanceManifest,
   StatusReport,
   TaskPack,
+  TaskCodeExample,
   TaskStep,
   TryResult,
 } from "./models.js";

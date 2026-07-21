@@ -808,7 +808,13 @@ type TaskPack = {
   relatedEntities: string[];
   steps: TaskStep[];
   gotchas: Gotcha[];
-  codeExamples: string[];
+  codeExamples: Array<string | TaskCodeExample>;
+  evidence: Evidence[];
+};
+
+type TaskCodeExample = {
+  language?: string;
+  value: string;
   evidence: Evidence[];
 };
 

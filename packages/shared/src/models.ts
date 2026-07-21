@@ -175,6 +175,14 @@ export const GotchaSchema = z
   })
   .strict();
 
+export const TaskCodeExampleSchema = z
+  .object({
+    language: z.string().optional(),
+    value: z.string().min(1),
+    evidence: z.array(EvidenceSchema).min(1),
+  })
+  .strict();
+
 export const TaskPackSchema = z
   .object({
     id: z.string().min(1),
@@ -185,7 +193,9 @@ export const TaskPackSchema = z
     relatedEntities: z.array(z.string().min(1)),
     steps: z.array(TaskStepSchema).min(1),
     gotchas: z.array(GotchaSchema),
-    codeExamples: z.array(z.string()),
+    // Strings remain accepted for older hand-authored maps; generated packs
+    // emit structured examples with their own code-block evidence.
+    codeExamples: z.array(z.union([z.string(), TaskCodeExampleSchema])),
     evidence: z.array(EvidenceSchema).min(1),
     context: z
       .object({
@@ -999,6 +1009,7 @@ export type EdgeType = z.infer<typeof EdgeTypeSchema>;
 export type Edge = z.infer<typeof EdgeSchema>;
 export type TaskStep = z.infer<typeof TaskStepSchema>;
 export type Gotcha = z.infer<typeof GotchaSchema>;
+export type TaskCodeExample = z.infer<typeof TaskCodeExampleSchema>;
 export type TaskPack = z.infer<typeof TaskPackSchema>;
 export type AgentMap = z.infer<typeof AgentMapSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;

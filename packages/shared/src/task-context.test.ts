@@ -38,6 +38,44 @@ describe("TaskContextAssembler", () => {
     expect(JSON.stringify(result)).toContain("code_auth");
   });
 
+  it("uses structured task-pack code evidence when selecting an example", () => {
+    const map = fixtureMap();
+    map.taskPacks[0]!.codeExamples = [{
+      language: "ts",
+      value: "const client = createClient({ auth: process.env.API_KEY });",
+      evidence: [{
+        source: "code_block",
+        pageId: "page_auth",
+        codeBlockId: "code_auth",
+        repoPath: "docs/auth.md",
+        quote: "const client = createClient({ auth: process.env.API_KEY });",
+      }],
+    }];
+
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "authenticate requests with an API key",
+      task: "authentication",
+      search: {
+        query: "authenticate requests with an API key",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(result.codeExamples[0]?.evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: "code_block", codeBlockId: "code_auth" }),
+    ]));
+  });
+
   it("stops when an explicit symbol has no source candidate", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
     const decision = assembler.buildContextDecision({

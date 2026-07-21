@@ -428,7 +428,7 @@ pnpm add @example/sdk
     expect(pack.requiredPages).toContain(pageCId);
     const example = pack.codeExamples[0];
     if (!example) throw new Error("example is undefined");
-    expect(example).toContain("fastify.post('/submit'");
+    expect(typeof example === "string" ? example : example.value).toContain("fastify.post('/submit'");
     expect(example).not.toContain("setValidatorCompiler");
   });
 
@@ -672,7 +672,7 @@ pnpm add @example/sdk
 
     const pack = generated.taskPacks.find((p) => p.id === "quickstart");
     expect(pack).toBeDefined();
-    expect(pack?.codeExamples[0]).toContain("new Client");
+    expect(typeof pack?.codeExamples[0] === "string" ? pack.codeExamples[0] : pack?.codeExamples[0]?.value).toContain("new Client");
   });
 
   it("filters unrelated same-heading sibling code examples", () => {
@@ -738,7 +738,7 @@ pnpm add @example/sdk
 
     const pack = generated.taskPacks.find((p) => p.id === "quickstart");
     expect(pack).toBeDefined();
-    expect(pack?.codeExamples).toEqual([clientCode]);
+    expect(pack?.codeExamples.map((example) => typeof example === "string" ? example : example.value)).toEqual([clientCode]);
   });
 
   it("counts same-heading sibling code as implementation evidence for confidence", () => {
@@ -915,7 +915,7 @@ pnpm add @example/sdk
     expect(step.title).toBe("Pagination Basics");
     const example = pack.codeExamples[0];
     if (!example) throw new Error("example is undefined");
-    expect(example).toContain("for await");
+    expect(typeof example === "string" ? example : example.value).toContain("for await");
   });
 });
 
