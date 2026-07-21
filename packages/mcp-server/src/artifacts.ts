@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
-import { searchIndex } from "@agentdocs/indexer";
+import { openSearchIndex, type SearchIndexReader } from "@agentdocs/indexer";
 import {
   AgentMapSchema,
   BuildStateSchema,
@@ -57,6 +57,8 @@ export class ArtifactService {
   readonly outputRoot: string;
   private agentMap?: AgentMap;
   private manifest?: Manifest;
+  private searchReader?: SearchIndexReader;
+  private assembler?: TaskContextAssembler;
 
   constructor(private readonly options: ArtifactServiceOptions) {
     this.outputRoot = path.resolve(options.cwd, options.out);
@@ -66,6 +68,12 @@ export class ArtifactService {
     await this.loadAgentMap();
   }
 
+  async close(): Promise<void> {
+    this.searchReader?.close();
+    this.searchReader = undefined;
+    this.assembler = undefined;
+  }
+
   async searchDocs(
     query: string,
     limit = 8,
@@ -73,22 +81,23 @@ export class ArtifactService {
     facets?: Record<string, string>,
   ) {
     validateLimit(limit);
-    const response = await searchIndex({
+    const reader = this.searchReader ??= await openSearchIndex({
       cwd: this.options.cwd,
       out: this.options.out,
+    });
+    return reader.search({
       query,
       limit,
       task,
       facets,
     });
-    return response;
   }
 
   async queryDocs(
     goal: string,
     task?: string,
     facets?: Record<string, string>,
-    limit = 5,
+    limit = 3,
   ) {
     validateContextLimit(limit);
     const freshness = await this.getRecordedStatus();
@@ -97,16 +106,20 @@ export class ArtifactService {
   }
 
   async readPage(options: {
+    ref?: string;
     pageId?: string;
     chunkId?: string;
     heading?: string;
     maxChars?: number;
     fullPage?: boolean;
   }) {
-    if (options.pageId !== undefined) validateId(options.pageId, "pageId");
-    if (options.chunkId !== undefined) validateId(options.chunkId, "chunkId");
-    if (options.pageId === undefined && options.chunkId === undefined) {
-      throw new McpArtifactError("pageId or chunkId is required.", "INVALID_ARGUMENT");
+    const reference = options.ref === undefined ? undefined : parsePageReference(options.ref);
+    const pageId = reference?.pageId ?? options.pageId;
+    const chunkId = reference?.targetId ?? options.chunkId;
+    if (pageId !== undefined) validateId(pageId, "pageId");
+    if (chunkId !== undefined) validateId(chunkId, "chunkId");
+    if (pageId === undefined && chunkId === undefined) {
+      throw new McpArtifactError("ref, pageId, or chunkId is required.", "INVALID_ARGUMENT");
     }
     const maxChars = options.maxChars ?? 4000;
     if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 50000) {
@@ -114,7 +127,11 @@ export class ArtifactService {
     }
     try {
       const map = await this.loadAgentMap();
-      return new TaskContextAssembler({ agentMap: map }).readPage(options);
+      return this.getAssembler(map).readPage({
+        ...options,
+        pageId,
+        chunkId,
+      });
     } catch (error) {
       if (error instanceof Error && /was not found/.test(error.message)) {
         throw new McpArtifactError(error.message, "NOT_FOUND");
@@ -245,7 +262,7 @@ export class ArtifactService {
     limit?: number;
   }) {
     const map = await this.loadAgentMap();
-    const assembler = new TaskContextAssembler({ agentMap: map });
+    const assembler = this.getAssembler(map);
     const decision = await assembler.resolveContextDecision({
       goal: options.goal,
       task: options.task,
@@ -480,6 +497,10 @@ export class ArtifactService {
     }
   }
 
+  private getAssembler(map: AgentMap): TaskContextAssembler {
+    return this.assembler ??= new TaskContextAssembler({ agentMap: map });
+  }
+
   private async readArtifact(relativePath: string, missingMessage: string): Promise<string> {
     return (await this.readArtifactBuffer(relativePath, missingMessage)).toString("utf8");
   }
@@ -524,6 +545,18 @@ function validateContextLimit(limit: number): void {
 
 function matchResource(uri: string, pattern: RegExp): string | undefined {
   return pattern.exec(uri)?.[1];
+}
+
+function parsePageReference(value: string): { pageId: string; targetId?: string } {
+  const match = /^agentdocs:\/\/pages\/([a-zA-Z0-9_-]+)\.md(?:#([a-zA-Z0-9_-]+))?$/.exec(value);
+  if (match === null) {
+    throw new McpArtifactError(
+      "ref must be an AgentDocs page reference such as agentdocs://pages/page_id.md#chunk_id.",
+      "INVALID_ARGUMENT",
+    );
+  }
+
+  return { pageId: match[1]!, targetId: match[2] };
 }
 
 function headingPathFor(page: DocPage, headingId?: string): string[] {

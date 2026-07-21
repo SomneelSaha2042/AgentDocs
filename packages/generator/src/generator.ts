@@ -704,7 +704,7 @@ ${linesOrFallback([...rules.map((rule) => `- ${rule}`), ...concepts.filter((valu
 ## Guidelines for coding agents
 
 - **Retrieve compact context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, and citations.
-- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, use \`read_page\` with one cited ID (passed as \`chunkId\`) before writing. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
+- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, call \`read_page\` once for every required \`followUpRefs[].ref\` before writing. Pass each exact \`agentdocs://...\` ref unchanged. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
 - **Read only cited detail**: Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
 - **Coding & Implementation**: Once readiness is satisfied, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
 

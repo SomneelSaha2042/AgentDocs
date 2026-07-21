@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-14 during the evidence-backed evaluation budget and raw-corpus pass.
+Verified on 2026-07-21 during the deterministic context/index recovery pass.
 
 ## Product Shape
 
@@ -182,9 +182,11 @@ Current normalizer behavior verified from package tests and implementation:
 ## Search And Context
 
 `packages/indexer` builds offline search over pages, headings, chunks, facets,
-and task-pack links. On runtimes with `node:sqlite` and FTS5, it uses SQLite
-FTS5. Otherwise it writes a deterministic lexical fallback index to the same
-`index.sqlite` path.
+and task-pack links. On runtimes with `node:sqlite` and FTS5, the MCP/CLI read
+path keeps one validated SQLite reader open per service and asks FTS5 for a
+bounded candidate set before applying task/facet filters. Otherwise it loads a
+deterministic lexical fallback index. The public one-shot search helper closes
+its reader after each call.
 
 `packages/shared/src/task-context.ts` contains the public
 `TaskContextAssembler` interface and its internal evidence-planning seam. It
@@ -222,9 +224,13 @@ Generated agent guidance and evaluator prompts use the same generic evidence
 protocol: `implement` permits writing, `inspect` requires reading every
 required source reference, and `stop` requires resolving the warning before
 implementation.
-The MCP server remains stateless and exposes the existing two-tool compact
-profile; enforcement in the active evaluation runner is diagnostic and does not
-add package-specific routing logic.
+The MCP server is externally stateless while caching its validated index reader
+and context assembler for the lifetime of a request handler. It exposes the
+two-tool compact profile; enforcement in the active evaluation runner is
+diagnostic and does not add package-specific routing logic. Compact
+`query_docs` responses keep complete code examples when they fit the transport
+budget and emit exact `read_page` refs for larger examples instead of silently
+truncating source.
 
 ## MCP Surface
 

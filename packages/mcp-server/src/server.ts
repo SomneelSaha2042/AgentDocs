@@ -34,15 +34,11 @@ const TOOLS = [
     goal: stringProperty(),
     task: stringProperty(),
     facets: { type: "object", additionalProperties: { type: "string" } },
-    limit: contextLimitProperty(),
   }, ["goal"]),
-  tool("read_page", "Read a cited source chunk or section when query_docs needs audit detail. For INSPECT responses, read every required follow-up reference before writing. Pass the exact citation ID into the 'chunkId' parameter (works for chunk, heading, and code-block citations).", {
-    pageId: stringProperty("Optionally pass the exact page citation ID if reading a full page."),
-    chunkId: stringProperty("The exact citation ID (e.g. heading_auth_123 or code_auth) or followUpRef chunkId to read."),
-    heading: stringProperty("Optional heading name. Ignored if chunkId is provided."),
+  tool("read_page", "Read the exact source reference returned by query_docs. Pass its ref unchanged; required reads must be completed before implementation.", {
+    ref: stringProperty("Exact AgentDocs reference, for example agentdocs://pages/page_id.md#chunk_id."),
     maxChars: charLimitProperty(),
-    fullPage: { type: "boolean", description: "Set to true to read the full page instead of just the chunk." },
-  }, []),
+  }, ["ref"]),
   tool("search_docs", "Search built documentation artifacts.", {
     query: stringProperty(),
     limit: integerProperty(),
@@ -107,8 +103,7 @@ const RESOURCE_TEMPLATES = [
   { uriTemplate: "agentdocs://pages/{pageId}.md", name: "pages", mimeType: "text/markdown" },
 ];
 
-export function createMcpRequestHandler(options: McpServerOptions) {
-  const service = new ArtifactService(options);
+export function createMcpRequestHandler(options: McpServerOptions, service = new ArtifactService(options)) {
   return async (request: JsonRpcRequest): Promise<JsonRpcResponse | undefined> => {
     if (request.id === undefined) {
       return undefined;
@@ -131,28 +126,32 @@ export function createMcpRequestHandler(options: McpServerOptions) {
 
 export async function serveAgentDocsMcp(options: McpServerOptions): Promise<void> {
   const artifacts = new ArtifactService(options);
-  await artifacts.validateArtifacts();
-  const handle = createMcpRequestHandler(options);
-  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-  for await (const line of input) {
-    if (line.trim().length === 0) {
-      continue;
+  try {
+    await artifacts.validateArtifacts();
+    const handle = createMcpRequestHandler(options, artifacts);
+    const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+    for await (const line of input) {
+      if (line.trim().length === 0) {
+        continue;
+      }
+      let request: JsonRpcRequest;
+      try {
+        request = parseRequest(line);
+      } catch (error) {
+        process.stdout.write(`${JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          error: protocolError(error),
+        })}\n`);
+        continue;
+      }
+      const response = await handle(request);
+      if (response !== undefined) {
+        process.stdout.write(`${JSON.stringify(response)}\n`);
+      }
     }
-    let request: JsonRpcRequest;
-    try {
-      request = parseRequest(line);
-    } catch (error) {
-      process.stdout.write(`${JSON.stringify({
-        jsonrpc: "2.0",
-        id: null,
-        error: protocolError(error),
-      })}\n`);
-      continue;
-    }
-    const response = await handle(request);
-    if (response !== undefined) {
-      process.stdout.write(`${JSON.stringify(response)}\n`);
-    }
+  } finally {
+    await artifacts.close();
   }
 }
 
@@ -220,11 +219,11 @@ async function callTool(
           requiredString(args.goal, "goal"),
           optionalString(args.task),
           isRecord(args.facets) ? stringRecord(args.facets) : undefined,
-          optionalInteger(args.limit),
         );
         break;
       case "read_page":
         result = await service.readPage({
+          ref: optionalString(args.ref),
           pageId: optionalString(args.pageId),
           chunkId: optionalString(args.chunkId),
           heading: optionalString(args.heading),
@@ -367,7 +366,7 @@ function formatQueryDocs(result: QueryDocsResponse): string {
         ? "Read one cited source before implementation:"
       : "Read only if more source detail is needed:";
     lines.push("", followUpLabel, ...result.followUpRefs.map((ref) =>
-      `- ${ref.title}: ${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
+      `- ${ref.title}: read_page ref=${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
   }
   if (result.citations.length > 0) {
     lines.push("", "Citations:", ...result.citations.map((citation) => {

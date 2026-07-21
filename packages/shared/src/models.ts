@@ -560,7 +560,7 @@ export const QueryDocsResponseSchema = z
     ),
     followUpRefs: z.array(
       z.object({
-        type: z.enum(["chunk", "page", "task_pack"]),
+        type: z.enum(["chunk", "code_block", "page", "task_pack"]),
         ref: z.string().min(1),
         pageId: z.string().min(1).optional(),
         chunkId: z.string().min(1).optional(),

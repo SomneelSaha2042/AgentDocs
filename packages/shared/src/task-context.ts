@@ -136,10 +136,62 @@ const TASK_INTENT_RULES: TaskIntentRule[] = [
 export class TaskContextAssembler {
   private readonly pages: Map<string, DocPage>;
   private readonly chunks: Map<string, Chunk>;
+  private readonly chunkSearch: Map<string, { text: string; tokens: string[] }>;
+  private readonly chunkIdsByToken: Map<string, Set<string>>;
+  private readonly chunkByPageHeading: Map<string, Chunk>;
+  private readonly firstChunkByPage: Map<string, Chunk>;
+  private readonly corpusTerms: string[];
 
   constructor(private readonly options: TaskContextAssemblerOptions) {
     this.pages = new Map(options.agentMap.pages.map((page) => [page.id, page]));
     this.chunks = new Map(options.agentMap.chunks.map((chunk) => [chunk.id, chunk]));
+    this.chunkByPageHeading = new Map(options.agentMap.chunks.map((chunk) => [
+      `${chunk.pageId}\u0000${chunk.headingPath.join("\u0000")}`,
+      chunk,
+    ]));
+    this.firstChunkByPage = new Map();
+    for (const chunk of options.agentMap.chunks) {
+      if (!this.firstChunkByPage.has(chunk.pageId)) this.firstChunkByPage.set(chunk.pageId, chunk);
+    }
+    this.chunkSearch = new Map(options.agentMap.chunks.map((chunk) => {
+      const text = `${this.pages.get(chunk.pageId)?.title ?? ""} ${chunk.headingPath.join(" ")} ${chunk.text}`;
+      return [chunk.id, { text, tokens: tokenize(text) }];
+    }));
+    this.chunkIdsByToken = new Map();
+    for (const [chunkId, searchable] of this.chunkSearch) {
+      for (const token of new Set(searchable.tokens)) {
+        const ids = this.chunkIdsByToken.get(token) ?? new Set<string>();
+        ids.add(chunkId);
+        this.chunkIdsByToken.set(token, ids);
+      }
+    }
+    const genericCorpusTerms = new Set([
+      "Create", "Return", "Promise", "Request", "Response", "Config", "Options", "Properties", "Parameters",
+      "TypeScript", "JavaScript", "Application", "Auth", "Adapter", "Router", "Sign", "Only", "Required",
+      "This", "Current",
+    ]);
+    const corpusTerms = new Set<string>();
+    for (const page of options.agentMap.pages) {
+      for (const block of page.codeBlocks) {
+        const values = [
+          ...(block.value.match(/@[a-z0-9._-]+\/[a-z0-9._-]+/gi) ?? []),
+          // A single leading-capital word is usually prose (for example,
+          // "Checks" or "Promise"). Keep symbols with a meaningful case
+          // boundary so corpus-derived requirements remain conservative.
+          ...(block.value.match(/\b[A-Z][A-Za-z0-9.-]*[a-z][A-Z][A-Za-z0-9.-]*\b/g) ?? []),
+        ];
+        for (const value of values) {
+          if (!genericCorpusTerms.has(value)) corpusTerms.add(value);
+          if (value.startsWith("@")) {
+            const packageName = value.slice(value.lastIndexOf("/") + 1);
+            for (const part of packageName.split(/[._-]/)) {
+              if (part.length > 3 && !genericCorpusTerms.has(part)) corpusTerms.add(part);
+            }
+          }
+        }
+      }
+    }
+    this.corpusTerms = [...corpusTerms].sort(compareStrings);
   }
 
   async resolveContextDecision(options: ResolveContextDecisionOptions): Promise<ContextDecision> {
@@ -147,7 +199,7 @@ export class TaskContextAssembler {
     // detailed task text often names evidence that lives outside the generic
     // pack (provider, adapter, framework, or invocation-specific pages).
     // Restricting the index here makes that evidence unreachable.
-    const searchQuery = taskTextFor(options.goal, options.task);
+    const searchQuery = positiveQueryText(taskTextFor(options.goal, options.task));
     const searchLimit = Math.max(options.limit ?? 12, 8);
     const initialSearch = await options.search({
       query: searchQuery,
@@ -195,7 +247,10 @@ export class TaskContextAssembler {
       search: options.search,
       requestedFacets,
       query: queryDraft,
-      queryWarnings: queryDraft.warnings,
+      queryWarnings: [
+        ...queryDraft.warnings,
+        ...(queryDraft.codeExamples.length === 0 ? ["No canonical code examples found."] : []),
+      ],
     });
     const query = this.withReadiness(queryDraft, verification);
     return {
@@ -278,10 +333,17 @@ export class TaskContextAssembler {
       if (matching !== undefined) requirementRefs.set(requirement.value, matching);
     }
     const followUpRefs = this.attachRequiredReads(query.followUpRefs, incomplete, requirementRefs);
+    const codeMissing = query.codeExamples.length === 0;
+    const effectiveRecommendation = codeMissing && verification.recommendation === "implement"
+      ? "inspect" as const
+      : verification.recommendation;
     const readiness = {
-      recommendation: verification.recommendation,
-      coverage: verification.coverage,
-      issueCodes: stableUnique(verification.issues.map((issue) => issue.code)).slice(0, 6),
+      recommendation: effectiveRecommendation,
+      coverage: codeMissing && verification.coverage === "complete" ? "partial" as const : verification.coverage,
+      issueCodes: stableUnique([
+        ...verification.issues.map((issue) => issue.code),
+        ...(codeMissing ? ["no_canonical_code_examples"] : []),
+      ]).slice(0, 6),
       gaps: incomplete.map((requirement) => ({
         requirement: requirement.value,
         status: requirement.status === "partial" || requirement.status === "missing" || requirement.status === "unknown"
@@ -292,7 +354,7 @@ export class TaskContextAssembler {
           : requirement.evidence[0].codeBlockId ?? requirement.evidence[0].headingId ?? requirement.evidence[0].pageId,
       })),
     } satisfies ContextReadiness;
-    const answer = verification.recommendation === "implement"
+    const answer = effectiveRecommendation === "implement"
       ? query.answer
       : query.answer.replace(
         "The steps and code examples below are sufficient to implement unless your task needs detail not covered here.",
@@ -324,12 +386,19 @@ export class TaskContextAssembler {
       if (page === undefined || parsed === null) continue;
       const targetId = parsed[2];
       const chunk = targetId === undefined ? undefined : this.chunks.get(targetId);
+      const codeBlock = targetId === undefined ? undefined : page.codeBlocks.find((block) => block.id === targetId);
+      const heading = targetId === undefined ? undefined : page.headings.find((item) => item.id === targetId);
+      if (targetId !== undefined && chunk === undefined && codeBlock === undefined && heading === undefined) continue;
       available.push({
-        type: targetId === undefined ? "page" as const : "chunk" as const,
+        type: targetId === undefined ? "page" as const : codeBlock !== undefined ? "code_block" as const : "chunk" as const,
         ref,
         pageId: page.id,
         chunkId: targetId,
-        title: chunk === undefined ? page.title : titleForChunk(chunk, page),
+        title: codeBlock !== undefined
+          ? "Code example"
+          : chunk === undefined
+            ? heading?.text ?? page.title
+            : titleForChunk(chunk, page),
         sourceUrl: page.canonicalUrl ?? page.sourceUrl,
         repoPath: page.repoPath,
       });
@@ -376,18 +445,22 @@ export class TaskContextAssembler {
       search,
       query,
       requestedFacets: requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets),
-      queryWarnings: query.warnings,
+      queryWarnings: [
+        ...query.warnings,
+        ...(query.codeExamples.length === 0 ? ["No canonical code examples found."] : []),
+      ],
     });
     return this.withReadiness(query, verification);
   }
 
   private buildQueryDocs(options: QueryDocsOptions): QueryDocsResponse {
     const limit = clampLimit(options.limit ?? 2, 1, 3);
-    const queryText = queryTextFor(options.goal, options.task);
+    const queryText = positiveQueryText(queryTextFor(options.goal, options.task));
     const requestedFacets = requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets);
     const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
     const selectedPack = taskSelection?.pack;
-    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets)
+    const allowUnknownFacets = options.facets === undefined;
+    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets, allowUnknownFacets)
       .slice(0, 5);
     const steps = stableUniqueBy(
       [
@@ -397,6 +470,7 @@ export class TaskContextAssembler {
           evidence: compactEvidence([evidenceForChunk(page, chunk)]),
         })),
         ...(selectedPack?.steps
+          .filter((step) => isRelevantPackEvidence(`${step.title} ${step.description}`, queryText))
           .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, requestedFacets))
           .map((step) => ({
             title: step.title,
@@ -406,9 +480,10 @@ export class TaskContextAssembler {
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
     ).slice(0, Math.min(limit, 2));
-    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, limit, requestedFacets);
+    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, limit, requestedFacets, allowUnknownFacets);
     const gotchas = stableUniqueBy(
       (selectedPack?.gotchas
+        .filter((gotcha) => gotcha.severity === "critical" || isRelevantPackEvidence(gotcha.text, queryText))
         .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, requestedFacets))
         .map((gotcha) => ({
           ...gotcha,
@@ -439,10 +514,44 @@ export class TaskContextAssembler {
         `${warning.code}: ${warning.key}=${warning.values.join(",")}`) ?? []),
     ].filter((warning): warning is string => warning !== undefined);
     const confidence = confidenceFor(selectedPack, rankedChunks, steps.length, codeExamples.length);
-    const shouldIncludeFollowUpRefs = confidence === "low" || warnings.length > 0 || steps.length === 0;
+    const codeFollowUpRefs = codeExamples
+      .filter((example) => example.value.length > 1600)
+      .map((example) => {
+        const evidence = example.evidence.find((item) => item.codeBlockId !== undefined && item.pageId !== undefined);
+        if (evidence?.pageId === undefined || evidence.codeBlockId === undefined) return undefined;
+        const page = this.pages.get(evidence.pageId);
+        if (page === undefined) return undefined;
+        return {
+          type: "code_block" as const,
+          ref: `agentdocs://pages/${page.id}.md#${evidence.codeBlockId}`,
+          pageId: page.id,
+          chunkId: evidence.codeBlockId,
+          title: "Code example",
+          sourceUrl: page.canonicalUrl ?? page.sourceUrl,
+          repoPath: page.repoPath,
+          requiredFor: ["complete code example"],
+        };
+      })
+      .filter((value): value is NonNullable<typeof value> => value !== undefined);
+    const longCodeFollowUpRefs = rankedChunks.flatMap(({ page, chunk }) => page.codeBlocks
+      .filter((block) => block.value.length > 1600 && arraysEqual(headingPathFor(page, block.sourceHeadingId), chunk.headingPath))
+      .map((block) => ({
+        type: "code_block" as const,
+        ref: `agentdocs://pages/${page.id}.md#${block.id}`,
+        pageId: page.id,
+        chunkId: block.id,
+        title: "Complete code example",
+        sourceUrl: page.canonicalUrl ?? page.sourceUrl,
+        repoPath: page.repoPath,
+        requiredFor: ["complete code example"],
+      })));
+    const shouldIncludeFollowUpRefs = confidence === "low" || warnings.length > 0 || steps.length === 0 || codeFollowUpRefs.length > 0 || longCodeFollowUpRefs.length > 0;
     const followUpRefs = shouldIncludeFollowUpRefs
       ? stableUniqueBy(
-        rankedChunks.map(({ chunk, page }) => ({
+        [
+          ...codeFollowUpRefs,
+          ...longCodeFollowUpRefs,
+          ...rankedChunks.map(({ chunk, page }) => ({
           type: "chunk" as const,
           ref: `agentdocs://pages/${page.id}.md#${chunk.id}`,
           pageId: page.id,
@@ -450,9 +559,10 @@ export class TaskContextAssembler {
           title: titleForChunk(chunk, page),
           sourceUrl: page.canonicalUrl ?? page.sourceUrl,
           repoPath: page.repoPath,
-        })),
-        (ref) => ref.chunkId,
-      ).slice(0, 1)
+          })),
+        ],
+        (ref) => ref.ref,
+      ).slice(0, 3)
       : [];
     const implementationHints = sourceBackedHints(rankedChunks, codeExamples);
     const readiness = readinessFromQueryWarnings(warnings, steps.length, codeExamples.length);
@@ -729,6 +839,7 @@ export class TaskContextAssembler {
       selectedPack: pack,
       query: options.query,
       candidateEvidenceFor: (requirement) => this.candidateEvidenceFor(requirement),
+      corpusTerms: this.corpusTerms,
     });
     const incompleteRequirements = requirements.filter((requirement) =>
       requirement.status === "missing" || requirement.status === "partial" || requirement.status === "unknown");
@@ -736,7 +847,7 @@ export class TaskContextAssembler {
       issues.push({
         code: "missing_task_requirement_evidence",
         severity: requirement.status === "missing"
-          || (requirement.status === "unknown" && requirement.source === "explicit")
+          || (requirement.status === "unknown" && requirement.source === "explicit" && !isNegativeConstraint(requirement.value))
           ? "critical"
           : "warning",
         message: requirement.message,
@@ -781,13 +892,31 @@ export class TaskContextAssembler {
     search: SearchResponse | undefined,
     pack: TaskPack | undefined,
     facets: Record<string, string> | undefined,
+    allowUnknownFacets = false,
   ): RankedChunk[] {
     const byId = new Map<string, number>();
     for (const [index, result] of (search?.results ?? []).entries()) {
       byId.set(result.chunkId, Math.max(4, 24 - index * 2));
     }
     const packText = pack === undefined ? "" : taskPackSearchText(pack);
-    return this.options.agentMap.chunks
+    const anchors = highSignalAnchors(goal).map(normalizeFacetText);
+    const queryTerms = stableUnique(tokenize(goal));
+    const candidateIds = new Set<string>(search?.results.map((result) => result.chunkId) ?? []);
+    for (const anchor of anchors) {
+      for (const token of tokenize(anchor)) {
+        const ids = [...(this.chunkIdsByToken.get(token) ?? [])].slice(0, 32);
+        for (const chunkId of ids) candidateIds.add(chunkId);
+      }
+    }
+    if (pack !== undefined) {
+      for (const chunk of this.options.agentMap.chunks) {
+        if (pack.requiredPages.includes(chunk.pageId)) candidateIds.add(chunk.id);
+      }
+    }
+    const candidates = candidateIds.size === 0 ? this.options.agentMap.chunks : [...candidateIds]
+      .map((id) => this.chunks.get(id))
+      .filter((chunk): chunk is Chunk => chunk !== undefined);
+    return candidates
       .map((chunk) => {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
@@ -795,10 +924,17 @@ export class TaskContextAssembler {
           scopedFacetsForChunks(page, [chunk]),
           facets,
           `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`,
+          allowUnknownFacets,
         )) return undefined;
-        const lexical = scoreTerms(`${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`, goal);
+        const cachedSearch = this.chunkSearch.get(chunk.id);
+        const searchableText = cachedSearch?.text ?? `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`;
+        const lexical = scoreTokenizedTerms(cachedSearch?.tokens ?? tokenize(searchableText), queryTerms, searchableText, goal);
+        const exact = exactAnchorScoreWithAnchors(searchableText, anchors);
+        const headingExact = exactAnchorScoreWithAnchors(chunk.headingPath.join(" "), anchors);
         const score = (byId.get(chunk.id) ?? 0)
           + lexical
+          + exact * 5
+          + headingExact * 12
           + (packText.length > 0 && scoreTerms(`${chunk.headingPath.join(" ")} ${chunk.text}`, packText) > 0 ? 1 : 0);
         return { chunk, page, score };
       })
@@ -808,23 +944,29 @@ export class TaskContextAssembler {
 
   private candidateEvidenceFor(requirement: Pick<RequirementAssessment, "kind" | "value">): Evidence[] {
     if (requirement.kind === "facet") return [];
-    const candidates = this.options.agentMap.chunks
+    const candidateIds = new Set<string>();
+    for (const term of meaningfulTerms(requirement.value)) {
+      for (const chunkId of this.chunkIdsByToken.get(term) ?? []) candidateIds.add(chunkId);
+    }
+    const candidates = [...candidateIds]
+      .map((id) => this.chunks.get(id))
+      .filter((chunk): chunk is Chunk => chunk !== undefined)
       .map((chunk) => {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
-        const text = `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`.toLowerCase();
+        const text = `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`;
         const normalizedRequirement = normalizeFacetText(requirement.value);
         const normalizedCandidate = normalizeFacetText(text);
         const terms = meaningfulTerms(requirement.value);
         const matched = requirement.kind === "constraint"
-          ? terms.filter((term) => text.includes(term)).length
-          : text.includes(requirement.value.toLowerCase()) ? terms.length || 1 : 0;
+          ? terms.filter((term) => containsTerm(text, term)).length
+          : containsRequirement(text, requirement.value) ? terms.length || 1 : 0;
         const threshold = requirement.kind === "constraint"
           ? Math.max(1, Math.ceil(terms.length * 0.5))
           : 1;
         if (matched < threshold) return undefined;
-        const exactHeading = normalizeFacetText(`${page.title} ${chunk.headingPath.join(" ")}`).includes(normalizedRequirement);
-        const exactText = normalizedCandidate.includes(normalizedRequirement);
+        const exactHeading = containsRequirement(`${page.title} ${chunk.headingPath.join(" ")}`, requirement.value);
+        const exactText = containsRequirement(normalizedCandidate, normalizedRequirement);
         return {
           evidence: evidenceForChunk(page, chunk),
           score: (exactHeading ? 100 : 0) + (exactText ? 40 : 0) + matched + scoreTerms(text, requirement.value),
@@ -841,30 +983,38 @@ export class TaskContextAssembler {
     pack: TaskPack | undefined,
     limit: number,
     facets: Record<string, string> | undefined,
+    allowUnknownFacets = false,
   ) {
     const rankedChunkIds = new Set(ranked.map(({ chunk }) => chunk.id));
     const rankedPageIds = new Set(ranked.map(({ page }) => page.id));
     const examples = this.options.agentMap.pages.flatMap((page) =>
       page.codeBlocks.map((block) => {
+        if (!isUsableCodeExample(block.value, block.language)) return undefined;
         const headingPath = headingPathFor(page, block.sourceHeadingId);
-        const relatedChunk = this.options.agentMap.chunks.find((chunk) =>
-          chunk.pageId === page.id
-          && (headingPath.length === 0 || arraysEqual(chunk.headingPath, headingPath)));
+        const relatedChunk = headingPath.length === 0
+          ? this.firstChunkByPage.get(page.id)
+          : this.chunkByPageHeading.get(`${page.id}\u0000${headingPath.join("\u0000")}`);
         const packExample = pack?.codeExamples.find((example) =>
           oneLine(taskPackCodeExampleValue(example)) === oneLine(block.value));
         const packMatch = packExample !== undefined;
-        if (!facetsCompatible(
+        const blockFacetMatch = facets !== undefined
+          && Object.entries(facets).every(([, value]) => containsFacetValue(block.value, value));
+        if (!blockFacetMatch && !facetsCompatible(
           scopedFacetsForChunks(page, relatedChunk === undefined ? [] : [relatedChunk]),
           facets,
           `${page.title} ${headingPath.join(" ")} ${block.value}`,
+          allowUnknownFacets,
         )) return undefined;
-        const score = scoreTerms(`${page.title} ${headingPath.join(" ")} ${block.value}`, goal)
+        const searchableText = `${page.title} ${headingPath.join(" ")} ${block.value}`;
+        const score = scoreTerms(searchableText, goal)
+          + exactAnchorScore(searchableText, goal) * 10
+          + exactAnchorScore(headingPath.join(" "), goal) * 10
           + (rankedPageIds.has(page.id) ? 6 : 0)
           + (relatedChunk !== undefined && rankedChunkIds.has(relatedChunk.id) ? 10 : 0)
           + (packMatch ? 4 : 0);
         return {
           language: block.language,
-          value: excerptCode(block.value, 320),
+          value: block.value,
           evidence: packExample !== undefined && typeof packExample !== "string"
             ? compactEvidence(packExample.evidence)
             : compactEvidence([{
@@ -882,9 +1032,40 @@ export class TaskContextAssembler {
       .filter((example): example is NonNullable<typeof example> => example !== undefined)
       .filter((example) => example.score > 0)
       .sort((left, right) => right.score - left.score || compareStrings(left.value, right.value));
-    return stableUniqueBy(examples, (example) => oneLine(example.value))
-      .slice(0, 1)
-      .map(({ score: _score, ...example }) => example);
+    const ordered = stableUniqueBy(examples, (example) => oneLine(example.value));
+    // Prefer complete examples that fit the bounded MCP response. If the
+    // corpus only has larger examples, retain them as refs rather than
+    // silently truncating them.
+    const compactable = ordered.filter((example) => example.value.length <= 1600);
+    const candidates = compactable.length > 0 ? compactable : ordered;
+    const anchors = highSignalAnchors(goal).map(normalizeFacetText).filter((anchor) => anchor.length > 2);
+    const selected: typeof ordered = [];
+    const remaining = [...candidates];
+    while (remaining.length > 0 && selected.length < Math.min(limit, 3)) {
+      const selectedText = selected.map((example) => normalizeFacetText(example.value)).join(" ");
+      let bestIndex = 0;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      for (let index = 0; index < remaining.length; index += 1) {
+        const candidate = remaining[index]!;
+        const candidateText = normalizeFacetText(candidate.value);
+        const newAnchors = anchors.filter((anchor) => candidateText.includes(anchor) && !selectedText.includes(anchor)).length;
+        const score = candidate.score + newAnchors * 24;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      }
+      selected.push(remaining.splice(bestIndex, 1)[0]!);
+    }
+    for (const facetValue of Object.values(facets ?? {})) {
+      if (selected.some((example) => containsFacetValue(example.value, facetValue))) continue;
+      const facetIndex = remaining.findIndex((example) => containsFacetValue(example.value, facetValue));
+      if (facetIndex < 0) continue;
+      const facetExample = remaining.splice(facetIndex, 1)[0]!;
+      if (selected.length < Math.min(limit, 3)) selected.push(facetExample);
+      else if (selected.length > 0) selected[selected.length - 1] = facetExample;
+    }
+    return selected.map(({ score: _score, ...example }) => example);
   }
 
   private evidenceCompatibleWithRequestedFacets(evidence: Evidence[], requested: Record<string, string> | undefined): boolean {
@@ -1326,12 +1507,13 @@ function facetsCompatible(
   facets: Chunk["facets"],
   requested?: Record<string, string>,
   text = "",
+  allowUnknown = false,
 ): boolean {
   if (requested === undefined) return true;
   return Object.entries(requested).every(([key, value]) => {
     const values = facets.filter((facet) => facet.key === key).map((facet) => facet.value);
     if (values.length > 0) return values.includes(value);
-    return containsFacetValue(text, value);
+    return allowUnknown || containsFacetValue(text, value);
   });
 }
 
@@ -1348,7 +1530,7 @@ function containsFacetValue(text: string, value: string): boolean {
   const normalizedText = normalizeFacetText(text);
   const normalizedValue = normalizeFacetText(value);
   if (normalizedText.length === 0 || normalizedValue.length === 0) return false;
-  return ` ${normalizedText} `.includes(` ${normalizedValue} `);
+  return ` ${normalizedText} `.includes(` ${normalizedValue} `) || normalizedText.includes(normalizedValue);
 }
 
 function confidenceFor(pack: TaskPack | undefined, chunks: RankedChunk[], steps: number, examples: number): "high" | "medium" | "low" {
@@ -1385,6 +1567,18 @@ function excerptCode(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 36)).trimEnd()}\n/* ... truncated by AgentDocs ... */`;
 }
 
+function isUsableCodeExample(value: string, language?: string): boolean {
+  const trimmed = value.trimStart();
+  const normalizedLanguage = language?.toLowerCase();
+  if (normalizedLanguage === "mermaid" || ["md", "mdx", "markdown", "txt", "text"].includes(normalizedLanguage ?? "")) return false;
+  return trimmed.length > 0
+    && !/```/.test(value)
+    && !/^:::/.test(trimmed)
+    && !(language === undefined && /^</.test(trimmed))
+    && !/^(?:<[A-Z][A-Za-z]+|<CodeGroup|<Accordion|#{1,6}\s)/.test(trimmed)
+    && (language !== undefined || /\b(?:import|export|const|let|var|function|class|await|new)\b/.test(value));
+}
+
 function oneLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -1397,10 +1591,68 @@ function taskTextFor(goal: string, task?: string): string {
   return queryTextFor(goal, task).trim();
 }
 
+function positiveQueryText(value: string): string {
+  return value
+    .replace(/\b(?:do\s+not|don't|never|avoid|without|instead\s+of)\b[^.!?;\n]*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function exactAnchorScore(value: string, query: string): number {
+  return exactAnchorScoreWithAnchors(value, highSignalAnchors(query));
+}
+
+function highSignalAnchors(query: string): string[] {
+  return stableUnique([
+    ...(query.match(/`([^`]+)`/g) ?? []).map((item) => item.slice(1, -1)),
+    ...(query.match(/@[a-z0-9._-]+\/[a-z0-9._-]+/gi) ?? []),
+    ...(query.match(/\bv\d+(?:\.\d+)*\b/gi) ?? []),
+    ...(query.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? []),
+    ...(query.match(/\b[A-Z][A-Za-z0-9.-]{3,}\b/g) ?? []),
+    ...(query.match(/\b[A-Za-z_$][\w$]*\s*\(\s*\)/g) ?? []).map((item) => item.replace(/\s*\(\s*\)$/, "")),
+    ...(query.match(/\.[A-Za-z_$][\w$]*/g) ?? []).map((item) => item.slice(1)),
+  ].filter((item) => item.length > 2 && !new Set(["Create", "Set", "Use", "The", "This", "Current", "Node"] as string[]).has(item)));
+}
+
+function exactAnchorScoreWithAnchors(value: string, anchors: string[]): number {
+  const normalizedValue = normalizeFacetText(value);
+  return anchors.reduce((score, anchor) => {
+    const normalizedAnchor = normalizeFacetText(anchor);
+    return score + (normalizedAnchor.length > 0 && normalizedValue.includes(normalizedAnchor) ? 1 : 0);
+  }, 0);
+}
+
+function isRelevantPackEvidence(value: string, query: string): boolean {
+  const positive = positiveQueryText(query);
+  return exactAnchorScore(value, positive) > 0 || scoreTerms(value, positive) >= 3;
+}
+
+function containsTerm(value: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?:$|[^\\p{L}\\p{N}_])`, "iu").test(value);
+}
+
+function containsRequirement(value: string, requirement: string): boolean {
+  const normalizedValue = normalizeFacetText(value);
+  const normalizedRequirement = normalizeFacetText(requirement);
+  if (normalizedRequirement.length === 0) return false;
+  if (normalizedValue.includes(normalizedRequirement)) return true;
+  return meaningfulTerms(normalizedRequirement).every((term) => containsTerm(normalizedValue, term));
+}
+
 function scoreTerms(value: string, query: string): number {
   const queryTerms = stableUnique(tokenize(query));
   if (queryTerms.length === 0) return 0;
-  const valueTokens = tokenize(value);
+  return scoreTokenizedTerms(tokenize(value), queryTerms, value, query);
+}
+
+function scoreTokenized(valueTokens: string[], query: string, value: string): number {
+  const queryTerms = stableUnique(tokenize(query));
+  return scoreTokenizedTerms(valueTokens, queryTerms, value, query);
+}
+
+function scoreTokenizedTerms(valueTokens: string[], queryTerms: string[], value: string, query: string): number {
+  if (queryTerms.length === 0) return 0;
   
   let score = 0;
   let matchedTerms = 0;
@@ -1473,15 +1725,26 @@ function boundedQueryResponse(
   value: Omit<QueryDocsResponse, "estimatedTokens">,
 ): QueryDocsResponse {
   const parse = (candidate: Omit<QueryDocsResponse, "estimatedTokens">): QueryDocsResponse => {
-    const estimatedTokens = estimateTokens(JSON.stringify(candidate));
-    return QueryDocsResponseSchema.parse({ ...candidate, estimatedTokens });
+    const safeCandidate = candidate.codeExamples.length === 0 && candidate.readiness.recommendation === "implement"
+      ? {
+          ...candidate,
+          readiness: {
+            ...candidate.readiness,
+            recommendation: "inspect" as const,
+            coverage: "partial" as const,
+            issueCodes: stableUnique([...candidate.readiness.issueCodes, "no_canonical_code_examples"]).slice(0, 6),
+          },
+        }
+      : candidate;
+    const estimatedTokens = estimateTokens(JSON.stringify(safeCandidate));
+    return QueryDocsResponseSchema.parse({ ...safeCandidate, estimatedTokens });
   };
   const compactSteps = (maxText: number, maxCount: number) => value.steps
     .slice(0, maxCount)
     .map((step) => ({ ...step, text: excerpt(step.text, maxText) }));
   const compactExamples = (maxValue: number, maxCount: number) => value.codeExamples
-    .slice(0, maxCount)
-    .map((example) => ({ ...example, value: excerptCode(example.value, maxValue) }));
+    .filter((example) => example.value.length <= maxValue)
+    .slice(0, maxCount);
   const compactRefs = value.followUpRefs.map((ref) => ({
     type: ref.type,
     ref: ref.ref,
@@ -1503,16 +1766,16 @@ function boundedQueryResponse(
       followUpRefs: compactRefs,
       citations: compactCitations(64, 3),
       steps: compactSteps(120, 2),
-      codeExamples: compactExamples(220, 1),
+      codeExamples: compactExamples(1600, 2),
       gotchas: value.gotchas.slice(0, 1).map((gotcha) => ({ ...gotcha, text: excerpt(gotcha.text, 100) })),
     },
     {
       ...value,
-      answer: excerpt(value.answer, 180),
+      answer: excerpt(value.answer, 100),
       followUpRefs: compactRefs,
-      citations: compactCitations(48, 2),
-      steps: compactSteps(90, 1),
-      codeExamples: compactExamples(160, 1),
+      citations: compactCitations(32, 1),
+      steps: compactSteps(64, 1),
+      codeExamples: compactExamples(1600, 2),
       gotchas: [],
       warnings: value.warnings.slice(0, 3),
     },
@@ -1522,7 +1785,7 @@ function boundedQueryResponse(
       followUpRefs: compactRefs,
       citations: [],
       steps: compactSteps(72, 1),
-      codeExamples: [],
+      codeExamples: compactExamples(1600, 1),
       gotchas: [],
       warnings: value.warnings.slice(0, 3),
     },
@@ -1580,6 +1843,7 @@ function assessTaskRequirements(options: {
   selectedPack?: TaskPack;
   query: QueryDocsResponse;
   candidateEvidenceFor?: (requirement: Pick<RequirementAssessment, "kind" | "value">) => Evidence[];
+  corpusTerms?: string[];
 }): RequirementAssessment[] {
   const requirements: Array<{ kind: RequirementAssessment["kind"]; value: string; source: RequirementAssessment["source"] }> = [];
   for (const [key, value] of Object.entries(options.requestedFacets ?? {})) {
@@ -1591,6 +1855,14 @@ function assessTaskRequirements(options: {
   }
   for (const value of extractCodeLikeRequirements(options.task)) {
     requirements.push({ kind: value.kind, value: value.value, source: "explicit" });
+  }
+  for (const value of options.corpusTerms ?? []) {
+    const matches = value.startsWith("@")
+      ? normalizeFacetText(options.task).includes(normalizeFacetText(value))
+      : containsTerm(options.task, value);
+    if (value.length > 3 && matches) {
+      requirements.push({ kind: "symbol", value, source: "explicit" });
+    }
   }
   for (const value of extractConstraintRequirements(options.task)) {
     requirements.push({ kind: "constraint", value, source: "explicit" });
@@ -1617,6 +1889,10 @@ function assessTaskRequirements(options: {
       if (values.includes(value!)) {
         return requirementAssessment(requirement, "covered", `Selected context covers ${requirement.value}.`, options.selectedPack?.evidence ?? []);
       }
+      const textualMatches = evidence.filter((candidate) => containsFacetValue(candidate.text, value!));
+      if (textualMatches.length > 0) {
+        return requirementAssessment(requirement, "covered", `Selected source evidence mentions ${requirement.value}.`, textualMatches.flatMap((candidate) => candidate.evidence));
+      }
       return requirementAssessment(requirement, "unknown", `No facet evidence found for ${requirement.value}.`, []);
     }
 
@@ -1625,6 +1901,14 @@ function assessTaskRequirements(options: {
       return requirementAssessment(requirement, "covered", `Selected source evidence covers "${requirement.value}".`, matches.flatMap((candidate) => candidate.evidence));
     }
     if (requirement.kind === "constraint") {
+      if (isNegativeConstraint(requirement.value)) {
+        return requirementAssessment(
+          requirement,
+          "unknown",
+          `Negative constraint "${requirement.value}" requires manual verification against the cited source.`,
+          [],
+        );
+      }
       const terms = meaningfulTerms(requirement.value);
       const matchedTerms = terms.filter((term) => evidence.some((candidate) => candidate.text.toLowerCase().includes(term)));
       if (matchedTerms.length > 0) {
@@ -1643,6 +1927,10 @@ function assessTaskRequirements(options: {
     }
     return requirementAssessment(requirement, "missing", `No selected source evidence found for "${requirement.value}".`, []);
   }), (requirement) => `${requirement.kind}:${requirement.value}`);
+}
+
+function isNegativeConstraint(value: string): boolean {
+  return /\b(?:do\s+not|don't|never|avoid|without|instead\s+of)\b/i.test(value);
 }
 
 function requirementAssessment(
@@ -1669,7 +1957,7 @@ function extractCodeLikeRequirements(task: string): Array<{ kind: "symbol" | "co
     kind: /^(?:[A-Z][A-Z0-9_]{2,}|--)/.test(value) ? "configuration" as const : "symbol" as const,
     value,
   })), (value) => `${value.kind}:${value.value}`)
-    .filter((value) => value.value.length > 2 && !genericAcronyms.has(value.value));
+    .filter((value) => (value.value.length > 2 || /^v\d/i.test(value.value)) && !genericAcronyms.has(value.value));
 }
 
 function extractConstraintRequirements(task: string): string[] {
@@ -1711,12 +1999,11 @@ function extractConceptRequirements(task: string): string[] {
 }
 
 function requirementMatches(value: string, text: string, kind: RequirementAssessment["kind"]): boolean {
-  const normalizedText = text.toLowerCase();
   if (kind === "constraint") {
     const terms = meaningfulTerms(value);
-    return terms.length > 0 && terms.every((term) => normalizedText.includes(term));
+    return terms.length > 0 && terms.every((term) => containsTerm(text, term));
   }
-  return normalizedText.includes(value.toLowerCase());
+  return containsRequirement(text, value);
 }
 
 function meaningfulTerms(value: string): string[] {

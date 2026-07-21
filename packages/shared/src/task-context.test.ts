@@ -347,10 +347,13 @@ describe("TaskContextAssembler", () => {
     expect(result.estimatedTokens).toBeLessThan(800);
     expect(result.steps.length).toBeGreaterThan(0);
     expect(result.steps.length).toBeLessThanOrEqual(3);
-    expect(result.followUpRefs).toHaveLength(0);
+    expect(result.followUpRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "code_block" }),
+    ]));
     expect(JSON.stringify(result).length).toBeLessThan(3200);
     expect(result.citations.every((citation) => (citation.quote?.length ?? 0) <= 160)).toBe(true);
-    expect(result.codeExamples[0]?.value).toContain("GET /repos/{owner}/{repo}/commits");
+    expect(result.codeExamples[0]?.value).toContain("octokit.paginate");
+    expect(result.codeExamples[0]?.value).not.toContain("truncated by AgentDocs");
   });
 
   it("keeps follow-up refs when evidence is weak or incomplete", () => {
@@ -686,6 +689,20 @@ describe("TaskContextAssembler facet safety", () => {
     expect(verification.status).toBe("fail");
     expect(verification.issues.map((issue) => issue.code)).toContain("preferred_context_mismatch");
     expect(verification.issues.map((issue) => issue.code)).toContain("mixed_context");
+  });
+
+  it("preserves short version requirements and does not turn negative prose into source routing", async () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = await assembler.resolveContextDecision({
+      goal: "Use the v5 client setup.",
+      task: "Use the current client. Do not use legacy callbacks or deprecated APIs.",
+      search: async ({ query, limit }) => ({ query, results: [], warnings: [] }),
+    });
+    const version = decision.verification.requirements.find((requirement) => requirement.value === "v5");
+    expect(version).toBeDefined();
+    const negative = decision.verification.requirements.find((requirement) => requirement.value.startsWith("Do not use"));
+    expect(negative).toMatchObject({ status: "unknown", evidence: [] });
+    expect(decision.query.followUpRefs.some((ref) => ref.requiredFor?.some((value) => value.startsWith("Do not use")))).toBe(false);
   });
 });
 

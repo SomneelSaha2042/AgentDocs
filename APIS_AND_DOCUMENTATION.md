@@ -1147,8 +1147,7 @@ Input:
   "task": "Use the current cursor API and preserve the documented next-page token.",
   "facets": {
     "runtime": "node"
-  },
-  "limit": 5
+  }
 }
 ```
 
@@ -1183,7 +1182,9 @@ Unsupported steps are omitted rather than invented.
 The `task` field may contain detailed constraints or an exact task-pack ID. A
 task-pack match is a relevance hint; it never restricts corpus search. The
 assembler searches the complete goal/task text and returns a bounded evidence
-set. `readiness.recommendation` is `implement` only when selected evidence is
+set. The compact profile fixes the response budget; callers should not tune a
+per-call result limit. The server tolerates a legacy `limit` argument from older
+clients but does not advertise it. `readiness.recommendation` is `implement` only when selected evidence is
 fresh, compatible, and complete for the deterministically extracted task
 requirements. Use `inspect` when a source candidate exists but requires audit;
 read every `followUpRefs` entry whose `requiredFor` is present. Use `stop` when
@@ -1193,20 +1194,18 @@ contradictory. The full requirement evidence is returned by
 
 #### `read_page`
 
-Reads a bounded source section by page or chunk ID. `chunkId` may also be a
-cited code block ID returned by `query_docs`. By default it returns the matching
-chunk/section, not the full normalized page. Full pages are available only when
-`fullPage` is explicitly true.
+Reads the exact bounded source reference returned by `query_docs`. Pass `ref`
+unchanged, for example `agentdocs://pages/page_123.md#chunk_456` or a
+code-block reference. The compact v1 schema requires `ref` and `maxChars` is
+optional. Legacy `pageId`, `chunkId`, `heading`, and `fullPage` arguments remain
+accepted for compatibility but are not advertised by the compact profile.
 
 Input:
 
 ```json
 {
-  "pageId": "page_123",
-  "chunkId": "chunk_456",
-  "heading": "Pagination",
-  "maxChars": 4000,
-  "fullPage": false
+  "ref": "agentdocs://pages/page_123.md#chunk_456",
+  "maxChars": 4000
 }
 ```
 
