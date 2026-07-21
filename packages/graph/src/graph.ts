@@ -83,7 +83,10 @@ function addLinkEdges(
   pages: DocPage[],
   edgeMap: Map<string, Edge>,
 ): void {
-  for (const link of page.links.filter((candidate) => candidate.kind === "internal")) {
+  // Resolve any captured target already present in the corpus, including
+  // cross-origin links. This never fetches a URL: an external link only gets
+  // an edge when a page with the same source/canonical URL was ingested.
+  for (const link of page.links) {
     const target = resolveTargetPage(link.resolvedHref ?? link.href, pages);
     if (target === undefined) {
       continue;

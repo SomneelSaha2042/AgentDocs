@@ -103,6 +103,28 @@ import { Client } from "@acme/sdk";
     )).toBe(true);
   });
 
+  it("resolves captured cross-origin links without fetching them", () => {
+    const source = normalizeMarkdown({
+      markdown: "# Guide\n\n[Reference](https://other.example.com/reference)\n",
+      repoPath: "guide.md",
+      sourceUrl: "https://docs.example.com/guide",
+    });
+    const capturedTarget = normalizeMarkdown({
+      markdown: "# Reference\n\nCaptured reference content.\n",
+      repoPath: "reference.md",
+      sourceUrl: "https://other.example.com/reference",
+    });
+
+    const graph = buildAgentMap({
+      pages: [source, capturedTarget],
+      chunks: [source, capturedTarget].flatMap((page) => chunkMarkdownByHeading(page)),
+    });
+
+    expect(graph.edges.some((edge) =>
+      edge.type === "links_to" && edge.from === source.id && edge.to === capturedTarget.id,
+    )).toBe(true);
+  });
+
   it("does not create API entities from conversational route-like prose", () => {
     const page = normalizeMarkdown({
       markdown: `# Routes
