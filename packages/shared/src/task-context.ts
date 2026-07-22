@@ -507,7 +507,13 @@ export class TaskContextAssembler {
     const selectedChunkIds = new Set(selectedEvidence
       .map((evidence) => evidence.chunkId)
       .filter((chunkId): chunkId is string => chunkId !== undefined));
-    const evidenceChunks = rankedChunks.filter(({ chunk }) => selectedChunkIds.has(chunk.id));
+    const evidenceChunks = [...selectedChunkIds]
+      .map((chunkId) => {
+        const chunk = this.chunks.get(chunkId);
+        const page = chunk === undefined ? undefined : this.pages.get(chunk.pageId);
+        return chunk === undefined || page === undefined ? undefined : { chunk, page, score: 0 };
+      })
+      .filter((item): item is RankedChunk => item !== undefined);
     const fallbackChunks = requirementSeeds.length === 0
       ? (options.search === undefined
         ? rankedChunks.slice(0, 3)
@@ -538,7 +544,7 @@ export class TaskContextAssembler {
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
     );
-    const codeCandidates = this.codeExamplesFor(queryText, rankedChunks, selectedPack, requestedFacets, allowUnknownFacets);
+    const codeCandidates = this.codeExamplesFor(queryText, sourceChunks, selectedPack, requestedFacets, allowUnknownFacets);
     const codeExamples = selectPlannedCodeExamples(codeCandidates, requirementSeeds, selectedEvidence);
     const gotchas = stableUniqueBy(
       (selectedPack?.gotchas
@@ -856,7 +862,7 @@ export class TaskContextAssembler {
       explicitFacets: options.facets,
       requestedFacets: options.requestedFacets,
       selectedPack: pack,
-      query: options.query,
+      query: this.queryForRequirementAssessment(options.query),
       candidateEvidenceFor: (requirement) => this.candidateEvidenceFor(requirement),
       corpusTerms: this.corpusTerms,
     });
@@ -904,6 +910,36 @@ export class TaskContextAssembler {
       requirements,
       freshness: options.freshness,
     });
+  }
+
+  private queryForRequirementAssessment(query: QueryDocsResponse): QueryDocsResponse {
+    const sourceText = (evidence: Evidence): string | undefined => {
+      if (evidence.chunkId !== undefined) return this.chunks.get(evidence.chunkId)?.text;
+      if (evidence.codeBlockId !== undefined && evidence.pageId !== undefined) {
+        return this.pages.get(evidence.pageId)?.codeBlocks.find((block) => block.id === evidence.codeBlockId)?.value;
+      }
+      if (evidence.headingId !== undefined && evidence.pageId !== undefined) {
+        const page = this.pages.get(evidence.pageId);
+        if (page === undefined) return undefined;
+        const headingPath = headingPathFor(page, evidence.headingId);
+        return this.options.agentMap.chunks
+          .filter((chunk) => chunk.pageId === page.id && arraysEqual(chunk.headingPath, headingPath))
+          .map((chunk) => chunk.text)
+          .join("\n");
+      }
+      return undefined;
+    };
+    return {
+      ...query,
+      steps: query.steps.map((step) => ({
+        ...step,
+        text: [step.text, ...step.evidence.map(sourceText).filter((text): text is string => text !== undefined)].join("\n"),
+      })),
+      gotchas: query.gotchas.map((gotcha) => ({
+        ...gotcha,
+        text: [gotcha.text, ...gotcha.evidence.map(sourceText).filter((text): text is string => text !== undefined)].join("\n"),
+      })),
+    };
   }
 
   private rankChunks(
@@ -1913,7 +1949,9 @@ function extractCodeLikeRequirements(task: string): Array<{ kind: "symbol" | "co
     kind: /^(?:[A-Z][A-Z0-9_]{2,}|--)/.test(value) ? "configuration" as const : "symbol" as const,
     value,
   })), (value) => `${value.kind}:${value.value}`)
-    .filter((value) => (value.value.length > 2 || /^v\d/i.test(value.value)) && !genericAcronyms.has(value.value));
+    .filter((value) => (value.value.length > 2 || /^v\d/i.test(value.value))
+      && !genericAcronyms.has(value.value)
+      && (!/\s/.test(value.value) || value.value.startsWith("--")));
 }
 
 function extractConstraintRequirements(task: string): string[] {

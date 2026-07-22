@@ -41,6 +41,9 @@ export function evaluateContextResponse(query, { maxInputTokens = 24000, respons
   if (refs.some((ref) => typeof ref?.ref !== "string" || !ref.ref.startsWith("agentdocs://pages/"))) {
     errors.push("query_docs emitted a follow-up reference that is not a readable agentdocs page ref");
   }
+  if (query?.readiness?.recommendation === "stop") {
+    errors.push(`query_docs readiness is STOP: ${(query.readiness.issueCodes ?? []).join(", ") || "critical context issue"}`);
+  }
   const fieldTokenEstimates = query && typeof query === "object" ? {
     steps: estimateTokens(query.steps ?? []),
     codeExamples: estimateTokens(query.codeExamples ?? []),
@@ -53,6 +56,7 @@ export function evaluateContextResponse(query, { maxInputTokens = 24000, respons
     passed: errors.length === 0,
     estimatedTokens,
     threshold,
+    readiness: query?.readiness,
     fieldTokenEstimates,
     errors,
   };
