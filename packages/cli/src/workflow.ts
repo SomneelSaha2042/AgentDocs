@@ -19,7 +19,7 @@ import { minimatch } from "minimatch";
 
 
 export const PERSISTENT_AGENT_PROMPT =
-  "Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.";
+  "Use the AgentDocs MCP server before web search. Start with query_docs, use its context map to refine with scopeRefs or continue navigationCursor, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.";
 
 type ConfiguredSource = AgentDocsConfig["sources"][number];
 
@@ -275,7 +275,7 @@ ${context.config?.name ?? "Unknown project"}${context.config?.version === undefi
 ## First Steps
 
 - Start the MCP server with: \`${mcpCommand(context.out)}\`
-- Use \`query_docs\` once before reading broad search results.
+- Start with \`query_docs\`; use returned page/heading refs in \`scopeRefs\` for a focused follow-up, or continue \`navigationCursor\` until the map is complete.
 - Use \`read_page\` only when the query response cites a page or chunk that needs more detail.
 - Use \`verify_task_context\` before implementing with retrieved context.
 

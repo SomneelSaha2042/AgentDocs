@@ -87,3 +87,21 @@ test("a required paginated source is complete only after its final continuation"
   });
   assert.deepEqual(protocol.beforeWrite({ turn: 5 }), { allowed: true });
 });
+
+test("iterative queries retain inspection evidence across map follow-ups", () => {
+  const protocol = createEvidenceProtocol();
+  protocol.observeQuery({ turn: 1, response: inspectResponse });
+  protocol.observeQuery({
+    turn: 2,
+    response: {
+      readiness: { recommendation: "inspect", coverage: "partial", issueCodes: ["missing_task_requirement_evidence"] },
+      followUpRefs: [{ type: "chunk", ref: "agentdocs://pages/page_1.md#chunk_1", title: "Current example", requiredFor: ["provider"] }],
+    },
+  });
+  protocol.observeReadPage({
+    turn: 3,
+    args: { ref: "agentdocs://pages/page_1.md#chunk_1" },
+    result: { section: { complete: true } },
+  });
+  assert.deepEqual(protocol.beforeWrite({ turn: 4 }), { allowed: true });
+});

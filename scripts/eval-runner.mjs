@@ -1157,7 +1157,7 @@ function hotTokenEstimatesFor({ inputTokens, outputTokens, turns, docsToolSchema
 function systemPromptFor(group) {
   const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
   const docsInstruction = group === "experimental-agentdocs"
-    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Call query_docs once before coding. If readiness is INSPECT, call read_page with one cited ID before writing. If readiness is STOP, resolve the warning before implementing."
+    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Start with query_docs before coding. Use its context map to issue a focused follow-up with scopeRefs or continue navigationCursor when needed. If readiness is INSPECT, call read_page with a cited ID before writing. If readiness is STOP, resolve the warning before implementing."
     : group === "experimental-agentdocs-local-coldstart"
       ? `CRITICAL REQUIREMENT: The AgentDocs context layer is NOT compiled yet. You MUST compile it in Turn 1 before doing anything else.
 To do this, you MUST immediately call run_command in Turn 1 with the following commands:

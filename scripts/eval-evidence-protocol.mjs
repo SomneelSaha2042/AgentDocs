@@ -39,14 +39,16 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
   function observeReadPage({ turn, args, result }) {
     if (!state.enabled) return;
     const referenceId = readReferenceId(args);
-    const latest = state.queries.at(-1);
     const readable = result?.section && typeof result.section === "object";
     const complete = readable && result.section.complete === true;
-    const matched = Boolean(readable && latest?.referenceIds.includes(referenceId));
+    const matchedQueries = state.queries.filter((query) => query.referenceIds.includes(referenceId));
+    const matched = readable && matchedQueries.length > 0;
     const read = { turn, referenceId, matched, complete };
     state.reads.push(read);
-    if (matched && complete && latest) {
-      latest.inspectedReferenceIds.push(referenceId);
+    if (matched && complete) {
+      for (const query of matchedQueries) {
+        if (!query.inspectedReferenceIds.includes(referenceId)) query.inspectedReferenceIds.push(referenceId);
+      }
     }
   }
 
@@ -61,7 +63,7 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
       code = PROTOCOL_CODES.missingReadiness;
     } else if (latest.recommendation === "stop") {
       code = PROTOCOL_CODES.stopped;
-    } else if (latest.recommendation === "inspect" && !requirementsInspected(latest)) {
+    } else if (latest.recommendation === "inspect" && !requirementsInspected(latest, state.reads)) {
       code = PROTOCOL_CODES.inspectionRequired;
     }
     if (code === undefined) {
@@ -83,7 +85,7 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
     const latest = state.queries.at(-1);
     let status = "missing_query_docs";
     if (latest?.recommendation === "stop") status = "readiness_stop";
-    else if (latest?.recommendation === "inspect" && !requirementsInspected(latest)) {
+    else if (latest?.recommendation === "inspect" && !requirementsInspected(latest, state.reads)) {
       status = "inspection_required";
     } else if (latest?.recommendation === "implement" || latest?.inspectedReferenceIds.length > 0) {
       status = "ready";
@@ -130,10 +132,14 @@ function requiredReferenceIdsFor(response) {
   return [...new Set(ids)];
 }
 
-function requirementsInspected(query) {
+function requirementsInspected(query, reads = []) {
   const required = query.requiredReferenceIds ?? [];
-  if (required.length === 0) return query.inspectedReferenceIds.length > 0;
-  return required.every((referenceId) => query.inspectedReferenceIds.includes(referenceId));
+  const inspected = new Set([
+    ...query.inspectedReferenceIds,
+    ...reads.filter((read) => read.matched && read.complete).map((read) => read.referenceId),
+  ]);
+  if (required.length === 0) return inspected.size > 0;
+  return required.every((referenceId) => inspected.has(referenceId));
 }
 
 function readReferenceId(args = {}) {

@@ -181,10 +181,18 @@ export function createProgram(): Command {
   program
     .command("context <goal>")
     .description("Build a compact agent context bundle from existing artifacts")
-    .action(async (goal: string, _options: unknown, command: Command) => {
+    .option("--scope-ref <ref>", "Restrict context-map and evidence serving to a page or heading ref", collect, [])
+    .option("--navigation-cursor <cursor>", "Continue a context-map page returned by a previous context query")
+    .action(async (goal: string, options: { scopeRef: string[]; navigationCursor?: string }, command: Command) => {
       const globals = command.optsWithGlobals<GlobalOptions>();
       const { cwd, out } = await resolveCommandContext(command, globals);
-      const result = await buildContextBundle({ cwd, goal, out });
+      const result = await buildContextBundle({
+        cwd,
+        goal,
+        out,
+        scopeRefs: options.scopeRef,
+        navigationCursor: options.navigationCursor,
+      });
       if (globals.json) {
         process.stdout.write(`${JSON.stringify(result)}\n`);
       } else if (!globals.quiet) {

@@ -68,12 +68,17 @@ collecting sources again.
 ```bash
 agentdocs context "implement authentication"
 agentdocs context "debug webhook verification" --json
+agentdocs context "debug webhook verification" --scope-ref agentdocs://pages/webhooks.md#verify-signatures
+agentdocs context "debug webhook verification" --navigation-cursor agentdocs:navigation:v1:4 --json
 ```
 
 The bundle includes the strongest matching task pack when available, rules,
 supporting resources, and a dynamic goal bundle composed from up to five
 complementary evidence sections. Fixed task packs are included only when they
-materially match the goal.
+materially match the goal. The bundle also includes a deterministic context map
+of matched pages and headings plus unresolved external links. `--scope-ref`
+accepts a page or heading ref from that map; `--navigation-cursor` continues
+map pagination.
 
 ### 2.0.2 `agentdocs handoff <goal>`
 
@@ -454,6 +459,10 @@ errors return structured `code` and `message` fields. Resource and tool
 arguments are validated and cannot be used as arbitrary filesystem paths.
 Disallowed allowlisted tool calls return a structured `TOOL_NOT_ALLOWED` tool
 error before artifact access.
+`query_docs` returns a `navigation` projection with exact page/heading refs,
+facets, evidence kinds, child counts, and `external_uningested` links. Scope
+refs are validated against the built map; external links are reported for an
+agent to investigate separately and are never fetched by MCP.
 
 ## 3. Configuration file
 
@@ -1147,7 +1156,9 @@ Input:
   "task": "Use the current cursor API and preserve the documented next-page token.",
   "facets": {
     "runtime": "node"
-  }
+  },
+  "scopeRefs": ["agentdocs://pages/page_pagination.md#heading_cursor"],
+  "navigationCursor": "agentdocs:navigation:v1:4"
 }
 ```
 
@@ -1182,6 +1193,29 @@ Output:
       { "requirement": "next-page token", "status": "partial", "ref": "agentdocs://pages/page_pagination.md#chunk_pagination" }
     ]
   },
+  "navigation": {
+    "scopeRefs": [],
+    "branches": [
+      {
+        "pageId": "page_pagination",
+        "pageRef": "agentdocs://pages/page_pagination.md",
+        "title": "Pagination",
+        "headings": [
+          {
+            "ref": "agentdocs://pages/page_pagination.md#heading_cursor",
+            "headingPath": ["Pagination", "Cursor API"],
+            "depth": 2,
+            "matchedFor": ["next-page token"],
+            "evidenceKinds": ["prose", "code", "links"],
+            "childHeadingCount": 1
+          }
+        ],
+        "externalReferences": []
+      }
+    ],
+    "externalReferences": [],
+    "complete": true
+  },
   "estimatedTokens": 420
 }
 ```
@@ -1199,7 +1233,9 @@ assembler searches the complete goal/task text and returns a coverage-first,
 evidence-linked context bundle. `estimatedTokens` is telemetry only; no fixed
 token or result limit may remove task requirements, readiness gaps, or required
 source references. The response is requirement-directed rather than a dump of
-all ranked chunks. `estimatedTokens` remains telemetry; the offline evaluation
+all ranked chunks. The navigation map is paginated independently with
+`navigation.nextCursor`; continuing it never truncates a source read.
+`estimatedTokens` remains telemetry; the offline evaluation
 gate may reject an experiment whose first response is too large, but the
 product never truncates a source read. `readiness.recommendation` is `implement` only when selected evidence is
 fresh, compatible, and complete for the deterministically extracted task

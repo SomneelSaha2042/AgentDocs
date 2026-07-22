@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-21 during the deterministic context/index recovery pass.
+Verified on 2026-07-22 during the deterministic context navigation pass.
 
 ## Product Shape
 
@@ -217,13 +217,22 @@ Missing candidates produce `stop`, candidate-but-unread evidence
 produces `inspect`, and complete compatible evidence produces `implement`.
 This is evidence assurance, not a guarantee that generated code will pass
 arbitrary project tests.
+The assembler also derives a `ContextNavigationCatalog` from the validated
+`AgentMap` at serving time. The catalog projects matched pages into heading
+paths, child counts, facets, evidence kinds, and exact `read_page` refs. It
+accepts page/heading scopes and a deterministic continuation cursor so an agent
+can progressively inspect a large map without truncating source evidence.
+Un-ingested external links are surfaced as `external_uningested` references
+with their source ref; the server never fetches them and does not treat them as
+local evidence.
 `packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the
 shared result shapes.
 
 Generated agent guidance and evaluator prompts use the same generic evidence
-protocol: `implement` permits writing, `inspect` requires reading every
+protocol: agents start with `query_docs`, may refine with returned `scopeRefs`
+or continue `navigationCursor`, `implement` permits writing, `inspect` requires reading every
 required source reference, and `stop` requires resolving the warning before
 implementation.
 The MCP server is externally stateless while caching its validated index reader
@@ -231,7 +240,8 @@ and context assembler for the lifetime of a request handler. It exposes the
 two-tool compact profile; enforcement in the active evaluation runner is
 diagnostic and does not add package-specific routing logic. `query_docs` is
 coverage-first: token estimates are telemetry and cannot remove source-backed
-requirements or references. `read_page` accepts exact refs only and returns
+requirements or references. Navigation pagination is independent of source
+reads, so a map can be continued without cutting off evidence. `read_page` accepts exact refs only and returns
 lossless, deterministic continuation refs for sources that span multiple
 transport parts.
 
@@ -290,7 +300,8 @@ includes:
 - generator tests and snapshots;
 - doctor readiness tests;
 - indexer search tests;
-- MCP artifact/server tests;
+- MCP artifact/server tests, including scope, cursor, and invalid-reference
+  behavior;
 - CLI tests for build, crawl, ingest, context/workflow, doctor, inspect, try,
   search, includes, exit codes, and command behavior.
 
