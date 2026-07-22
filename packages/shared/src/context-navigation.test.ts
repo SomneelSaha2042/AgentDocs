@@ -62,6 +62,71 @@ describe("ContextNavigationCatalog", () => {
     const second = new ContextNavigationCatalog(map).build({ relevantChunkIds: ["chunk_signature"] });
     expect(second).toEqual(first);
   });
+
+  it("supports heading scopes and deterministic continuation cursors", () => {
+    const map = fixtureMap();
+    for (let index = 0; index < 5; index += 1) {
+      const pageId = `page_extra_${index}`;
+      map.pages.push({
+        id: pageId,
+        sourceType: "local_markdown",
+        sourceUrl: `file:///docs/extra-${index}.md`,
+        title: `Extra ${index}`,
+        markdown: `# Extra ${index}\n\nDetails\n`,
+        headings: [{ id: `${pageId}_heading`, depth: 1, text: `Extra ${index}`, slug: `extra-${index}`, position: {} }],
+        links: [],
+        codeBlocks: [],
+        contentHash: `${index}`.repeat(64),
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+        facets: [],
+        normalization: { mode: "strict", warnings: [] },
+      });
+      map.chunks.push({
+        id: `${pageId}_chunk`,
+        kind: "section",
+        pageId,
+        headingPath: [`Extra ${index}`],
+        text: `Details ${index}`,
+        tokenEstimate: 2,
+        links: [],
+        entityIds: [],
+        contentHash: `${index}a`.repeat(32),
+        facets: [],
+      });
+    }
+    const catalog = new ContextNavigationCatalog(map);
+    const all = catalog.build({ relevantChunkIds: map.chunks.map((chunk) => chunk.id) });
+    expect(all.branches).toHaveLength(4);
+    expect(all.complete).toBe(false);
+    expect(all.nextCursor).toBeDefined();
+
+    const rest = catalog.build({
+      relevantChunkIds: map.chunks.map((chunk) => chunk.id),
+      navigationCursor: all.nextCursor,
+    });
+    expect(rest.complete).toBe(true);
+    expect(rest.branches.map((branch) => branch.pageId)).toEqual(["page_extra_3", "page_extra_4"]);
+
+    const scoped = catalog.build({
+      relevantChunkIds: map.chunks.map((chunk) => chunk.id),
+      scopeRefs: ["agentdocs://pages/page_webhooks.md#heading_signature"],
+    });
+    expect(scoped.scopeRefs).toEqual(["agentdocs://pages/page_webhooks.md#heading_signature"]);
+    expect(scoped.branches).toHaveLength(1);
+    expect(scoped.branches[0]?.headings.map((heading) => heading.headingPath)).toEqual([
+      ["Webhooks"],
+      ["Webhooks", "Verify signatures"],
+    ]);
+  });
+
+  it("rejects invalid scope and continuation references", () => {
+    const catalog = new ContextNavigationCatalog(fixtureMap());
+    expect(() => catalog.build({ scopeRefs: ["agentdocs://pages/missing.md"] }))
+      .toThrow(/was not found/);
+    expect(() => catalog.build({ relevantChunkIds: ["chunk_signature"], navigationCursor: "bad" }))
+      .toThrow(/Invalid navigation cursor/);
+  });
 });
 
 function fixtureMap() {

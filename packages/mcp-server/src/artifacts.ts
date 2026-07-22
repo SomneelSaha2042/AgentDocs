@@ -97,10 +97,28 @@ export class ArtifactService {
     goal: string,
     task?: string,
     facets?: Record<string, string>,
+    options: {
+      scopeRefs?: string[];
+      navigationCursor?: string;
+    } = {},
   ) {
     const freshness = await this.getRecordedStatus();
-    const input = await this.buildContextInput({ goal, task, facets, freshness });
-    return input.decision.query;
+    try {
+      const input = await this.buildContextInput({
+        goal,
+        task,
+        facets,
+        freshness,
+        scopeRefs: options.scopeRefs,
+        navigationCursor: options.navigationCursor,
+      });
+      return input.decision.query;
+    } catch (error) {
+      if (error instanceof Error && /navigation (?:scope|cursor)|Navigation scope|Navigation cursor|Invalid navigation/.test(error.message)) {
+        throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
+      }
+      throw error;
+    }
   }
 
   async readPage(ref: string) {
@@ -172,14 +190,25 @@ export class ArtifactService {
     };
   }
 
-  async getContextBundle(goal: string, facets?: Record<string, string>) {
-    const { assembler, decision, search } = await this.buildContextInput({ goal, facets });
+  async getContextBundle(
+    goal: string,
+    facets?: Record<string, string>,
+    navigation: { scopeRefs?: string[]; navigationCursor?: string } = {},
+  ) {
+    const { assembler, decision, search } = await this.buildContextInput({
+      goal,
+      facets,
+      scopeRefs: navigation.scopeRefs,
+      navigationCursor: navigation.navigationCursor,
+    });
     const selected = decision.selectedTaskPack === undefined
       ? undefined
       : await this.getTaskPack(decision.selectedTaskPack.id);
     return assembler.buildContextBundle({
       goal,
       facets,
+      scopeRefs: navigation.scopeRefs,
+      navigationCursor: navigation.navigationCursor,
       search,
       selectedTaskPackMarkdown: selected?.markdown,
     });
@@ -213,7 +242,7 @@ export class ArtifactService {
       setupCommands: setup.commands,
       mcp: {
         command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
-        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first. If readiness is INSPECT, read one cited source before writing; if STOP, resolve the warning before implementing.",
+        prompt: "Use the AgentDocs MCP server before web search. Start with query_docs, refine with returned scopeRefs or navigationCursor when needed, and read one cited source before writing if readiness is INSPECT; if STOP, resolve the warning before implementing.",
         suggestedTools: ["query_docs", "read_page"],
       },
     });
@@ -234,6 +263,8 @@ export class ArtifactService {
     task?: string;
     facets?: Record<string, string>;
     freshness?: StatusReport;
+    scopeRefs?: string[];
+    navigationCursor?: string;
   }) {
     const map = await this.loadAgentMap();
     const assembler = this.getAssembler(map);
@@ -241,6 +272,8 @@ export class ArtifactService {
       goal: options.goal,
       task: options.task,
       facets: options.facets,
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
       freshness: options.freshness,
       search: ({ query, limit, task, facets }) => this.searchDocs(query, limit, task, facets),
     });

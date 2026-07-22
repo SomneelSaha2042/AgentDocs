@@ -4,7 +4,13 @@ import type { ContextNavigation } from "./models.js";
 export type ContextNavigationOptions = {
   relevantChunkIds?: readonly string[];
   requirementValues?: readonly string[];
+  scopeRefs?: readonly string[];
+  navigationCursor?: string;
 };
+
+export class ContextNavigationScopeError extends Error {
+  override readonly name = "ContextNavigationScopeError";
+}
 
 type HeadingEntry = {
   heading: Heading;
@@ -27,9 +33,11 @@ type PageIndex = {
  */
 export class ContextNavigationCatalog {
   private readonly pages: Map<string, PageIndex>;
+  private readonly chunks: Map<string, Chunk>;
   private readonly targetKeys: Set<string>;
 
-  constructor(private readonly agentMap: AgentMap) {
+  constructor(agentMap: AgentMap) {
+    this.chunks = new Map(agentMap.chunks.map((chunk) => [chunk.id, chunk]));
     const chunksByPage = new Map<string, Chunk[]>();
     for (const chunk of agentMap.chunks) {
       const chunks = chunksByPage.get(chunk.pageId) ?? [];
@@ -55,15 +63,33 @@ export class ContextNavigationCatalog {
     );
   }
 
+  filterChunkIds(chunkIds: readonly string[], scopeRefs?: readonly string[]): string[] {
+    const scope = this.resolveScope(scopeRefs);
+    return chunkIds.filter((chunkId) => {
+      const chunk = this.chunks.get(chunkId);
+      return chunk !== undefined && scope.some((entry) => entry.pageId === chunk.pageId
+        && (entry.headingPath === undefined || startsWithPath(chunk.headingPath, entry.headingPath)));
+    });
+  }
+
+  filterPageIds(pageIds: readonly string[], scopeRefs?: readonly string[]): string[] {
+    const scope = this.resolveScope(scopeRefs);
+    return pageIds.filter((pageId) => scope.some((entry) => entry.pageId === pageId));
+  }
+
   build(options: ContextNavigationOptions = {}): ContextNavigation {
-    const requested = new Set(options.relevantChunkIds ?? []);
+    const scope = this.resolveScope(options.scopeRefs);
+    const normalizedScopeRefs = options.scopeRefs === undefined || options.scopeRefs.length === 0
+      ? []
+      : scope.map((entry) => entry.ref);
+    const requested = new Set(this.filterChunkIds(options.relevantChunkIds ?? [], options.scopeRefs));
     const pageOrder = new Map<string, number>();
     for (const [index, chunkId] of (options.relevantChunkIds ?? []).entries()) {
-      const chunk = this.agentMap.chunks.find((candidate) => candidate.id === chunkId);
+      const chunk = this.chunks.get(chunkId);
       if (chunk !== undefined && !pageOrder.has(chunk.pageId)) pageOrder.set(chunk.pageId, index);
     }
 
-    const branches = [...this.pages.values()]
+    const allBranches = [...this.pages.values()]
       .filter((index) => index.chunks.some((chunk) => requested.has(chunk.id)))
       .sort((left, right) =>
         (pageOrder.get(left.page.id) ?? Number.MAX_SAFE_INTEGER)
@@ -71,12 +97,43 @@ export class ContextNavigationCatalog {
         || compareStrings(left.page.id, right.page.id))
       .map((index) => this.buildBranch(index, requested, options.requirementValues ?? []));
 
+    const offset = parseNavigationCursor(options.navigationCursor, allBranches.length);
+    const branches = allBranches.slice(offset, offset + NAVIGATION_BRANCH_PAGE_SIZE);
+    const nextOffset = offset + branches.length;
+
     return {
-      scopeRefs: [],
+      scopeRefs: normalizedScopeRefs,
       branches,
       externalReferences: branches.flatMap((branch) => branch.externalReferences),
-      complete: true,
+      complete: nextOffset >= allBranches.length,
+      nextCursor: nextOffset >= allBranches.length ? undefined : formatNavigationCursor(nextOffset),
     };
+  }
+
+  private resolveScope(scopeRefs: readonly string[] | undefined): ScopeEntry[] {
+    if (scopeRefs === undefined || scopeRefs.length === 0) return [...this.pages.values()].map((index) => ({
+      ref: `agentdocs://pages/${index.page.id}.md`,
+      pageId: index.page.id,
+    }));
+    return scopeRefs.map((ref) => {
+      const match = /^agentdocs:\/\/pages\/([a-zA-Z0-9_-]+)\.md(?:#([a-zA-Z0-9_-]+))?$/.exec(ref);
+      if (match === null) throw new ContextNavigationScopeError(`Invalid navigation scope ref "${ref}".`);
+      const pageId = match[1]!;
+      const index = this.pages.get(pageId);
+      if (index === undefined) throw new ContextNavigationScopeError(`Navigation scope page "${pageId}" was not found.`);
+      const targetId = match[2];
+      if (targetId === undefined) return { ref: `agentdocs://pages/${pageId}.md`, pageId };
+      const heading = index.headingById.get(targetId);
+      if (heading !== undefined) return { ref, pageId, headingPath: heading.path };
+      const chunk = index.chunks.find((candidate) => candidate.id === targetId);
+      if (chunk !== undefined) return { ref, pageId, headingPath: chunk.headingPath };
+      const codeBlock = index.page.codeBlocks.find((candidate) => candidate.id === targetId);
+      const codeHeading = codeBlock?.sourceHeadingId === undefined
+        ? undefined
+        : index.headingById.get(codeBlock.sourceHeadingId);
+      if (codeHeading !== undefined) return { ref, pageId, headingPath: codeHeading.path };
+      throw new ContextNavigationScopeError(`Navigation scope target "${targetId}" was not found on page "${pageId}".`);
+    });
   }
 
   private buildBranch(
@@ -126,6 +183,29 @@ export class ContextNavigationCatalog {
       externalReferences,
     };
   }
+}
+
+type ScopeEntry = {
+  ref: string;
+  pageId: string;
+  headingPath?: string[];
+};
+
+const NAVIGATION_BRANCH_PAGE_SIZE = 4;
+
+function formatNavigationCursor(offset: number): string {
+  return `agentdocs:navigation:v1:${offset.toString(36)}`;
+}
+
+function parseNavigationCursor(cursor: string | undefined, branchCount: number): number {
+  if (cursor === undefined) return 0;
+  const match = /^agentdocs:navigation:v1:([0-9a-z]+)$/.exec(cursor);
+  if (match === null) throw new ContextNavigationScopeError(`Invalid navigation cursor "${cursor}".`);
+  const offset = Number.parseInt(match[1]!, 36);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= branchCount) {
+    throw new ContextNavigationScopeError(`Navigation cursor "${cursor}" is no longer valid.`);
+  }
+  return offset;
 }
 
 function headingEntries(headings: Heading[]): HeadingEntry[] {

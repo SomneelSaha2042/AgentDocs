@@ -30,10 +30,16 @@ type JsonRpcResponse = {
 };
 
 const TOOLS = [
-  tool("query_docs", "Preferred first call. Call once per task to get compact, evidence-linked steps and examples. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
+  tool("query_docs", "Start with this evidence-linked query, then refine it with scopeRefs or continue the returned navigationCursor when the context map is incomplete. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
     goal: stringProperty(),
     task: stringProperty(),
     facets: { type: "object", additionalProperties: { type: "string" } },
+    scopeRefs: {
+      type: "array",
+      items: stringProperty("A page or heading ref from the returned context map."),
+      minItems: 1,
+    },
+    navigationCursor: stringProperty("Continue the context map from the cursor returned by query_docs."),
   }, ["goal"]),
   tool("read_page", "Read the exact source reference returned by query_docs. Pass its ref unchanged; required reads must be completed before implementation.", {
     ref: stringProperty("Exact AgentDocs reference, for example agentdocs://pages/page_id.md#chunk_id."),
@@ -218,6 +224,10 @@ async function callTool(
           requiredString(args.goal, "goal"),
           optionalString(args.task),
           isRecord(args.facets) ? stringRecord(args.facets) : undefined,
+          {
+            scopeRefs: optionalStringArray(args.scopeRefs, "scopeRefs"),
+            navigationCursor: optionalString(args.navigationCursor),
+          },
         );
         break;
       case "read_page":
@@ -519,6 +529,12 @@ function requiredString(value: unknown, name: string): string {
 
 function optionalString(value: unknown): string | undefined {
   return value === undefined ? undefined : requiredString(value, "value");
+}
+
+function optionalStringArray(value: unknown, name: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new ProtocolError(-32602, `${name} must be an array of strings.`);
+  return value.map((item) => requiredString(item, name));
 }
 
 function optionalInteger(value: unknown): number | undefined {

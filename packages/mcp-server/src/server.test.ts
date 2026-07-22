@@ -67,6 +67,8 @@ describe("AgentDocs MCP protocol", () => {
         "verify_task_context",
       ]);
     expect(listedTools.find((tool) => tool.name === "query_docs")?.inputSchema.properties).not.toHaveProperty("limit");
+    expect(listedTools.find((tool) => tool.name === "query_docs")?.inputSchema.properties)
+      .toEqual(expect.objectContaining({ scopeRefs: expect.any(Object), navigationCursor: expect.any(Object) }));
     expect(listedTools.find((tool) => tool.name === "read_page")?.inputSchema.properties).toEqual(expect.objectContaining({ ref: expect.any(Object) }));
     const search = await request(handle, 3, "tools/call", {
       name: "search_docs",
@@ -90,6 +92,7 @@ describe("AgentDocs MCP protocol", () => {
     expect(queryDocsText).toContain("Answer:");
     expect(queryDocsText).toContain("Confidence:");
     expect(queryDocsText).toContain("Readiness:");
+    expect(queryDocsText).toContain("Context map:");
     expect(queryDocsText).not.toMatch(/^\{/);
     expect(Math.ceil(queryDocsText.length / 4)).toBeGreaterThan(0);
     expect(queryDocsText.length).toBeLessThan(JSON.stringify(queryDocsResult.structuredContent).length);
@@ -97,6 +100,17 @@ describe("AgentDocs MCP protocol", () => {
     expect(queryDocsResult.structuredContent.steps.length).toBeGreaterThan(0);
     expect(JSON.stringify(queryDocs)).toContain("Do not expose API keys");
     expect(JSON.stringify(queryDocs)).toContain("code_auth");
+    const invalidScope = await request(handle, 12, "tools/call", {
+      name: "query_docs",
+      arguments: {
+        goal: "authentication",
+        scopeRefs: ["agentdocs://pages/missing.md"],
+      },
+    });
+    expect(invalidScope.result).toMatchObject({
+      isError: true,
+      structuredContent: { code: "INVALID_ARGUMENT" },
+    });
     const page = await request(handle, 10, "tools/call", {
       name: "read_page",
       arguments: { ref: "agentdocs://pages/page_auth.md#chunk_auth" },

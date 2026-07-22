@@ -108,6 +108,7 @@ export type {
 export {
   TaskContextAssembler,
 } from "./task-context.js";
+export { ContextNavigationCatalog, ContextNavigationScopeError } from "./context-navigation.js";
 export type {
   ContextBundleOptions,
   ContextDecision,

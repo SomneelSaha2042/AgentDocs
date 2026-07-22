@@ -37,6 +37,34 @@ describe("TaskContextAssembler", () => {
     expect(JSON.stringify(result)).toContain("code_auth");
   });
 
+  it("keeps query evidence and navigation inside an explicit heading scope", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const result = assembler.queryDocs({
+      goal: "authenticate requests with an API key",
+      task: "authentication",
+      scopeRefs: ["agentdocs://pages/page_auth.md#heading_auth"],
+      search: {
+        query: "authenticate requests with an API key",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(result.navigation.scopeRefs).toEqual(["agentdocs://pages/page_auth.md#heading_auth"]);
+    expect(result.navigation.branches).toHaveLength(1);
+    expect(result.steps.every((step) => step.evidence.every((evidence) => evidence.pageId === "page_auth"))).toBe(true);
+    expect(result.codeExamples.every((example) => example.evidence.every((evidence) => evidence.pageId === "page_auth"))).toBe(true);
+  });
+
   it("uses structured task-pack code evidence when selecting an example", () => {
     const map = fixtureMap();
     map.taskPacks[0]!.codeExamples = [{

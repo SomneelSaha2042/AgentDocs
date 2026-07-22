@@ -703,6 +703,7 @@ export const ContextBundleSchema = z
       .optional(),
     supportingResources: z.array(z.string().min(1)),
     search: SearchResponseSchema,
+    navigation: ContextNavigationSchema,
   })
   .strict();
 

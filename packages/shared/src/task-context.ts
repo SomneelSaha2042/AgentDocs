@@ -29,6 +29,8 @@ export type QueryDocsOptions = {
   goal: string;
   task?: string;
   facets?: Record<string, string>;
+  scopeRefs?: string[];
+  navigationCursor?: string;
   search?: SearchResponse;
 };
 
@@ -49,6 +51,8 @@ export type ContextDecisionOptions = {
   goal: string;
   task?: string;
   facets?: Record<string, string>;
+  scopeRefs?: string[];
+  navigationCursor?: string;
   search: SearchResponse;
   freshness?: StatusReport;
 };
@@ -211,6 +215,8 @@ export class TaskContextAssembler {
       goal: options.goal,
       task: options.task,
       facets: options.facets,
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
       freshness: options.freshness,
       search: initialSearch,
     });
@@ -235,6 +241,8 @@ export class TaskContextAssembler {
       goal: options.goal,
       task: options.task,
       facets: options.facets,
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
       search: options.search,
     });
     const warnings = this.contextWarnings(selectedPack, queryDraft.warnings, options.freshness);
@@ -244,6 +252,7 @@ export class TaskContextAssembler {
       freshness: options.freshness,
       selectedPack,
       search: options.search,
+      scopeRefs: options.scopeRefs,
       requestedFacets,
       query: queryDraft,
       queryWarnings: [
@@ -289,6 +298,7 @@ export class TaskContextAssembler {
           },
       supportingResources: decision.supportingResources,
       search: decision.search,
+      navigation: decision.query.navigation,
     });
   }
 
@@ -307,7 +317,7 @@ export class TaskContextAssembler {
       mcp: {
         command: options.mcp?.command ?? "agentdocs serve-mcp --tools query_docs,read_page",
         prompt: options.mcp?.prompt
-          ?? "Use the AgentDocs MCP server before web search. Call query_docs once first. If readiness is INSPECT, read one cited source before writing; if STOP, resolve the warning before implementing.",
+          ?? "Use the AgentDocs MCP server before web search. Start with query_docs, refine with returned scopeRefs or navigationCursor when needed, and read one cited source before writing if readiness is INSPECT; if STOP, resolve the warning before implementing.",
         suggestedTools: options.mcp?.suggestedTools
           ?? ["query_docs", "read_page"],
         resources: decision.readFirst,
@@ -472,6 +482,7 @@ export class TaskContextAssembler {
       selectedPack,
       search,
       query,
+      scopeRefs: options.scopeRefs,
       requestedFacets: requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets),
       queryWarnings: [
         ...query.warnings,
@@ -486,8 +497,23 @@ export class TaskContextAssembler {
     const requestedFacets = requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets);
     const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
     const selectedPack = taskSelection?.pack;
+    const scopedPackEvidence = selectedPack?.evidence.filter((evidence) =>
+      this.evidenceInScope(evidence, options.scopeRefs)) ?? [];
+    const scopedPackSteps = selectedPack?.steps
+      .map((step) => ({ ...step, evidence: step.evidence.filter((evidence) => this.evidenceInScope(evidence, options.scopeRefs)) }))
+      .filter((step) => step.evidence.length > 0) ?? [];
+    const scopedPackGotchas = selectedPack?.gotchas
+      .map((gotcha) => ({ ...gotcha, evidence: gotcha.evidence.filter((evidence) => this.evidenceInScope(evidence, options.scopeRefs)) }))
+      .filter((gotcha) => gotcha.evidence.length > 0) ?? [];
     const allowUnknownFacets = options.facets === undefined;
-    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets, allowUnknownFacets);
+    const rankedChunks = this.rankChunks(
+      queryText,
+      options.search,
+      selectedPack,
+      requestedFacets,
+      allowUnknownFacets,
+      options.scopeRefs,
+    );
     const requirementSeeds = requirementSeedsFor({
       task: taskTextFor(options.goal, options.task),
       explicitFacets: options.facets,
@@ -496,8 +522,8 @@ export class TaskContextAssembler {
     });
     const plannedEvidence = requirementSeeds.flatMap((requirement) => {
       const candidates = requirement.kind === "facet"
-        ? selectedPack?.evidence ?? []
-        : this.candidateEvidenceFor(requirement);
+        ? scopedPackEvidence ?? []
+        : this.candidateEvidenceFor(requirement, options.scopeRefs);
       const compatible = candidates.filter((evidence) =>
         this.evidenceCompatibleWithRequestedFacets([evidence], requestedFacets));
       const selected = selectMinimalEvidence(compatible.length > 0 ? compatible : candidates, requirement.kind === "facet" ? 2 : 1);
@@ -536,7 +562,7 @@ export class TaskContextAssembler {
           text: excerpt(stripCode(chunk.text).trim(), 420),
           evidence: compactEvidence([evidenceForChunk(page, chunk)]),
         })),
-        ...(selectedPack?.steps
+        ...(scopedPackSteps
           .filter((step) => isRelevantPackEvidence(`${step.title} ${step.description}`, queryText))
           .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, requestedFacets))
           .map((step) => ({
@@ -547,10 +573,17 @@ export class TaskContextAssembler {
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
     );
-    const codeCandidates = this.codeExamplesFor(queryText, sourceChunks, selectedPack, requestedFacets, allowUnknownFacets);
+    const codeCandidates = this.codeExamplesFor(
+      queryText,
+      sourceChunks,
+      selectedPack,
+      requestedFacets,
+      allowUnknownFacets,
+      options.scopeRefs,
+    );
     const codeExamples = selectPlannedCodeExamples(codeCandidates, requirementSeeds, selectedEvidence);
     const gotchas = stableUniqueBy(
-      (selectedPack?.gotchas
+      (scopedPackGotchas
         .filter((gotcha) => gotcha.severity === "critical" || isRelevantPackEvidence(gotcha.text, queryText))
         .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, requestedFacets))
         .map((gotcha) => ({
@@ -605,6 +638,8 @@ export class TaskContextAssembler {
           .filter((value): value is string => value !== undefined),
       ]),
       requirementValues: requirementSeeds.map((requirement) => requirement.value),
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
     });
     const answer = [
       selectedPack === undefined
@@ -795,6 +830,7 @@ export class TaskContextAssembler {
     selectedPack?: TaskPack;
     search: SearchResponse;
     query: QueryDocsResponse;
+    scopeRefs?: string[];
     requestedFacets?: Record<string, string>;
     queryWarnings?: string[];
   }): ContextVerification {
@@ -880,7 +916,7 @@ export class TaskContextAssembler {
       requestedFacets: options.requestedFacets,
       selectedPack: pack,
       query: this.queryForRequirementAssessment(options.query),
-      candidateEvidenceFor: (requirement) => this.candidateEvidenceFor(requirement),
+      candidateEvidenceFor: (requirement) => this.candidateEvidenceFor(requirement, options.scopeRefs),
       corpusTerms: this.corpusTerms,
     });
     const incompleteRequirements = requirements.filter((requirement) =>
@@ -965,6 +1001,7 @@ export class TaskContextAssembler {
     pack: TaskPack | undefined,
     facets: Record<string, string> | undefined,
     allowUnknownFacets = false,
+    scopeRefs?: readonly string[],
   ): RankedChunk[] {
     const byId = new Map<string, number>();
     for (const [index, result] of (search?.results ?? []).entries()) {
@@ -988,6 +1025,8 @@ export class TaskContextAssembler {
       .map((id) => this.chunks.get(id))
       .filter((chunk): chunk is Chunk => chunk !== undefined);
     return candidates
+      .filter((chunk) => scopeRefs === undefined || scopeRefs.length === 0
+        || this.navigationCatalog.filterChunkIds([chunk.id], scopeRefs).length > 0)
       .map((chunk) => {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
@@ -1013,7 +1052,10 @@ export class TaskContextAssembler {
       .sort((left, right) => right.score - left.score || compareStrings(left.chunk.id, right.chunk.id));
   }
 
-  private candidateEvidenceFor(requirement: Pick<RequirementAssessment, "kind" | "value">): Evidence[] {
+  private candidateEvidenceFor(
+    requirement: Pick<RequirementAssessment, "kind" | "value">,
+    scopeRefs?: readonly string[],
+  ): Evidence[] {
     if (requirement.kind === "facet") return [];
     const candidateIds = new Set<string>();
     for (const term of meaningfulTerms(requirement.value)) {
@@ -1022,6 +1064,8 @@ export class TaskContextAssembler {
     const candidates = [...candidateIds]
       .map((id) => this.chunks.get(id))
       .filter((chunk): chunk is Chunk => chunk !== undefined)
+      .filter((chunk) => scopeRefs === undefined || scopeRefs.length === 0
+        || this.navigationCatalog.filterChunkIds([chunk.id], scopeRefs).length > 0)
       .map((chunk) => {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
@@ -1054,6 +1098,7 @@ export class TaskContextAssembler {
     pack: TaskPack | undefined,
     facets: Record<string, string> | undefined,
     allowUnknownFacets = false,
+    scopeRefs?: readonly string[],
   ) {
     const rankedChunkIds = new Set(ranked.map(({ chunk }) => chunk.id));
     const rankedPageIds = new Set(ranked.map(({ page }) => page.id));
@@ -1064,6 +1109,12 @@ export class TaskContextAssembler {
         const relatedChunk = headingPath.length === 0
           ? this.firstChunkByPage.get(page.id)
           : this.chunkByPageHeading.get(`${page.id}\u0000${headingPath.join("\u0000")}`);
+        const inScope = scopeRefs === undefined || scopeRefs.length === 0
+          || this.navigationCatalog.filterChunkIds(
+            relatedChunk === undefined ? [] : [relatedChunk.id],
+            scopeRefs,
+          ).length > 0;
+        if (!inScope) return undefined;
         const packExample = pack?.codeExamples.find((example) =>
           oneLine(taskPackCodeExampleValue(example)) === oneLine(block.value));
         const packMatch = packExample !== undefined;
@@ -1164,6 +1215,18 @@ export class TaskContextAssembler {
         `${page.title} ${page.headings.map((heading) => heading.text).join(" ")} ${page.markdown}`,
       );
     });
+  }
+
+  private evidenceInScope(evidence: Evidence, scopeRefs: readonly string[] | undefined): boolean {
+    if (scopeRefs === undefined || scopeRefs.length === 0 || evidence.pageId === undefined) return true;
+    if (evidence.chunkId !== undefined || evidence.headingId !== undefined || evidence.codeBlockId !== undefined) {
+      const chunkIds = this.options.agentMap.chunks
+        .filter((chunk) => chunk.pageId === evidence.pageId)
+        .map((chunk) => chunk.id);
+      return this.navigationCatalog.filterChunkIds(chunkIds, scopeRefs).some((chunkId) =>
+        evidence.chunkId === undefined || chunkId === evidence.chunkId);
+    }
+    return this.navigationCatalog.filterPageIds([evidence.pageId], scopeRefs).length > 0;
   }
 
   private selectReadableTarget(reference: AgentDocsReference): ReadableTarget {
