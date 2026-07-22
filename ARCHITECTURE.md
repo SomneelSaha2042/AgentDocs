@@ -209,9 +209,11 @@ critical issue.
 The same decision performs conservative task-readiness assessment over the
 complete goal and task text. It extracts code/configuration symbols, explicit
 constraints, and bounded high-signal phrases, then checks selected evidence
-and corpus candidates. `query_docs` exposes compact requirement gaps and
-required source reads; `verify_task_context` exposes full evidence-linked
-assessments. Missing candidates produce `stop`, candidate-but-unread evidence
+and corpus candidates. `query_docs` emits a requirement-directed first
+response: source-backed summaries per selected requirement, a compact coverage
+plan, and exact chunk/code-block follow-up refs. It does not serialize every
+ranked chunk. `verify_task_context` exposes full evidence-linked assessments.
+Missing candidates produce `stop`, candidate-but-unread evidence
 produces `inspect`, and complete compatible evidence produces `implement`.
 This is evidence assurance, not a guarantee that generated code will pass
 arbitrary project tests.

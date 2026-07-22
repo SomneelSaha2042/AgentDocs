@@ -279,7 +279,7 @@ describe("TaskContextAssembler", () => {
     expect(result.section.evidence[0]?.source).toBe("code_block");
   });
 
-  it("preserves source-backed context when it exceeds the former transport budget", () => {
+  it("plans source-backed context with exact refs instead of dumping the former transport budget", () => {
     const hash = "b".repeat(64);
     const largeText = "Use octokit.paginate with octokit.rest.repos.listCommits. ".repeat(80);
     const map = AgentMapSchema.parse({
@@ -341,9 +341,9 @@ describe("TaskContextAssembler", () => {
       },
     });
 
-    expect(result.estimatedTokens).toBeGreaterThan(800);
+    expect(result.estimatedTokens).toBeGreaterThan(100);
     expect(result.steps.length).toBeGreaterThan(0);
-    expect(result.steps.length).toBeGreaterThanOrEqual(10);
+    expect(result.steps.length).toBeLessThan(10);
     expect(result.followUpRefs).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "code_block" }),
     ]));

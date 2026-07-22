@@ -336,6 +336,10 @@ function formatQueryDocs(result: QueryDocsResponse): string {
     lines.push("", "Requirement gaps:", ...result.readiness.gaps.map((gap) =>
       `- ${gap.status}: ${gap.requirement}${gap.ref === undefined ? "" : ` [read: ${gap.ref}]`}`));
   }
+  if (result.requirements.length > 0) {
+    lines.push("", "Requirement coverage:", ...result.requirements.map((requirement) =>
+      `- ${requirement.status}: ${requirement.value} (${requirement.source})`));
+  }
   if (result.steps.length > 0) {
     lines.push("", "Steps:", ...result.steps.map((step, index) =>
       `${index + 1}. ${step.title}: ${step.text} ${evidenceLabel(step.evidence)}`));
@@ -385,7 +389,7 @@ function formatReadPage(result: ReadPageResponse): string {
 
 function evidenceLabel(evidence: QueryDocsResponse["steps"][number]["evidence"]): string {
   const refs = evidence
-    .map((item) => item.codeBlockId ?? item.headingId ?? item.pageId ?? item.repoPath ?? item.url)
+    .map((item) => item.codeBlockId ?? item.chunkId ?? item.headingId ?? item.pageId ?? item.repoPath ?? item.url)
     .filter((item): item is string => item !== undefined);
   return refs.length === 0 ? "[source]" : `[source: ${refs.slice(0, 2).join(", ")}]`;
 }

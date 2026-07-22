@@ -50,6 +50,7 @@ export const EvidenceSchema = z
     source: z.enum(["page", "heading", "link", "code_block", "openapi", "config"]),
     pageId: z.string().min(1).optional(),
     headingId: z.string().min(1).optional(),
+    chunkId: z.string().min(1).optional(),
     codeBlockId: z.string().min(1).optional(),
     url: z.string().optional(),
     repoPath: z.string().min(1).optional(),
@@ -520,6 +521,16 @@ export const RequirementAssessmentSchema = z
   })
   .strict();
 
+const QueryRequirementSchema = z
+  .object({
+    kind: z.enum(["facet", "symbol", "configuration", "constraint"]),
+    value: z.string().min(1),
+    source: z.enum(["explicit", "inferred"]),
+    status: z.enum(["covered", "partial", "missing", "contradicted", "unknown"]),
+    evidence: z.array(EvidenceSchema),
+  })
+  .strict();
+
 export const QueryDocsResponseSchema = z
   .object({
     goal: z.string().min(1),
@@ -552,6 +563,7 @@ export const QueryDocsResponseSchema = z
         id: z.string().min(1),
         pageId: z.string().min(1).optional(),
         headingId: z.string().min(1).optional(),
+        chunkId: z.string().min(1).optional(),
         codeBlockId: z.string().min(1).optional(),
         sourceUrl: z.string().optional(),
         repoPath: z.string().min(1).optional(),
@@ -571,6 +583,7 @@ export const QueryDocsResponseSchema = z
       }).strict(),
     ),
     warnings: z.array(z.string().min(1)),
+    requirements: z.array(QueryRequirementSchema).default([]),
     readiness: ContextReadinessSchema,
     estimatedTokens: z.number().int().nonnegative(),
   })

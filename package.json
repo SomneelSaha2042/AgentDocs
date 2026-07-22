@@ -40,7 +40,8 @@
     "proof:v1": "corepack pnpm build && node scripts/v1-product-proof.mjs",
     "regression:dogfood": "corepack pnpm build && node scripts/dogfood-regression.mjs",
     "regression:fixtures": "corepack pnpm build && node scripts/regression-fixtures.mjs",
-    "test:evaluation": "node --test scripts/eval-suites.test.mjs scripts/eval-fixtures.test.mjs scripts/eval-oracles.test.mjs scripts/eval-budget.test.mjs scripts/eval-metrics.test.mjs scripts/eval-provider-messages.test.mjs scripts/eval-evidence-protocol.test.mjs",
+    "test:evaluation": "node --test scripts/eval-suites.test.mjs scripts/eval-fixtures.test.mjs scripts/eval-oracles.test.mjs scripts/eval-budget.test.mjs scripts/eval-metrics.test.mjs scripts/eval-provider-messages.test.mjs scripts/eval-evidence-protocol.test.mjs scripts/eval-context-gate.test.mjs",
+    "eval:context-gate": "corepack pnpm build && node scripts/eval-context-gate.mjs",
     "smoke:bundle": "node scripts/release-smoke.mjs node packages/cli/dist/agentdocs.js",
     "test": "corepack pnpm -r --workspace-concurrency=1 --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck"

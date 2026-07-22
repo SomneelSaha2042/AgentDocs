@@ -91,6 +91,8 @@ type RankedChunk = {
   score: number;
 };
 
+type RequirementSeed = Pick<RequirementAssessment, "kind" | "value" | "source">;
+
 type ContextFacetWarning = {
   key: string;
   requested: string;
@@ -344,7 +346,7 @@ export class TaskContextAssembler {
           : "missing",
         ref: requirement.evidence[0] === undefined
           ? undefined
-          : requirement.evidence[0].codeBlockId ?? requirement.evidence[0].headingId ?? requirement.evidence[0].pageId,
+          : requirement.evidence[0].codeBlockId ?? requirement.evidence[0].chunkId ?? requirement.evidence[0].headingId ?? requirement.evidence[0].pageId,
       })),
     } satisfies ContextReadiness;
     const answer = effectiveRecommendation === "implement"
@@ -357,6 +359,13 @@ export class TaskContextAssembler {
       ...query,
       answer,
       followUpRefs,
+      requirements: verification.requirements.map((requirement) => ({
+        kind: requirement.kind,
+        value: requirement.value,
+        source: requirement.source,
+        status: requirement.status,
+        evidence: requirement.evidence.map((evidence) => ({ ...evidence, quote: undefined })),
+      })),
       readiness,
     });
   }
@@ -386,7 +395,7 @@ export class TaskContextAssembler {
         type: targetId === undefined ? "page" as const : codeBlock !== undefined ? "code_block" as const : "chunk" as const,
         ref,
         pageId: page.id,
-        chunkId: targetId,
+        chunkId: chunk === undefined ? undefined : chunk.id,
         title: codeBlock !== undefined
           ? "Code example"
           : chunk === undefined
@@ -400,8 +409,9 @@ export class TaskContextAssembler {
       const matched = requirements
         .filter((requirement) => {
           const requiredRef = requirementRefs.get(requirement.value);
-          return requiredRef === ref.ref || requiredRef === ref.chunkId || requiredRef === ref.pageId ||
-            requirement.evidence.some((item) => item.pageId === ref.pageId);
+          return (requiredRef !== undefined
+            && (requiredRef === ref.ref || requiredRef === ref.chunkId || requiredRef === ref.pageId))
+            || (requirement.evidence.length > 0 && requirement.evidence.some((item) => item.pageId === ref.pageId));
         })
         .map((requirement) => requirement.value);
       return matched.length === 0 ? ref : {
@@ -419,7 +429,7 @@ export class TaskContextAssembler {
 
   private readRefForEvidence(evidence: Evidence): string | undefined {
     const pageId = evidence.pageId;
-    const target = evidence.codeBlockId ?? evidence.headingId;
+    const target = evidence.codeBlockId ?? evidence.chunkId ?? evidence.headingId;
     if (pageId === undefined) return undefined;
     return target === undefined
       ? `agentdocs://pages/${pageId}.md`
@@ -432,16 +442,18 @@ export class TaskContextAssembler {
     if (evidence.pageId === undefined) return undefined;
     const page = this.pages.get(evidence.pageId);
     if (page === undefined) return undefined;
-    const targetId = evidence.codeBlockId ?? evidence.headingId;
+    const targetId = evidence.codeBlockId ?? evidence.chunkId ?? evidence.headingId;
     const heading = targetId === undefined ? undefined : page.headings.find((item) => item.id === targetId);
+    const isChunk = evidence.chunkId !== undefined;
+    const chunk = evidence.chunkId === undefined ? undefined : this.chunks.get(evidence.chunkId);
     return {
       type: evidence.codeBlockId === undefined ? (targetId === undefined ? "page" : "chunk") : "code_block",
       ref: targetId === undefined
         ? `agentdocs://pages/${page.id}.md`
         : `agentdocs://pages/${page.id}.md#${targetId}`,
       pageId: page.id,
-      chunkId: targetId,
-      title: evidence.codeBlockId === undefined ? heading?.text ?? page.title : "Code example",
+      chunkId: isChunk ? evidence.chunkId : undefined,
+      title: evidence.codeBlockId === undefined ? (isChunk ? chunk === undefined ? page.title : titleForChunk(chunk, page) : heading?.text ?? page.title) : "Code example",
       sourceUrl: page.canonicalUrl ?? page.sourceUrl,
       repoPath: page.repoPath,
     };
@@ -473,11 +485,46 @@ export class TaskContextAssembler {
     const selectedPack = taskSelection?.pack;
     const allowUnknownFacets = options.facets === undefined;
     const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets, allowUnknownFacets);
+    const requirementSeeds = requirementSeedsFor({
+      task: taskTextFor(options.goal, options.task),
+      explicitFacets: options.facets,
+      requestedFacets,
+      corpusTerms: this.corpusTerms,
+    });
+    const plannedEvidence = requirementSeeds.flatMap((requirement) => {
+      const candidates = requirement.kind === "facet"
+        ? selectedPack?.evidence ?? []
+        : this.candidateEvidenceFor(requirement);
+      const compatible = candidates.filter((evidence) =>
+        this.evidenceCompatibleWithRequestedFacets([evidence], requestedFacets));
+      const selected = selectMinimalEvidence(compatible.length > 0 ? compatible : candidates, requirement.kind === "facet" ? 2 : 1);
+      return selected.map((evidence) => ({ requirement, evidence }));
+    });
+    const selectedEvidence = stableUniqueBy(
+      plannedEvidence.map(({ evidence }) => evidence),
+      evidenceKey,
+    );
+    const selectedChunkIds = new Set(selectedEvidence
+      .map((evidence) => evidence.chunkId)
+      .filter((chunkId): chunkId is string => chunkId !== undefined));
+    const evidenceChunks = rankedChunks.filter(({ chunk }) => selectedChunkIds.has(chunk.id));
+    const fallbackChunks = requirementSeeds.length === 0
+      ? (options.search === undefined
+        ? rankedChunks.slice(0, 3)
+        : rankedChunks.filter(({ chunk }) => (options.search?.results ?? []).some((result) => result.chunkId === chunk.id)))
+      : [];
+    const sourceChunks = stableUniqueBy([
+      ...evidenceChunks,
+      ...fallbackChunks,
+      ...(evidenceChunks.length === 0 && fallbackChunks.length === 0 ? rankedChunks.slice(0, 3) : []),
+    ], ({ chunk }) => chunk.id);
+    const evidenceForStep = (step: { title: string; description: string; evidence: Evidence[] }) =>
+      compactEvidence(step.evidence);
     const steps = stableUniqueBy(
       [
-        ...rankedChunks.map(({ chunk, page }) => ({
+        ...sourceChunks.map(({ chunk, page }) => ({
           title: titleForChunk(chunk, page),
-          text: stripCode(chunk.text).trim(),
+          text: excerpt(stripCode(chunk.text).trim(), 420),
           evidence: compactEvidence([evidenceForChunk(page, chunk)]),
         })),
         ...(selectedPack?.steps
@@ -486,12 +533,13 @@ export class TaskContextAssembler {
           .map((step) => ({
             title: step.title,
             text: stripCode(step.description).trim(),
-            evidence: compactEvidence(step.evidence),
+            evidence: evidenceForStep(step),
           })) ?? []),
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
     );
-    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, requestedFacets, allowUnknownFacets);
+    const codeCandidates = this.codeExamplesFor(queryText, rankedChunks, selectedPack, requestedFacets, allowUnknownFacets);
+    const codeExamples = selectPlannedCodeExamples(codeCandidates, requirementSeeds, selectedEvidence);
     const gotchas = stableUniqueBy(
       (selectedPack?.gotchas
         .filter((gotcha) => gotcha.severity === "critical" || isRelevantPackEvidence(gotcha.text, queryText))
@@ -527,22 +575,14 @@ export class TaskContextAssembler {
     const confidence = confidenceFor(selectedPack, rankedChunks, steps.length, codeExamples.length);
     const followUpRefs = stableUniqueBy(
       [
-        ...rankedChunks.map(({ chunk, page }) => ({
-          type: "chunk" as const,
-          ref: `agentdocs://pages/${page.id}.md#${chunk.id}`,
-          pageId: page.id,
-          chunkId: chunk.id,
-          title: titleForChunk(chunk, page),
-          sourceUrl: page.canonicalUrl ?? page.sourceUrl,
-          repoPath: page.repoPath,
-        })),
+        ...selectedEvidence.map((evidence) => this.followUpRefForEvidence(evidence)),
         ...steps.flatMap((step) => step.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
         ...codeExamples.flatMap((example) => example.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
         ...gotchas.flatMap((gotcha) => gotcha.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
       ].filter((ref): ref is NonNullable<typeof ref> => ref !== undefined),
       (ref) => ref.ref,
     );
-    const implementationHints = sourceBackedHints(rankedChunks, codeExamples);
+    const implementationHints = sourceBackedHints(sourceChunks, codeExamples);
     const readiness = readinessFromQueryWarnings(warnings, steps.length, codeExamples.length);
     const answer = [
       selectedPack === undefined
@@ -566,6 +606,7 @@ export class TaskContextAssembler {
       citations,
       followUpRefs,
       warnings,
+      requirements: [],
       readiness,
     });
   }
@@ -1211,6 +1252,7 @@ function evidenceForChunk(page: DocPage, chunk: Chunk): Evidence {
     source: matching.length === 1 ? "heading" : "page",
     pageId: page.id,
     headingId: matching.length === 1 ? matching[0]!.id : undefined,
+    chunkId: chunk.id,
     url: page.canonicalUrl ?? page.sourceUrl,
     repoPath: page.repoPath,
     quote: chunk.text,
@@ -1218,11 +1260,12 @@ function evidenceForChunk(page: DocPage, chunk: Chunk): Evidence {
 }
 
 function citationForEvidence(evidence: Evidence, fallback: number) {
-  const id = evidence.codeBlockId ?? evidence.headingId ?? evidence.pageId ?? `citation_${fallback}`;
+  const id = evidence.codeBlockId ?? evidence.chunkId ?? evidence.headingId ?? evidence.pageId ?? `citation_${fallback}`;
   return {
     id,
     pageId: evidence.pageId,
     headingId: evidence.headingId,
+    chunkId: evidence.chunkId,
     codeBlockId: evidence.codeBlockId,
     sourceUrl: evidence.url,
     repoPath: evidence.repoPath,
@@ -1697,16 +1740,13 @@ function queryWarningCode(warning: string): string | undefined {
   return undefined;
 }
 
-function assessTaskRequirements(options: {
+function requirementSeedsFor(options: {
   task: string;
   explicitFacets?: Record<string, string>;
   requestedFacets?: Record<string, string>;
-  selectedPack?: TaskPack;
-  query: QueryDocsResponse;
-  candidateEvidenceFor?: (requirement: Pick<RequirementAssessment, "kind" | "value">) => Evidence[];
   corpusTerms?: string[];
-}): RequirementAssessment[] {
-  const requirements: Array<{ kind: RequirementAssessment["kind"]; value: string; source: RequirementAssessment["source"] }> = [];
+}): RequirementSeed[] {
+  const requirements: RequirementSeed[] = [];
   for (const [key, value] of Object.entries(options.requestedFacets ?? {})) {
     requirements.push({
       kind: "facet",
@@ -1731,6 +1771,58 @@ function assessTaskRequirements(options: {
   for (const value of extractConceptRequirements(options.task)) {
     requirements.push({ kind: "constraint", value, source: "explicit" });
   }
+  return stableUniqueBy(requirements, (requirement) => `${requirement.kind}:${requirement.value}`);
+}
+
+function evidenceKey(evidence: Evidence): string {
+  return [
+    evidence.pageId ?? "",
+    evidence.codeBlockId ?? "",
+    evidence.chunkId ?? "",
+    evidence.headingId ?? "",
+    evidence.repoPath ?? "",
+  ].join("\u0000");
+}
+
+function selectMinimalEvidence(evidence: Evidence[], count: number): Evidence[] {
+  return stableUniqueBy(evidence, evidenceKey).slice(0, count);
+}
+
+function selectPlannedCodeExamples(
+  candidates: Array<{ language?: string; value: string; evidence: Evidence[] }>,
+  requirements: RequirementSeed[],
+  selectedEvidence: Evidence[],
+): Array<{ language?: string; value: string; evidence: Evidence[] }> {
+  if (candidates.length === 0) return [];
+  const selectedKeys = new Set(selectedEvidence.map(evidenceKey));
+  const directlyLinked = candidates.filter((candidate) =>
+    candidate.evidence.some((evidence) => selectedKeys.has(evidenceKey(evidence))));
+  const pool = directlyLinked.length > 0 ? directlyLinked : candidates;
+  const selected: typeof pool = [];
+  const remaining = [...pool];
+  for (const requirement of requirements.filter((item) => item.kind === "symbol" || item.kind === "configuration")) {
+    const index = remaining.findIndex((candidate) =>
+      requirementMatches(requirement.value, candidate.value, requirement.kind));
+    if (index < 0) continue;
+    selected.push(remaining.splice(index, 1)[0]!);
+  }
+  if (selected.length === 0) selected.push(remaining[0] ?? pool[0]!);
+  // A single canonical example keeps the first response actionable; its exact
+  // code-block ref still exposes the complete source when more detail is
+  // needed.
+  return stableUniqueBy(selected, (candidate) => oneLine(candidate.value)).slice(0, 1);
+}
+
+function assessTaskRequirements(options: {
+  task: string;
+  explicitFacets?: Record<string, string>;
+  requestedFacets?: Record<string, string>;
+  selectedPack?: TaskPack;
+  query: QueryDocsResponse;
+  candidateEvidenceFor?: (requirement: Pick<RequirementAssessment, "kind" | "value">) => Evidence[];
+  corpusTerms?: string[];
+}): RequirementAssessment[] {
+  const requirements = requirementSeedsFor(options);
 
   const evidence = [
     ...options.query.steps.flatMap((step) => step.evidence.map((item) => ({ text: `${step.title} ${step.text}`, evidence: [item] }))),
@@ -1800,7 +1892,10 @@ function requirementAssessment(
   message: string,
   evidence: Evidence[],
 ): RequirementAssessment {
-  return { ...requirement, status, message, evidence: compactEvidence(evidence) };
+  // Verification needs an exact next read, not every lexical candidate. Keep
+  // the smallest source-backed set here; the complete source remains
+  // available through the returned page/chunk/code-block refs.
+  return { ...requirement, status, message, evidence: compactEvidence(selectMinimalEvidence(evidence, 2)) };
 }
 
 function extractCodeLikeRequirements(task: string): Array<{ kind: "symbol" | "configuration"; value: string }> {

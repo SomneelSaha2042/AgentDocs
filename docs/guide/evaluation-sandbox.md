@@ -104,6 +104,23 @@ node scripts/aggregate-metrics.mjs \
   authjs-v5 stripe-webhooks-holdout langchain-js
 ```
 
+The suite runner performs an offline context gate before any provider request.
+It rebuilds each AgentDocs fixture, calls `query_docs` once, and fails the
+suite when the requirement-directed first response exceeds 25% of the input
+budget or emits an invalid source reference. This is a preflight safety gate,
+not a product truncation policy: full source content remains available through
+lossless `read_page` pagination.
+
+Run the gate directly when iterating on the compiler or context planner:
+
+```bash
+corepack pnpm eval:context-gate
+```
+
+The suite runner records the gate result in `suite-manifest.json`. Skipping it
+is reserved for debugging (`--skip-context-gate`) and is not a valid metrics
+run.
+
 The suite uses a dual gate. Operational failures remain failed reliability
 outcomes, while task success is compared only among completed, valid runs.
 An experimental operational failure or a comparable task regression produces

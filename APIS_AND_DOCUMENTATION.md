@@ -1165,6 +1165,15 @@ Output:
   "citations": [],
   "followUpRefs": [],
   "warnings": [],
+  "requirements": [
+    {
+      "kind": "constraint",
+      "value": "preserve the documented next-page token",
+      "source": "explicit",
+      "status": "partial",
+      "evidence": []
+    }
+  ],
   "readiness": {
     "recommendation": "inspect",
     "coverage": "partial",
@@ -1177,14 +1186,22 @@ Output:
 }
 ```
 
-Every step, code example, gotcha, and citation must have source evidence.
-Unsupported steps are omitted rather than invented.
+Every step, code example, gotcha, and citation must have source evidence. The
+`requirements` array makes the deterministic coverage plan visible: it lists
+explicit and inferred requirements with their status and the smallest selected
+evidence refs. Long source text is not copied into the first response; the
+returned `followUpRefs` point to exact chunks or code blocks, and `read_page`
+returns those sources losslessly. Unsupported steps are omitted rather than
+invented.
 The `task` field may contain detailed constraints or an exact task-pack ID. A
 task-pack match is a relevance hint; it never restricts corpus search. The
 assembler searches the complete goal/task text and returns a coverage-first,
 evidence-linked context bundle. `estimatedTokens` is telemetry only; no fixed
 token or result limit may remove task requirements, readiness gaps, or required
-source references. `readiness.recommendation` is `implement` only when selected evidence is
+source references. The response is requirement-directed rather than a dump of
+all ranked chunks. `estimatedTokens` remains telemetry; the offline evaluation
+gate may reject an experiment whose first response is too large, but the
+product never truncates a source read. `readiness.recommendation` is `implement` only when selected evidence is
 fresh, compatible, and complete for the deterministically extracted task
 requirements. Use `inspect` when a source candidate exists but requires audit;
 read every `followUpRefs` entry whose `requiredFor` is present. Use `stop` when
