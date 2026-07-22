@@ -53,20 +53,20 @@
     "@agentdocs/indexer": "workspace:*",
     "@agentdocs/mcp-server": "workspace:*",
     "@agentdocs/normalizer": "workspace:*",
-    "@types/node": "^22.15.30",
-    "autoprefixer": "^10.5.0",
+    "@types/node": "^26.1.1",
+    "autoprefixer": "^10.5.4",
     "esbuild": "^0.27.0",
-    "postcss": "^8.5.15",
-    "tailwindcss": "^3.4.19",
-    "typescript": "^5.8.3",
-    "vite": "6.4.3",
+    "postcss": "^8.5.21",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "8.1.5",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "overrides": {
       "esbuild": "0.28.1",
-      "vite": "6.4.3",
+      "vite": "8.1.5",
       "undici": "^7.28.0"
     }
   }
