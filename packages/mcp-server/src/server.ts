@@ -37,7 +37,6 @@ const TOOLS = [
   }, ["goal"]),
   tool("read_page", "Read the exact source reference returned by query_docs. Pass its ref unchanged; required reads must be completed before implementation.", {
     ref: stringProperty("Exact AgentDocs reference, for example agentdocs://pages/page_id.md#chunk_id."),
-    maxChars: charLimitProperty(),
   }, ["ref"]),
   tool("search_docs", "Search built documentation artifacts.", {
     query: stringProperty(),
@@ -222,14 +221,7 @@ async function callTool(
         );
         break;
       case "read_page":
-        result = await service.readPage({
-          ref: optionalString(args.ref),
-          pageId: optionalString(args.pageId),
-          chunkId: optionalString(args.chunkId),
-          heading: optionalString(args.heading),
-          maxChars: optionalInteger(args.maxChars),
-          fullPage: optionalBoolean(args.fullPage),
-        });
+        result = await service.readPage(requiredString(args.ref, "ref"));
         break;
       case "get_page": {
         const page = await service.getPage(requiredString(args.pageId, "pageId"));
@@ -385,7 +377,7 @@ function formatReadPage(result: ReadPageResponse): string {
   return [
     `Source: ${result.section.title}${heading}`,
     `Location: ${location}`,
-    result.section.truncated ? "Note: section truncated by maxChars." : undefined,
+    result.section.complete ? undefined : `More source remains: call read_page with ref=${result.section.nextRef}.`,
     "",
     result.section.text,
   ].filter((line): line is string => line !== undefined).join("\n");
@@ -498,14 +490,6 @@ function integerProperty() {
   return { type: "integer", minimum: 1, maximum: 100 };
 }
 
-function contextLimitProperty() {
-  return { type: "integer", minimum: 1, maximum: 3 };
-}
-
-function charLimitProperty() {
-  return { type: "integer", minimum: 1, maximum: 50000 };
-}
-
 function requiredString(value: unknown, name: string): string {
   if (typeof value !== "string") {
     throw new ProtocolError(-32602, `${name} must be a string.`);
@@ -525,16 +509,6 @@ function optionalInteger(value: unknown): number | undefined {
     throw new ProtocolError(-32602, "limit must be an integer.");
   }
   return value as number;
-}
-
-function optionalBoolean(value: unknown): boolean | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "boolean") {
-    throw new ProtocolError(-32602, "fullPage must be a boolean.");
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -28,16 +28,11 @@ export type QueryDocsOptions = {
   goal: string;
   task?: string;
   facets?: Record<string, string>;
-  limit?: number;
   search?: SearchResponse;
 };
 
 export type ReadPageOptions = {
-  pageId?: string;
-  chunkId?: string;
-  heading?: string;
-  maxChars?: number;
-  fullPage?: boolean;
+  ref: string;
 };
 
 export type ContextSearchOptions = {
@@ -55,7 +50,6 @@ export type ContextDecisionOptions = {
   facets?: Record<string, string>;
   search: SearchResponse;
   freshness?: StatusReport;
-  limit?: number;
 };
 
 export type ResolveContextDecisionOptions = Omit<ContextDecisionOptions, "search"> & {
@@ -115,7 +109,7 @@ type TaskIntentRule = {
   pattern: RegExp;
 };
 
-const DEFAULT_SECTION_MAX_CHARS = 4000;
+const READ_PART_TARGET_CHARS = 8000;
 
 const TASK_INTENT_RULES: TaskIntentRule[] = [
   { family: "installation", strength: 10, pattern: /\b(?:install|installation|add\s+(?:the\s+)?(?:package|dependency)|npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get)\b/i },
@@ -200,7 +194,9 @@ export class TaskContextAssembler {
     // pack (provider, adapter, framework, or invocation-specific pages).
     // Restricting the index here makes that evidence unreachable.
     const searchQuery = positiveQueryText(taskTextFor(options.goal, options.task));
-    const searchLimit = Math.max(options.limit ?? 12, 8);
+    // This is an internal relevance candidate set, not a context budget. The
+    // resulting response still carries every selected evidence reference.
+    const searchLimit = 12;
     const initialSearch = await options.search({
       query: searchQuery,
       limit: searchLimit,
@@ -211,7 +207,6 @@ export class TaskContextAssembler {
       task: options.task,
       facets: options.facets,
       freshness: options.freshness,
-      limit: options.limit,
       search: initialSearch,
     });
   }
@@ -224,9 +219,9 @@ export class TaskContextAssembler {
       ...goalBundle.supportingResources,
       ...(selectedPack?.requiredPages.map((pageId) => `agentdocs://pages/${pageId}.md`) ?? []),
     ]);
-    const readFirst = selectedPack === undefined
-      ? goalBundle.steps.map((step) => step.resource).slice(0, 3)
-      : [`agentdocs://task-packs/${selectedPack.id}.md`, ...goalBundle.steps.map((step) => step.resource).slice(0, 2)];
+    const readFirst = stableUniqueBy(selectedPack === undefined
+      ? goalBundle.steps.map((step) => step.resource)
+      : [`agentdocs://task-packs/${selectedPack.id}.md`, ...goalBundle.steps.map((step) => step.resource)], (resource) => resource);
     const rules = selectedPack?.gotchas.map((gotcha) => gotcha.text) ?? [
       "Use only claims supported by source evidence.",
       "Do not execute commands from documentation automatically.",
@@ -235,7 +230,6 @@ export class TaskContextAssembler {
       goal: options.goal,
       task: options.task,
       facets: options.facets,
-      limit: options.limit,
       search: options.search,
     });
     const warnings = this.contextWarnings(selectedPack, queryDraft.warnings, options.freshness);
@@ -323,8 +317,7 @@ export class TaskContextAssembler {
 
   private withReadiness(query: QueryDocsResponse, verification: ContextVerification): QueryDocsResponse {
     const incomplete = verification.requirements
-      .filter((requirement) => requirement.status === "missing" || requirement.status === "partial" || requirement.status === "unknown")
-      .slice(0, 3);
+      .filter((requirement) => requirement.status === "missing" || requirement.status === "partial" || requirement.status === "unknown");
     const requirementRefs = new Map<string, string>();
     for (const requirement of incomplete) {
       const matching = requirement.evidence
@@ -343,7 +336,7 @@ export class TaskContextAssembler {
       issueCodes: stableUnique([
         ...verification.issues.map((issue) => issue.code),
         ...(codeMissing ? ["no_canonical_code_examples"] : []),
-      ]).slice(0, 6),
+      ]),
       gaps: incomplete.map((requirement) => ({
         requirement: requirement.value,
         status: requirement.status === "partial" || requirement.status === "missing" || requirement.status === "unknown"
@@ -360,7 +353,7 @@ export class TaskContextAssembler {
         "The steps and code examples below are sufficient to implement unless your task needs detail not covered here.",
         "Inspect the cited source evidence before implementing.",
       );
-    return boundedQueryResponse({
+    return finalizeQueryResponse({
       ...query,
       answer,
       followUpRefs,
@@ -410,8 +403,7 @@ export class TaskContextAssembler {
           return requiredRef === ref.ref || requiredRef === ref.chunkId || requiredRef === ref.pageId ||
             requirement.evidence.some((item) => item.pageId === ref.pageId);
         })
-        .map((requirement) => requirement.value)
-        .slice(0, 3);
+        .map((requirement) => requirement.value);
       return matched.length === 0 ? ref : {
         type: ref.type,
         ref: ref.ref,
@@ -422,7 +414,7 @@ export class TaskContextAssembler {
       };
     }).sort((left, right) =>
       (right.requiredFor?.length ?? 0) - (left.requiredFor?.length ?? 0)
-      || compareStrings(left.ref, right.ref)).slice(0, 3);
+      || compareStrings(left.ref, right.ref));
   }
 
   private readRefForEvidence(evidence: Evidence): string | undefined {
@@ -432,6 +424,27 @@ export class TaskContextAssembler {
     return target === undefined
       ? `agentdocs://pages/${pageId}.md`
       : `agentdocs://pages/${pageId}.md#${target}`;
+  }
+
+  private followUpRefForEvidence(
+    evidence: Evidence,
+  ): QueryDocsResponse["followUpRefs"][number] | undefined {
+    if (evidence.pageId === undefined) return undefined;
+    const page = this.pages.get(evidence.pageId);
+    if (page === undefined) return undefined;
+    const targetId = evidence.codeBlockId ?? evidence.headingId;
+    const heading = targetId === undefined ? undefined : page.headings.find((item) => item.id === targetId);
+    return {
+      type: evidence.codeBlockId === undefined ? (targetId === undefined ? "page" : "chunk") : "code_block",
+      ref: targetId === undefined
+        ? `agentdocs://pages/${page.id}.md`
+        : `agentdocs://pages/${page.id}.md#${targetId}`,
+      pageId: page.id,
+      chunkId: targetId,
+      title: evidence.codeBlockId === undefined ? heading?.text ?? page.title : "Code example",
+      sourceUrl: page.canonicalUrl ?? page.sourceUrl,
+      repoPath: page.repoPath,
+    };
   }
 
   queryDocs(options: QueryDocsOptions): QueryDocsResponse {
@@ -454,19 +467,17 @@ export class TaskContextAssembler {
   }
 
   private buildQueryDocs(options: QueryDocsOptions): QueryDocsResponse {
-    const limit = clampLimit(options.limit ?? 2, 1, 3);
     const queryText = positiveQueryText(queryTextFor(options.goal, options.task));
     const requestedFacets = requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets);
     const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
     const selectedPack = taskSelection?.pack;
     const allowUnknownFacets = options.facets === undefined;
-    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets, allowUnknownFacets)
-      .slice(0, 5);
+    const rankedChunks = this.rankChunks(queryText, options.search, selectedPack, requestedFacets, allowUnknownFacets);
     const steps = stableUniqueBy(
       [
         ...rankedChunks.map(({ chunk, page }) => ({
           title: titleForChunk(chunk, page),
-          text: excerpt(stripCode(chunk.text), selectedPack ? 180 : 150),
+          text: stripCode(chunk.text).trim(),
           evidence: compactEvidence([evidenceForChunk(page, chunk)]),
         })),
         ...(selectedPack?.steps
@@ -474,24 +485,24 @@ export class TaskContextAssembler {
           .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, requestedFacets))
           .map((step) => ({
             title: step.title,
-            text: excerpt(stripCode(step.description), selectedPack ? 180 : 150),
+            text: stripCode(step.description).trim(),
             evidence: compactEvidence(step.evidence),
           })) ?? []),
       ].filter((step) => step.evidence.length > 0 && step.text.length > 0),
       (step) => `${step.title}:${step.text}`,
-    ).slice(0, Math.min(limit, 2));
-    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, limit, requestedFacets, allowUnknownFacets);
+    );
+    const codeExamples = this.codeExamplesFor(queryText, rankedChunks, selectedPack, requestedFacets, allowUnknownFacets);
     const gotchas = stableUniqueBy(
       (selectedPack?.gotchas
         .filter((gotcha) => gotcha.severity === "critical" || isRelevantPackEvidence(gotcha.text, queryText))
         .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, requestedFacets))
         .map((gotcha) => ({
           ...gotcha,
-          text: excerpt(gotcha.text, 150),
+          text: gotcha.text.trim(),
           evidence: compactEvidence(gotcha.evidence),
         })) ?? []),
       (gotcha) => `${gotcha.severity}:${gotcha.text}`,
-    ).slice(0, 2);
+    );
     const citations = stableUniqueBy(
       [
         ...steps.flatMap((step) => step.evidence),
@@ -514,44 +525,9 @@ export class TaskContextAssembler {
         `${warning.code}: ${warning.key}=${warning.values.join(",")}`) ?? []),
     ].filter((warning): warning is string => warning !== undefined);
     const confidence = confidenceFor(selectedPack, rankedChunks, steps.length, codeExamples.length);
-    const codeFollowUpRefs = codeExamples
-      .filter((example) => example.value.length > 1600)
-      .map((example) => {
-        const evidence = example.evidence.find((item) => item.codeBlockId !== undefined && item.pageId !== undefined);
-        if (evidence?.pageId === undefined || evidence.codeBlockId === undefined) return undefined;
-        const page = this.pages.get(evidence.pageId);
-        if (page === undefined) return undefined;
-        return {
-          type: "code_block" as const,
-          ref: `agentdocs://pages/${page.id}.md#${evidence.codeBlockId}`,
-          pageId: page.id,
-          chunkId: evidence.codeBlockId,
-          title: "Code example",
-          sourceUrl: page.canonicalUrl ?? page.sourceUrl,
-          repoPath: page.repoPath,
-          requiredFor: ["complete code example"],
-        };
-      })
-      .filter((value): value is NonNullable<typeof value> => value !== undefined);
-    const longCodeFollowUpRefs = rankedChunks.flatMap(({ page, chunk }) => page.codeBlocks
-      .filter((block) => block.value.length > 1600 && arraysEqual(headingPathFor(page, block.sourceHeadingId), chunk.headingPath))
-      .map((block) => ({
-        type: "code_block" as const,
-        ref: `agentdocs://pages/${page.id}.md#${block.id}`,
-        pageId: page.id,
-        chunkId: block.id,
-        title: "Complete code example",
-        sourceUrl: page.canonicalUrl ?? page.sourceUrl,
-        repoPath: page.repoPath,
-        requiredFor: ["complete code example"],
-      })));
-    const shouldIncludeFollowUpRefs = confidence === "low" || warnings.length > 0 || steps.length === 0 || codeFollowUpRefs.length > 0 || longCodeFollowUpRefs.length > 0;
-    const followUpRefs = shouldIncludeFollowUpRefs
-      ? stableUniqueBy(
-        [
-          ...codeFollowUpRefs,
-          ...longCodeFollowUpRefs,
-          ...rankedChunks.map(({ chunk, page }) => ({
+    const followUpRefs = stableUniqueBy(
+      [
+        ...rankedChunks.map(({ chunk, page }) => ({
           type: "chunk" as const,
           ref: `agentdocs://pages/${page.id}.md#${chunk.id}`,
           pageId: page.id,
@@ -559,11 +535,13 @@ export class TaskContextAssembler {
           title: titleForChunk(chunk, page),
           sourceUrl: page.canonicalUrl ?? page.sourceUrl,
           repoPath: page.repoPath,
-          })),
-        ],
-        (ref) => ref.ref,
-      ).slice(0, 3)
-      : [];
+        })),
+        ...steps.flatMap((step) => step.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
+        ...codeExamples.flatMap((example) => example.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
+        ...gotchas.flatMap((gotcha) => gotcha.evidence.map((evidence) => this.followUpRefForEvidence(evidence))),
+      ].filter((ref): ref is NonNullable<typeof ref> => ref !== undefined),
+      (ref) => ref.ref,
+    );
     const implementationHints = sourceBackedHints(rankedChunks, codeExamples);
     const readiness = readinessFromQueryWarnings(warnings, steps.length, codeExamples.length);
     const answer = [
@@ -577,7 +555,7 @@ export class TaskContextAssembler {
           ? "The steps and code examples below are sufficient to implement unless your task needs detail not covered here."
           : "Inspect the cited source evidence before implementing.",
     ].filter(Boolean).join(" ");
-    return boundedQueryResponse({
+    return finalizeQueryResponse({
       goal: options.goal,
       task: selectedPack?.id ?? options.task,
       answer,
@@ -585,7 +563,7 @@ export class TaskContextAssembler {
       steps,
       codeExamples,
       gotchas,
-      citations: citations.slice(0, 4),
+      citations,
       followUpRefs,
       warnings,
       readiness,
@@ -593,26 +571,26 @@ export class TaskContextAssembler {
   }
 
   readPage(options: ReadPageOptions): ReadPageResponse {
-    const maxChars = clampLimit(options.maxChars ?? 4000, 1, 50000);
-    const selected = this.selectReadableSection(options);
-    const effectiveMaxChars = selected.chunk === undefined
-      ? maxChars
-      : Math.min(maxChars, DEFAULT_SECTION_MAX_CHARS);
-    const truncated = selected.text.length > effectiveMaxChars;
-    const text = truncated ? selected.text.slice(0, effectiveMaxChars) : selected.text;
+    const reference = parseAgentDocsReference(options.ref);
+    const selected = this.selectReadableTarget(reference);
+    const part = selected.parts[reference.part - 1];
+    if (part === undefined) {
+      throw new Error(`Part ${reference.part} was not found for "${options.ref}".`);
+    }
+    const complete = reference.part === selected.parts.length;
     return ReadPageResponseSchema.parse({
       section: {
         pageId: selected.page.id,
-        chunkId: selected.chunk?.id,
-        title: selected.title ?? (selected.chunk === undefined ? selected.page.title : titleForChunk(selected.chunk, selected.page)),
-        headingPath: (selected.headingPath ?? selected.chunk?.headingPath ?? []).filter((heading) => heading.trim().length > 0),
+        targetId: reference.targetId,
+        title: selected.title,
+        headingPath: selected.headingPath,
         sourceUrl: selected.page.canonicalUrl ?? selected.page.sourceUrl,
         repoPath: selected.page.repoPath,
-        text,
-        truncated,
-        evidence: selected.evidence ?? (selected.chunk === undefined
-          ? [{ source: "page", pageId: selected.page.id, url: selected.page.canonicalUrl ?? selected.page.sourceUrl, repoPath: selected.page.repoPath }]
-          : [evidenceForChunk(selected.page, selected.chunk)]),
+        text: part,
+        part: reference.part,
+        complete,
+        nextRef: complete ? undefined : formatAgentDocsReference({ ...reference, part: reference.part + 1 }),
+        evidence: selected.evidence,
       },
     });
   }
@@ -904,8 +882,7 @@ export class TaskContextAssembler {
     const candidateIds = new Set<string>(search?.results.map((result) => result.chunkId) ?? []);
     for (const anchor of anchors) {
       for (const token of tokenize(anchor)) {
-        const ids = [...(this.chunkIdsByToken.get(token) ?? [])].slice(0, 32);
-        for (const chunkId of ids) candidateIds.add(chunkId);
+        for (const chunkId of this.chunkIdsByToken.get(token) ?? []) candidateIds.add(chunkId);
       }
     }
     if (pack !== undefined) {
@@ -974,14 +951,13 @@ export class TaskContextAssembler {
       })
       .filter((candidate): candidate is { evidence: Evidence; score: number } => candidate !== undefined)
       .sort((left, right) => right.score - left.score || compareStrings(JSON.stringify(left.evidence), JSON.stringify(right.evidence)));
-    return compactEvidence(candidates.slice(0, 3).map((candidate) => candidate.evidence));
+    return compactEvidence(candidates.map((candidate) => candidate.evidence));
   }
 
   private codeExamplesFor(
     goal: string,
     ranked: RankedChunk[],
     pack: TaskPack | undefined,
-    limit: number,
     facets: Record<string, string> | undefined,
     allowUnknownFacets = false,
   ) {
@@ -1033,15 +1009,11 @@ export class TaskContextAssembler {
       .filter((example) => example.score > 0)
       .sort((left, right) => right.score - left.score || compareStrings(left.value, right.value));
     const ordered = stableUniqueBy(examples, (example) => oneLine(example.value));
-    // Prefer complete examples that fit the bounded MCP response. If the
-    // corpus only has larger examples, retain them as refs rather than
-    // silently truncating them.
-    const compactable = ordered.filter((example) => example.value.length <= 1600);
-    const candidates = compactable.length > 0 ? compactable : ordered;
+    const candidates = ordered;
     const anchors = highSignalAnchors(goal).map(normalizeFacetText).filter((anchor) => anchor.length > 2);
     const selected: typeof ordered = [];
     const remaining = [...candidates];
-    while (remaining.length > 0 && selected.length < Math.min(limit, 3)) {
+    while (remaining.length > 0) {
       const selectedText = selected.map((example) => normalizeFacetText(example.value)).join(" ");
       let bestIndex = 0;
       let bestScore = Number.NEGATIVE_INFINITY;
@@ -1062,8 +1034,7 @@ export class TaskContextAssembler {
       const facetIndex = remaining.findIndex((example) => containsFacetValue(example.value, facetValue));
       if (facetIndex < 0) continue;
       const facetExample = remaining.splice(facetIndex, 1)[0]!;
-      if (selected.length < Math.min(limit, 3)) selected.push(facetExample);
-      else if (selected.length > 0) selected[selected.length - 1] = facetExample;
+      selected.push(facetExample);
     }
     return selected.map(({ score: _score, ...example }) => example);
   }
@@ -1101,167 +1072,136 @@ export class TaskContextAssembler {
     });
   }
 
-  private selectReadableSection(options: ReadPageOptions): {
-    page: DocPage;
-    chunk?: Chunk;
-    text: string;
-    evidence?: Evidence[];
-    title?: string;
-    headingPath?: string[];
-  } {
-    if (options.chunkId !== undefined) {
-      // 1. Try chunk ID
-      const chunk = this.chunks.get(options.chunkId);
-      if (chunk !== undefined) {
-        const page = this.pages.get(chunk.pageId);
-        if (page === undefined) throw new Error(`Page "${chunk.pageId}" was not found.`);
-        return { page, chunk, text: chunk.text };
-      }
+  private selectReadableTarget(reference: AgentDocsReference): ReadableTarget {
+    const page = this.pages.get(reference.pageId);
+    if (page === undefined) throw new Error(`Page "${reference.pageId}" was not found.`);
+    const pageChunks = this.options.agentMap.chunks.filter((chunk) => chunk.pageId === page.id);
+    const source = (text: string, targetId: string | undefined, title: string, headingPath: string[], evidence: Evidence[]) => ({
+      page,
+      title,
+      headingPath,
+      evidence: compactEvidence(evidence),
+      parts: splitReadableText(text),
+      targetId,
+    });
 
-      // 2. Try code block ID
-      const code = this.findCodeBlock(options.chunkId);
-      if (code !== undefined) {
-        return {
-          page: code.page,
-          text: code.block.value,
-          title: "Code example",
-          headingPath: headingPathFor(code.page, code.block.sourceHeadingId),
-          evidence: compactEvidence([{
-            source: "code_block",
-            pageId: code.page.id,
-            headingId: code.block.sourceHeadingId,
-            codeBlockId: code.block.id,
-            url: code.page.canonicalUrl ?? code.page.sourceUrl,
-            repoPath: code.page.repoPath,
-            quote: code.block.value,
-          }]),
-        };
-      }
-
-      // 3. Try heading ID
-      const headingRef = this.findHeadingRef(options.chunkId);
-      if (headingRef !== undefined) {
-        return headingRef;
-      }
-
-      // 4. Try page ID (fallback in case pageId was passed as chunkId)
-      const page = this.pages.get(options.chunkId);
-      if (page !== undefined) {
-        if (options.fullPage === true) {
-          return { page, text: page.markdown };
-        }
-        const pageChunks = this.options.agentMap.chunks.filter((c) => c.pageId === page.id);
-        const normalizedHeading = options.heading?.toLowerCase();
-        const chunk = normalizedHeading === undefined
-          ? pageChunks[0]
-          : pageChunks.find((candidate) =>
-            candidate.headingPath.some((heading) => heading.toLowerCase() === normalizedHeading)
-            || candidate.headingPath.join(" ").toLowerCase().includes(normalizedHeading));
-        if (chunk === undefined) {
-          return { page, text: excerpt(page.markdown, 4000) };
-        }
-        return { page, chunk, text: chunk.text };
-      }
-
-      throw new Error(`Chunk "${options.chunkId}" was not found.`);
-    }
-
-    if (options.pageId === undefined) {
-      throw new Error("pageId or chunkId is required.");
-    }
-
-    // Treat pageId broadly as a unified reference ID
-    // 1. Try chunk ID
-    const chunk = this.chunks.get(options.pageId);
-    if (chunk !== undefined) {
-      const page = this.pages.get(chunk.pageId);
-      if (page === undefined) throw new Error(`Page "${chunk.pageId}" was not found.`);
-      return { page, chunk, text: chunk.text };
-    }
-
-    // 2. Try code block ID
-    const code = this.findCodeBlock(options.pageId);
-    if (code !== undefined) {
+    if (reference.targetId === undefined) {
+      const texts = pageChunks.map((chunk) => chunk.text);
       return {
-        page: code.page,
-        text: code.block.value,
-        title: "Code example",
-        headingPath: headingPathFor(code.page, code.block.sourceHeadingId),
-        evidence: compactEvidence([{
-          source: "code_block",
-          pageId: code.page.id,
-          headingId: code.block.sourceHeadingId,
-          codeBlockId: code.block.id,
-          url: code.page.canonicalUrl ?? code.page.sourceUrl,
-          repoPath: code.page.repoPath,
-          quote: code.block.value,
-        }]),
+        page,
+        title: page.title,
+        headingPath: [],
+        evidence: compactEvidence([{ source: "page", pageId: page.id, url: page.canonicalUrl ?? page.sourceUrl, repoPath: page.repoPath }]),
+        parts: texts.length === 0 ? splitReadableText(page.markdown) : texts.flatMap((text) => splitReadableText(text)),
       };
     }
 
-    // 3. Try heading ID
-    const headingRef = this.findHeadingRef(options.pageId);
-    if (headingRef !== undefined) {
-      return headingRef;
+    const chunk = this.chunks.get(reference.targetId);
+    if (chunk !== undefined) {
+      if (chunk.pageId !== page.id) throw new Error(`Target "${reference.targetId}" does not belong to page "${page.id}".`);
+      return source(chunk.text, chunk.id, titleForChunk(chunk, page), chunk.headingPath, [evidenceForChunk(page, chunk)]);
     }
 
-    // 4. Try page ID
-    const page = this.pages.get(options.pageId);
-    if (page === undefined) {
-      throw new Error(`Page "${options.pageId}" was not found.`);
+    const codeBlock = page.codeBlocks.find((block) => block.id === reference.targetId);
+    if (codeBlock !== undefined) {
+      return source(codeBlock.value, codeBlock.id, "Code example", headingPathFor(page, codeBlock.sourceHeadingId), [{
+        source: "code_block",
+        pageId: page.id,
+        headingId: codeBlock.sourceHeadingId,
+        codeBlockId: codeBlock.id,
+        url: page.canonicalUrl ?? page.sourceUrl,
+        repoPath: page.repoPath,
+        quote: codeBlock.value,
+      }]);
     }
-    if (options.fullPage === true) {
-      return { page, text: page.markdown };
-    }
-    const pageChunks = this.options.agentMap.chunks.filter((c) => c.pageId === page.id);
-    const normalizedHeading = options.heading?.toLowerCase();
-    const c = normalizedHeading === undefined
-      ? pageChunks[0]
-      : pageChunks.find((candidate) =>
-        candidate.headingPath.some((heading) => heading.toLowerCase() === normalizedHeading)
-        || candidate.headingPath.join(" ").toLowerCase().includes(normalizedHeading));
-    if (c === undefined) {
-      return { page, text: excerpt(page.markdown, 4000) };
-    }
-    return { page, chunk: c, text: c.text };
-  }
 
-  private findCodeBlock(codeBlockId: string) {
-    for (const page of this.options.agentMap.pages) {
-      const block = page.codeBlocks.find((candidate) => candidate.id === codeBlockId);
-      if (block !== undefined) {
-        return { page, block };
-      }
+    const heading = page.headings.find((item) => item.id === reference.targetId);
+    if (heading !== undefined) {
+      const headingPath = headingPathFor(page, heading.id);
+      const texts = pageChunks
+        .filter((chunk) => headingPath.every((value, index) => chunk.headingPath[index] === value))
+        .map((chunk) => chunk.text);
+      return {
+        page,
+        title: heading.text,
+        headingPath,
+        evidence: compactEvidence([{
+          source: "heading",
+          pageId: page.id,
+          headingId: heading.id,
+          url: page.canonicalUrl ?? page.sourceUrl,
+          repoPath: page.repoPath,
+        }]),
+        parts: texts.length === 0 ? splitReadableText(page.markdown) : texts.flatMap((text) => splitReadableText(text)),
+      };
     }
-    return undefined;
-  }
 
-  private findHeadingRef(headingId: string) {
-    for (const page of this.options.agentMap.pages) {
-      const heading = page.headings.find((candidate) => candidate.id === headingId);
-      if (heading !== undefined) {
-        const pageChunks = this.options.agentMap.chunks.filter((chunk) => chunk.pageId === page.id);
-        const chunk = pageChunks.find((candidate) => candidate.headingPath.at(-1) === heading.text) ?? pageChunks[0];
-        if (chunk !== undefined) {
-          return {
-            page,
-            chunk,
-            text: chunk.text,
-            title: heading.text,
-            headingPath: chunk.headingPath,
-            evidence: compactEvidence([{
-              source: "heading",
-              pageId: page.id,
-              headingId: heading.id,
-              url: page.canonicalUrl ?? page.sourceUrl,
-              repoPath: page.repoPath,
-            }]),
-          };
-        }
-      }
-    }
-    return undefined;
+    throw new Error(`Target "${reference.targetId}" was not found on page "${page.id}".`);
   }
+}
+
+type AgentDocsReference = {
+  pageId: string;
+  part: number;
+  targetId?: string;
+};
+
+type ReadableTarget = {
+  page: DocPage;
+  title: string;
+  headingPath: string[];
+  evidence: Evidence[];
+  parts: string[];
+};
+
+function parseAgentDocsReference(value: string): AgentDocsReference {
+  const match = /^agentdocs:\/\/pages\/([a-zA-Z0-9_-]+)\.md(?:\?part=([1-9][0-9]*))?(?:#([a-zA-Z0-9_-]+))?$/.exec(value);
+  if (match === null) {
+    throw new Error("ref must be an AgentDocs page reference such as agentdocs://pages/page_id.md#target_id.");
+  }
+  return {
+    pageId: match[1]!,
+    part: match[2] === undefined ? 1 : Number(match[2]),
+    targetId: match[3],
+  };
+}
+
+function formatAgentDocsReference(reference: AgentDocsReference): string {
+  return `agentdocs://pages/${reference.pageId}.md${reference.part === 1 ? "" : `?part=${reference.part}`}${reference.targetId === undefined ? "" : `#${reference.targetId}`}`;
+}
+
+function splitReadableText(value: string): string[] {
+  if (value.length <= READ_PART_TARGET_CHARS) return [value];
+  const blocks = value.split(/(?<=\n)(?=\n)/);
+  const safeBlocks = blocks.flatMap((block) => block.length <= READ_PART_TARGET_CHARS
+    ? [block]
+    : splitReadableLines(block));
+  const parts: string[] = [];
+  let current = "";
+  for (const block of safeBlocks) {
+    if (current.length > 0 && current.length + block.length > READ_PART_TARGET_CHARS) {
+      parts.push(current);
+      current = "";
+    }
+    current += block;
+  }
+  if (current.length > 0) parts.push(current);
+  return parts.length === 0 ? [""] : parts;
+}
+
+function splitReadableLines(value: string): string[] {
+  const lines = value.match(/[^\n]*\n|[^\n]+/g) ?? [value];
+  const parts: string[] = [];
+  let current = "";
+  for (const line of lines) {
+    if (current.length > 0 && current.length + line.length > READ_PART_TARGET_CHARS) {
+      parts.push(current);
+      current = "";
+    }
+    current += line;
+  }
+  if (current.length > 0) parts.push(current);
+  return parts.length === 0 ? [""] : parts;
 }
 
 function evidenceForChunk(page: DocPage, chunk: Chunk): Evidence {
@@ -1563,10 +1503,6 @@ function excerpt(value: string, max = 220): string {
   return compact.length <= max ? compact : `${compact.slice(0, Math.max(0, max - 3))}...`;
 }
 
-function excerptCode(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 36)).trimEnd()}\n/* ... truncated by AgentDocs ... */`;
-}
-
 function isUsableCodeExample(value: string, language?: string): boolean {
   const trimmed = value.trimStart();
   const normalizedLanguage = language?.toLowerCase();
@@ -1646,11 +1582,6 @@ function scoreTerms(value: string, query: string): number {
   return scoreTokenizedTerms(tokenize(value), queryTerms, value, query);
 }
 
-function scoreTokenized(valueTokens: string[], query: string, value: string): number {
-  const queryTerms = stableUnique(tokenize(query));
-  return scoreTokenizedTerms(valueTokens, queryTerms, value, query);
-}
-
 function scoreTokenizedTerms(valueTokens: string[], queryTerms: string[], value: string, query: string): number {
   if (queryTerms.length === 0) return 0;
   
@@ -1704,98 +1635,28 @@ function arraysEqual(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function clampLimit(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.trunc(value)));
-}
-
 function estimateTokens(value: string): number {
   return Math.ceil(value.length / 4);
 }
 
-const QUERY_RESPONSE_TOKEN_BUDGET = 800;
-
-/**
- * Keep the MCP-facing response bounded even when a task has several
- * requirement gaps. The source corpus remains untouched; only the compact
- * transport representation is progressively reduced. Required reads and
- * readiness gaps are retained in every variant so compaction cannot hide a
- * blocker from the caller.
- */
-function boundedQueryResponse(
+function finalizeQueryResponse(
   value: Omit<QueryDocsResponse, "estimatedTokens">,
 ): QueryDocsResponse {
-  const parse = (candidate: Omit<QueryDocsResponse, "estimatedTokens">): QueryDocsResponse => {
-    const safeCandidate = candidate.codeExamples.length === 0 && candidate.readiness.recommendation === "implement"
-      ? {
-          ...candidate,
-          readiness: {
-            ...candidate.readiness,
-            recommendation: "inspect" as const,
-            coverage: "partial" as const,
-            issueCodes: stableUnique([...candidate.readiness.issueCodes, "no_canonical_code_examples"]).slice(0, 6),
-          },
-        }
-      : candidate;
-    const estimatedTokens = estimateTokens(JSON.stringify(safeCandidate));
-    return QueryDocsResponseSchema.parse({ ...safeCandidate, estimatedTokens });
-  };
-  const compactSteps = (maxText: number, maxCount: number) => value.steps
-    .slice(0, maxCount)
-    .map((step) => ({ ...step, text: excerpt(step.text, maxText) }));
-  const compactExamples = (maxValue: number, maxCount: number) => value.codeExamples
-    .filter((example) => example.value.length <= maxValue)
-    .slice(0, maxCount);
-  const compactRefs = value.followUpRefs.map((ref) => ({
-    type: ref.type,
-    ref: ref.ref,
-    pageId: ref.pageId,
-    chunkId: ref.chunkId,
-    title: excerpt(ref.title, 72),
-    requiredFor: ref.requiredFor,
-  }));
-  const compactCitations = (maxQuote: number, maxCount: number) => value.citations
-    .slice(0, maxCount)
-    .map((citation) => ({
-      ...citation,
-      quote: citation.quote === undefined ? undefined : excerpt(citation.quote, maxQuote),
-    }));
-  const variants: Array<Omit<QueryDocsResponse, "estimatedTokens">> = [
-    value,
-    {
-      ...value,
-      followUpRefs: compactRefs,
-      citations: compactCitations(64, 3),
-      steps: compactSteps(120, 2),
-      codeExamples: compactExamples(1600, 2),
-      gotchas: value.gotchas.slice(0, 1).map((gotcha) => ({ ...gotcha, text: excerpt(gotcha.text, 100) })),
-    },
-    {
-      ...value,
-      answer: excerpt(value.answer, 100),
-      followUpRefs: compactRefs,
-      citations: compactCitations(32, 1),
-      steps: compactSteps(64, 1),
-      codeExamples: compactExamples(1600, 2),
-      gotchas: [],
-      warnings: value.warnings.slice(0, 3),
-    },
-    {
-      ...value,
-      answer: excerpt(value.answer, 140),
-      followUpRefs: compactRefs,
-      citations: [],
-      steps: compactSteps(72, 1),
-      codeExamples: compactExamples(1600, 1),
-      gotchas: [],
-      warnings: value.warnings.slice(0, 3),
-    },
-  ];
-  let last = parse(variants[variants.length - 1]!);
-  for (const variant of variants) {
-    last = parse(variant);
-    if (last.estimatedTokens <= QUERY_RESPONSE_TOKEN_BUDGET) return last;
-  }
-  return last;
+  const safeValue = value.codeExamples.length === 0 && value.readiness.recommendation === "implement"
+    ? {
+        ...value,
+        readiness: {
+          ...value.readiness,
+          recommendation: "inspect" as const,
+          coverage: "partial" as const,
+          issueCodes: stableUnique([...value.readiness.issueCodes, "no_canonical_code_examples"]),
+        },
+      }
+    : value;
+  return QueryDocsResponseSchema.parse({
+    ...safeValue,
+    estimatedTokens: estimateTokens(JSON.stringify(safeValue)),
+  });
 }
 
 function compareStrings(left: string, right: string): number {
@@ -1820,7 +1681,7 @@ function readinessFromQueryWarnings(
   return {
     recommendation: hasCriticalSignal ? "stop" : warnings.length === 0 && steps > 0 && codeExamples > 0 ? "implement" : "inspect",
     coverage: warnings.length === 0 && steps > 0 && codeExamples > 0 ? "complete" : "unknown",
-    issueCodes: issueCodes.slice(0, 6),
+    issueCodes,
     gaps: [],
   };
 }

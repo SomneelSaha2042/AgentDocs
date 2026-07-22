@@ -41,7 +41,6 @@ describe("ArtifactService", () => {
       "authenticate requests",
       "Configure a client that sends an API key with every request",
       undefined,
-      3,
     );
 
     expect(result.task).toBe("authentication");
@@ -55,7 +54,7 @@ describe("ArtifactService", () => {
 
     const context = await service.getContextBundle("configure authentication");
     const handoff = await service.getTaskContext("configure authentication");
-    const query = await service.queryDocs("configure authentication", undefined, undefined, 3);
+    const query = await service.queryDocs("configure authentication");
     const verification = await service.verifyTaskContext("configure authentication");
 
     expect(context.selectedTaskPack?.id).toBe("authentication");
@@ -71,7 +70,7 @@ describe("ArtifactService", () => {
     const service = new ArtifactService({ cwd: out, out: "." });
 
     const handoff = await service.getTaskContext("implement React mutation invalidation");
-    const query = await service.queryDocs("implement React mutation invalidation", undefined, undefined, 3);
+    const query = await service.queryDocs("implement React mutation invalidation");
     const verification = await service.verifyTaskContext("implement React mutation invalidation");
 
     expect(query.task).toBe("query-invalidation");

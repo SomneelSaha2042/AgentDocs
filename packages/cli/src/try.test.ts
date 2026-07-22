@@ -59,7 +59,7 @@ describe("try CLI", () => {
 
   it("crawls an HTTP source before building context", async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-try-web-"));
-    const server = createServer((request, response) => {
+    const server = createServer((_request, response) => {
       response.setHeader("content-type", "text/html");
       response.end(`<html><head><title>Authentication</title></head><body>
         <h1>Authentication</h1>

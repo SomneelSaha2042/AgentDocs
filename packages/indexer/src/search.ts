@@ -455,67 +455,6 @@ function writeSqliteIndex(
   }
 }
 
-async function readSqliteDocuments(
-  indexPath: string,
-): Promise<IndexData> {
-  const sqlite = await loadSqlite();
-  if (sqlite === undefined) {
-    throw new SearchIndexError(
-      `The index at ${indexPath} uses SQLite, but this Node.js runtime does not provide node:sqlite. Rebuild with this runtime to create the lexical fallback index.`,
-    );
-  }
-  const database = new sqlite.DatabaseSync(indexPath);
-  try {
-    const metadata = database.prepare(`
-      SELECT key, value FROM metadata ORDER BY key
-    `).all() as Record<string, unknown>[];
-    const values = Object.fromEntries(
-      metadata.map((row) => [String(row.key), String(row.value)]),
-    );
-    if (values.schema_version !== "2" || values.backend !== "sqlite-fts5") {
-      throw new SearchIndexError(
-        `Unsupported search index metadata: schema_version=${values.schema_version ?? "missing"}, backend=${values.backend ?? "missing"}.`,
-      );
-    }
-    const rows = database.prepare(`
-      SELECT
-        documents.page_id,
-        documents.chunk_id,
-        documents.title,
-        documents.source_url,
-        documents.repo_path,
-        documents.heading_path,
-        documents.text,
-        documents.content_hash,
-        documents.facets_json,
-        documents.task_pack_ids_json
-      FROM search_documents AS documents
-      ORDER BY documents.chunk_id
-    `).all() as Record<string, unknown>[];
-    return {
-      preferredFacets: JSON.parse(values.preferred_facets ?? "{}"),
-      exclusiveKeys: JSON.parse(values.exclusive_keys ?? "[]"),
-      documents: rows.map((row) => SearchDocumentSchema.parse({
-      pageId: row.page_id,
-      chunkId: row.chunk_id,
-      title: row.title,
-      sourceUrl: row.source_url ?? undefined,
-      repoPath: row.repo_path ?? undefined,
-      headingPath: JSON.parse(String(row.heading_path)),
-      text: row.text,
-      contentHash: row.content_hash,
-      facets: JSON.parse(String(row.facets_json)),
-      taskPackIds: JSON.parse(String(row.task_pack_ids_json)),
-    })),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new SearchIndexError(`Invalid search index at ${indexPath}: ${message}`);
-  } finally {
-    database.close();
-  }
-}
-
 function readFallbackDocuments(contents: Buffer, indexPath: string): IndexData {
   try {
     const index = SearchIndexFallbackSchema.parse(JSON.parse(contents.toString("utf8")));

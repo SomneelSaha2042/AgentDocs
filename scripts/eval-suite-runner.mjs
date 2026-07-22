@@ -39,6 +39,7 @@ async function main() {
   const runId = getArg(args, "--run-id") || defaultRunId();
   const resultsDir = path.resolve(repositoryRoot, resultDirectoryFor(suite.id, runId));
   const dryRun = args.includes("--dry-run");
+  const keepSandbox = args.includes("--keep-sandbox");
 
   const validations = [];
   for (const task of suite.tasks) {
@@ -85,6 +86,7 @@ async function main() {
       "--results-dir", resultsDir,
     ];
     if (dryRun) childArgs.push("--dry-run");
+    if (keepSandbox) childArgs.push("--keep-sandbox");
     console.log(`\n=== ${run.task} / ${run.group} / seed ${run.seed} ===`);
     execFileSync(process.execPath, childArgs, {
       cwd: repositoryRoot,

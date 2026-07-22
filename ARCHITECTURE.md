@@ -193,10 +193,10 @@ its reader after each call.
 owns the shared context decision path for task-pack selection, read-first
 resources, warnings, verification issues, citations, confidence, context
 bundles, handoff bundles, and `query_docs` style responses. Task-pack selection
-is a navigational prior only: global search and bounded requirement-anchor
-searches remain available after a pack is selected. Evidence selection
-prioritizes deterministic requirement coverage and source specificity, with
-task-pack membership used only as a relevance signal.
+is a navigational prior only: global search and requirement-anchor searches
+remain available after a pack is selected. Evidence selection prioritizes
+deterministic requirement coverage and source specificity, with task-pack
+membership used only as a relevance signal.
 
 The assembler applies a corpus-derived facet-safety pass for implementation
 context. Explicit requested facets remain authoritative; inferred facets are
@@ -227,10 +227,11 @@ implementation.
 The MCP server is externally stateless while caching its validated index reader
 and context assembler for the lifetime of a request handler. It exposes the
 two-tool compact profile; enforcement in the active evaluation runner is
-diagnostic and does not add package-specific routing logic. Compact
-`query_docs` responses keep complete code examples when they fit the transport
-budget and emit exact `read_page` refs for larger examples instead of silently
-truncating source.
+diagnostic and does not add package-specific routing logic. `query_docs` is
+coverage-first: token estimates are telemetry and cannot remove source-backed
+requirements or references. `read_page` accepts exact refs only and returns
+lossless, deterministic continuation refs for sources that span multiple
+transport parts.
 
 ## MCP Surface
 
@@ -320,10 +321,13 @@ messy Markdown/HTML/JSON and versioned source material when present. Each
 provider request has a deterministic input/output budget; context overages and
 provider TPM/rate-limit errors are persisted as operational failures and do
 not crash the remaining suite runs. Experimental runs also record schema-v5
-evidence-protocol telemetry without storing source text. The dual gate treats
-experimental operational failures or comparable task regressions as
-`DO_NOT_ADVANCE`, incomplete control samples as `INCONCLUSIVE`, and only a
-complete non-regressing matrix as `PASS`.
+evidence-protocol telemetry without storing source text. The evaluation gate
+requires the experimental arm to pass a majority of completed seeds for every
+task (two of three in the standard suite) and not regress against either
+complete control for that task. Experimental operational failures, failed
+task-majority checks, or comparable task regressions are `DO_NOT_ADVANCE`;
+incomplete control samples are `INCONCLUSIVE`; only a complete matrix that
+meets both conditions is `PASS`.
 
 The GitHub CI matrix in `.github/workflows/ci.yml` runs on Ubuntu Node 20,
 Ubuntu Node 22, and Windows Node 20. It installs with the frozen lockfile, runs

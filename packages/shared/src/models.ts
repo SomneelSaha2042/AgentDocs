@@ -504,8 +504,8 @@ export const ContextReadinessSchema = z
   .object({
     recommendation: z.enum(["implement", "inspect", "stop"]),
     coverage: z.enum(["complete", "partial", "unknown"]),
-    issueCodes: z.array(z.string().min(1)).max(6),
-    gaps: z.array(ContextRequirementGapSchema).max(3).default([]),
+    issueCodes: z.array(z.string().min(1)),
+    gaps: z.array(ContextRequirementGapSchema).default([]),
   })
   .strict();
 
@@ -567,7 +567,7 @@ export const QueryDocsResponseSchema = z
         title: z.string().min(1),
         sourceUrl: z.string().optional(),
         repoPath: z.string().min(1).optional(),
-        requiredFor: z.array(z.string().min(1)).max(3).optional(),
+        requiredFor: z.array(z.string().min(1)).optional(),
       }).strict(),
     ),
     warnings: z.array(z.string().min(1)),
@@ -580,13 +580,15 @@ export const ReadPageResponseSchema = z
   .object({
     section: z.object({
       pageId: z.string().min(1),
-      chunkId: z.string().min(1).optional(),
+      targetId: z.string().min(1).optional(),
       title: z.string().min(1),
       headingPath: z.array(z.string()),
       sourceUrl: z.string().optional(),
       repoPath: z.string().min(1).optional(),
       text: z.string(),
-      truncated: z.boolean(),
+      part: z.number().int().positive(),
+      complete: z.boolean(),
+      nextRef: z.string().min(1).optional(),
       evidence: z.array(EvidenceSchema).min(1),
     }).strict(),
   })

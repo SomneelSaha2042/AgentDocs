@@ -43,7 +43,26 @@ test("dual gate makes incomplete control comparisons inconclusive", () => {
   assert.equal(result.decision.inconclusiveTasks.length, 2);
 });
 
-test("dual gate passes a complete tie", () => {
+test("per-task majority gate passes a complete non-regressing tie", () => {
+  const summaries = [
+    taskSummary("auth", {
+      experimental: [run({ seed: 1, passed: true, outcome: "success" }), run({ seed: 2, passed: true, outcome: "success" }), run({ seed: 3, passed: false, outcome: "task_failure" })],
+      control: [run({ seed: 1, passed: true, outcome: "success" }), run({ seed: 2, passed: true, outcome: "success" }), run({ seed: 3, passed: false, outcome: "task_failure" })],
+    }),
+  ];
+  const result = aggregateSuite(summaries, ".dogfood/test", {
+    validations: [{ task: "auth", valid: true }],
+    plannedRuns: [
+      ...[1, 2, 3].map((seed) => ({ task: "auth", group: "experimental-agentdocs", seed })),
+      ...[1, 2, 3].map((seed) => ({ task: "auth", group: "control-local-raw", seed })),
+      ...[1, 2, 3].map((seed) => ({ task: "auth", group: "control-web-raw", seed })),
+    ],
+  });
+  assert.equal(result.decision.status, "pass");
+  assert.equal(result.decision.passed, true);
+});
+
+test("per-task majority gate rejects a complete one-of-three experimental result", () => {
   const summaries = [
     taskSummary("auth", {
       experimental: [run({ seed: 1, passed: true, outcome: "success" }), run({ seed: 2, passed: false, outcome: "task_failure" }), run({ seed: 3, passed: false, outcome: "task_failure" })],
@@ -58,8 +77,13 @@ test("dual gate passes a complete tie", () => {
       ...[1, 2, 3].map((seed) => ({ task: "auth", group: "control-web-raw", seed })),
     ],
   });
-  assert.equal(result.decision.status, "pass");
-  assert.equal(result.decision.passed, true);
+  assert.equal(result.decision.status, "do_not_advance");
+  assert.deepEqual(result.decision.taskMajorityFailures, [{
+    task: "auth",
+    agentPassed: 1,
+    requiredPasses: 2,
+    requiredN: 3,
+  }]);
 });
 
 function taskSummary(task, groups) {

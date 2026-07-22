@@ -41,10 +41,11 @@ export function createEvidenceProtocol({ enabled = true } = {}) {
     const referenceId = readReferenceId(args);
     const latest = state.queries.at(-1);
     const readable = result?.section && typeof result.section === "object";
+    const complete = readable && result.section.complete === true;
     const matched = Boolean(readable && latest?.referenceIds.includes(referenceId));
-    const read = { turn, referenceId, matched };
+    const read = { turn, referenceId, matched, complete };
     state.reads.push(read);
-    if (matched && latest) {
+    if (matched && complete && latest) {
       latest.inspectedReferenceIds.push(referenceId);
     }
   }
@@ -112,7 +113,7 @@ function referenceIdsFor(response) {
     }
   }
   for (const reference of response?.followUpRefs ?? []) {
-    for (const value of [reference.ref, reference.pageId, reference.chunkId]) {
+    for (const value of [normalizeReadReference(reference.ref), reference.pageId, reference.chunkId]) {
       if (typeof value === "string" && value.length > 0) ids.push(value);
     }
   }
@@ -123,7 +124,7 @@ function requiredReferenceIdsFor(response) {
   const ids = [];
   for (const reference of response?.followUpRefs ?? []) {
     if (!Array.isArray(reference.requiredFor) || reference.requiredFor.length === 0) continue;
-    const value = reference.chunkId ?? reference.pageId ?? reference.ref;
+    const value = normalizeReadReference(reference.ref);
     if (typeof value === "string" && value.length > 0) ids.push(value);
   }
   return [...new Set(ids)];
@@ -136,7 +137,11 @@ function requirementsInspected(query) {
 }
 
 function readReferenceId(args = {}) {
-  return args.chunkId ?? args.pageId ?? args.heading ?? "";
+  return normalizeReadReference(args.ref);
+}
+
+function normalizeReadReference(value) {
+  return typeof value === "string" ? value.replace(/\?part=[1-9][0-9]*/, "") : "";
 }
 
 function protocolMessage(code) {

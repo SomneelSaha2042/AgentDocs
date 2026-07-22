@@ -259,6 +259,11 @@ filesystem paths. When `serve-mcp --tools` is used to restrict exposed tools,
 the allowlist is enforced both when listing tools and when a client attempts to
 call a hidden tool.
 
+In the compact profile, call `query_docs` first, then pass any returned
+`followUpRefs` to `read_page` unchanged. Source reads are losslessly paginated:
+continue with `nextRef` until `complete` is `true` rather than requesting a
+smaller or truncated source.
+
 For multi-session work, run `agentdocs status` before starting. Reuse existing
 artifacts when fresh, or run `agentdocs rebuild --changed` after local docs
 change. `agentdocs watch --once` performs the same check once; without `--once`,

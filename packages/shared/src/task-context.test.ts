@@ -9,7 +9,6 @@ describe("TaskContextAssembler", () => {
     const result = assembler.queryDocs({
       goal: "authenticate requests with an API key",
       task: "authentication",
-      limit: 3,
       search: {
         query: "authenticate requests with an API key",
         results: [{
@@ -26,7 +25,7 @@ describe("TaskContextAssembler", () => {
       },
     });
 
-    expect(result.estimatedTokens).toBeLessThan(800);
+    expect(result.estimatedTokens).toBeGreaterThan(0);
     expect(result.steps.length).toBeGreaterThan(0);
     expect(result.steps.every((step) => step.evidence.length > 0)).toBe(true);
     expect(result.gotchas.every((gotcha) => gotcha.evidence.length > 0)).toBe(true);
@@ -34,7 +33,7 @@ describe("TaskContextAssembler", () => {
     expect(result.readiness.recommendation).toBe("inspect");
     expect(result.readiness.coverage).toBe("unknown");
     expect(result.answer).toContain("Inspect the cited source evidence");
-    expect(result.followUpRefs).toHaveLength(0);
+    expect(result.followUpRefs.length).toBeGreaterThan(0);
     expect(JSON.stringify(result)).toContain("code_auth");
   });
 
@@ -241,39 +240,38 @@ describe("TaskContextAssembler", () => {
         }],
         warnings: [],
       },
-      limit: 3,
     });
 
     expect(JSON.stringify(result)).toContain("@example/adapter");
     expect(result.readiness.gaps).toEqual([]);
   });
 
-  it("reads bounded sections by default and respects maxChars", () => {
+  it("reads exact references without truncating the selected source", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
-    const result = assembler.readPage({ pageId: "page_auth", maxChars: 20 });
+    const result = assembler.readPage({ ref: "agentdocs://pages/page_auth.md#chunk_auth" });
 
-    expect(result.section.chunkId).toBe("chunk_auth");
-    expect(result.section.text).toHaveLength(20);
-    expect(result.section.truncated).toBe(true);
-    expect(result.section.text).not.toContain("# Authentication");
+    expect(result.section.targetId).toBe("chunk_auth");
+    expect(result.section.complete).toBe(true);
+    expect(result.section.nextRef).toBeUndefined();
+    expect(result.section.text).toContain("Use an API key for authentication.");
   });
 
-  it("caps non-full section reads even when maxChars is broad", () => {
+  it("paginates oversized source reads without losing content", () => {
     const map = fixtureMap();
-    map.chunks[0]!.text = "Use an API key for authentication. ".repeat(160);
-    const result = new TaskContextAssembler({ agentMap: map }).readPage({
-      pageId: "page_auth",
-      maxChars: 5000,
-    });
+    map.chunks[0]!.text = "Use an API key for authentication.\n".repeat(400);
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const first = assembler.readPage({ ref: "agentdocs://pages/page_auth.md#chunk_auth" });
+    const second = assembler.readPage({ ref: first.section.nextRef! });
 
-    expect(result.section.chunkId).toBe("chunk_auth");
-    expect(result.section.text.length).toBeLessThanOrEqual(4000);
-    expect(result.section.truncated).toBe(true);
+    expect(first.section.complete).toBe(false);
+    expect(first.section.nextRef).toBe("agentdocs://pages/page_auth.md?part=2#chunk_auth");
+    expect(second.section.complete).toBe(true);
+    expect(`${first.section.text}${second.section.text}`).toBe(map.chunks[0]!.text);
   });
 
-  it("can read a cited code block id passed as chunkId", () => {
+  it("reads cited code blocks through exact references", () => {
     const result = new TaskContextAssembler({ agentMap: fixtureMap() }).readPage({
-      chunkId: "code_auth",
+      ref: "agentdocs://pages/page_auth.md#code_auth",
     });
 
     expect(result.section.title).toBe("Code example");
@@ -281,7 +279,7 @@ describe("TaskContextAssembler", () => {
     expect(result.section.evidence[0]?.source).toBe("code_block");
   });
 
-  it("keeps query output compact even when callers request a high limit", () => {
+  it("preserves source-backed context when it exceeds the former transport budget", () => {
     const hash = "b".repeat(64);
     const largeText = "Use octokit.paginate with octokit.rest.repos.listCommits. ".repeat(80);
     const map = AgentMapSchema.parse({
@@ -327,7 +325,6 @@ describe("TaskContextAssembler", () => {
     });
     const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
       goal: "fetch commits with octokit pagination",
-      limit: 10,
       search: {
         query: "fetch commits with octokit pagination",
         results: map.chunks.map((chunk, index) => ({
@@ -344,13 +341,12 @@ describe("TaskContextAssembler", () => {
       },
     });
 
-    expect(result.estimatedTokens).toBeLessThan(800);
+    expect(result.estimatedTokens).toBeGreaterThan(800);
     expect(result.steps.length).toBeGreaterThan(0);
-    expect(result.steps.length).toBeLessThanOrEqual(3);
+    expect(result.steps.length).toBeGreaterThanOrEqual(10);
     expect(result.followUpRefs).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "code_block" }),
     ]));
-    expect(JSON.stringify(result).length).toBeLessThan(3200);
     expect(result.citations.every((citation) => (citation.quote?.length ?? 0) <= 160)).toBe(true);
     expect(result.codeExamples[0]?.value).toContain("octokit.paginate");
     expect(result.codeExamples[0]?.value).not.toContain("truncated by AgentDocs");
@@ -696,7 +692,7 @@ describe("TaskContextAssembler facet safety", () => {
     const decision = await assembler.resolveContextDecision({
       goal: "Use the v5 client setup.",
       task: "Use the current client. Do not use legacy callbacks or deprecated APIs.",
-      search: async ({ query, limit }) => ({ query, results: [], warnings: [] }),
+      search: async ({ query }) => ({ query, results: [], warnings: [] }),
     });
     const version = decision.verification.requirements.find((requirement) => requirement.value === "v5");
     expect(version).toBeDefined();

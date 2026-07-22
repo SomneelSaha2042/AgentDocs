@@ -97,46 +97,21 @@ export class ArtifactService {
     goal: string,
     task?: string,
     facets?: Record<string, string>,
-    limit = 3,
   ) {
-    validateContextLimit(limit);
     const freshness = await this.getRecordedStatus();
-    const input = await this.buildContextInput({ goal, task, facets, limit, freshness });
+    const input = await this.buildContextInput({ goal, task, facets, freshness });
     return input.decision.query;
   }
 
-  async readPage(options: {
-    ref?: string;
-    pageId?: string;
-    chunkId?: string;
-    heading?: string;
-    maxChars?: number;
-    fullPage?: boolean;
-  }) {
-    const reference = options.ref === undefined ? undefined : parsePageReference(options.ref);
-    const pageId = reference?.pageId ?? options.pageId;
-    const chunkId = reference?.targetId ?? options.chunkId;
-    if (pageId !== undefined) validateId(pageId, "pageId");
-    if (chunkId !== undefined) validateId(chunkId, "chunkId");
-    if (pageId === undefined && chunkId === undefined) {
-      throw new McpArtifactError("ref, pageId, or chunkId is required.", "INVALID_ARGUMENT");
-    }
-    const maxChars = options.maxChars ?? 4000;
-    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 50000) {
-      throw new McpArtifactError("maxChars must be an integer from 1 to 50000.", "INVALID_ARGUMENT");
-    }
+  async readPage(ref: string) {
     try {
       const map = await this.loadAgentMap();
-      return this.getAssembler(map).readPage({
-        ...options,
-        pageId,
-        chunkId,
-      });
+      return this.getAssembler(map).readPage({ ref });
     } catch (error) {
       if (error instanceof Error && /was not found/.test(error.message)) {
         throw new McpArtifactError(error.message, "NOT_FOUND");
       }
-      if (error instanceof Error && /is required/.test(error.message)) {
+      if (error instanceof Error && /must be|Part \d+ was not found/.test(error.message)) {
         throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
       }
       throw error;
@@ -259,7 +234,6 @@ export class ArtifactService {
     task?: string;
     facets?: Record<string, string>;
     freshness?: StatusReport;
-    limit?: number;
   }) {
     const map = await this.loadAgentMap();
     const assembler = this.getAssembler(map);
@@ -268,7 +242,6 @@ export class ArtifactService {
       task: options.task,
       facets: options.facets,
       freshness: options.freshness,
-      limit: options.limit,
       search: ({ query, limit, task, facets }) => this.searchDocs(query, limit, task, facets),
     });
     return { assembler, decision, search: decision.search };
@@ -537,26 +510,8 @@ function validateLimit(limit: number): void {
   }
 }
 
-function validateContextLimit(limit: number): void {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
-    throw new McpArtifactError("limit must be an integer from 1 to 3.", "INVALID_ARGUMENT");
-  }
-}
-
 function matchResource(uri: string, pattern: RegExp): string | undefined {
   return pattern.exec(uri)?.[1];
-}
-
-function parsePageReference(value: string): { pageId: string; targetId?: string } {
-  const match = /^agentdocs:\/\/pages\/([a-zA-Z0-9_-]+)\.md(?:#([a-zA-Z0-9_-]+))?$/.exec(value);
-  if (match === null) {
-    throw new McpArtifactError(
-      "ref must be an AgentDocs page reference such as agentdocs://pages/page_id.md#chunk_id.",
-      "INVALID_ARGUMENT",
-    );
-  }
-
-  return { pageId: match[1]!, targetId: match[2] };
 }
 
 function headingPathFor(page: DocPage, headingId?: string): string[] {
