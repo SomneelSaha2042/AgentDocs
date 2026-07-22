@@ -30,6 +30,38 @@ throw new Error("must not execute");
     expect(page.codeBlocks[0]?.value).toContain("must not execute");
   });
 
+  it("recovers separately fenced examples nested in a Markdown component", () => {
+    const markdown = `# Providers
+
+## Find model names
+
+<CodeGroup>
+  \`\`\`typescript Provider prefix format theme={"light":"day"}
+  const model = await initChatModel("acme:latest");
+  \`\`\`
+
+  \`\`\`typescript Direct class instantiation theme={"light":"day"}
+  import { AcmeChatModel } from "@acme/chat";
+  const model = new AcmeChatModel({ model: "latest" });
+  \`\`\`
+</CodeGroup>
+`;
+
+    const page = normalizeMarkdown({ markdown, format: "markdown", repoPath: "docs/providers.md" });
+
+    expect(page.codeBlocks.map((block) => ({ language: block.language, value: block.value }))).toEqual([
+      {
+        language: "typescript",
+        value: 'const model = await initChatModel("acme:latest");',
+      },
+      {
+        language: "typescript",
+        value: 'import { AcmeChatModel } from "@acme/chat";\nconst model = new AcmeChatModel({ model: "latest" });',
+      },
+    ]);
+    expect(page.codeBlocks.every((block) => block.sourceHeadingId === page.headings[1]?.id)).toBe(true);
+  });
+
   it("generates stable IDs and content hashes", () => {
     const input = { markdown: "# Stable\n", repoPath: "nested/stable.mdx" };
     expect(normalizeMarkdown(input)).toEqual(normalizeMarkdown(input));

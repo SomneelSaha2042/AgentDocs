@@ -151,6 +151,32 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     }
   });
 
+  const recoveredFences = recoverFencedCodeBlocks(normalizedMarkdown, headings);
+  if (recoveredFences.length > 0) {
+    const existing = codeBlocks.filter((block) => !/```|~~~/.test(block.value));
+    const usedExistingIds = new Set<string>();
+    const merged: CodeBlock[] = [];
+    for (const recovered of recoveredFences) {
+      const normalizedRecovered = normalizeCodeBlockForComparison(recovered.value);
+      const matching = existing.find((block) => !usedExistingIds.has(block.id)
+        && normalizeCodeBlockForComparison(block.value) === normalizedRecovered
+        && (block.language === recovered.language || block.sourceHeadingId === recovered.sourceHeadingId));
+      if (matching !== undefined) {
+        usedExistingIds.add(matching.id);
+        merged.push(matching);
+      } else {
+        merged.push({
+          id: `code_${hash(`${pageId}:fence:${recovered.startLine}:${recovered.value}`).slice(0, 16)}`,
+          language: recovered.language,
+          value: recovered.value,
+          sourceHeadingId: recovered.sourceHeadingId,
+        });
+      }
+    }
+    for (const block of existing) if (!usedExistingIds.has(block.id)) merged.push(block);
+    codeBlocks.splice(0, codeBlocks.length, ...merged);
+  }
+
   if (ignoredEmptyHeadingCount > 0) {
     normalization = {
       ...normalization,
@@ -196,6 +222,67 @@ function parseMarkdown(markdown: string, format: "markdown" | "mdx"): MarkdownNo
   if (format === "mdx") processor.use(remarkMdx);
   processor.use(remarkFrontmatter, ["yaml"]);
   return processor.parse(markdown) as MarkdownNode;
+}
+
+function recoverFencedCodeBlocks(markdown: string, headings: Heading[]): Array<{
+  language?: string;
+  value: string;
+  sourceHeadingId?: string;
+  startLine: number;
+}> {
+  const lines = markdown.split(/\r?\n/);
+  const recovered: Array<{
+    language?: string;
+    value: string;
+    sourceHeadingId?: string;
+    startLine: number;
+  }> = [];
+  let opening: { marker: string; indent: number; info: string; startLine: number; body: string[] } | undefined;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    if (opening === undefined) {
+      const match = /^( {0,3})(`{3,}|~{3,})([^\r\n]*)$/.exec(line);
+      if (match === null) continue;
+      opening = {
+        marker: match[2]!,
+        indent: match[1]!.length,
+        info: match[3]!.trim(),
+        startLine: index + 1,
+        body: [],
+      };
+      continue;
+    }
+    const closing = /^( {0,3})(`{3,}|~{3,})\s*$/.exec(line)?.[2];
+    if (closing !== undefined
+      && closing[0] === opening.marker[0]
+      && closing.length >= opening.marker.length) {
+      const sourceHeadingId = [...headings]
+        .reverse()
+        .find((heading) => (heading.position.startLine ?? Number.MAX_SAFE_INTEGER) <= opening!.startLine)?.id;
+      const language = opening.info.split(/\s+/, 1)[0] || undefined;
+      recovered.push({
+        language,
+        value: opening.body.join("\n").replace(/^\n+|\n+$/g, ""),
+        sourceHeadingId,
+        startLine: opening.startLine,
+      });
+      opening = undefined;
+      continue;
+    }
+    opening.body.push(line.startsWith(" ".repeat(opening.indent))
+      ? line.slice(opening.indent)
+      : line);
+  }
+  return recovered;
+}
+
+function normalizeCodeBlockForComparison(value: string): string {
+  const lines = value.trim().split(/\r?\n/);
+  const indents = lines
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.match(/^ */)?.[0].length ?? 0);
+  const commonIndent = indents.length === 0 ? 0 : Math.min(...indents);
+  return lines.map((line) => line.slice(Math.min(commonIndent, line.length))).join("\n");
 }
 
 function sanitizeMdx(markdown: string): {
