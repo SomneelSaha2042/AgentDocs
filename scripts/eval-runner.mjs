@@ -36,6 +36,7 @@ const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
 ]);
 const DOCS_DIR_NAME = "docs";
 const RAW_READ_PART_CHARS = 12000;
+const MCP_REQUEST_TIMEOUT_MS = 60_000;
 
 class McpClient {
   constructor(cwd, allowedTools = null) {
@@ -86,7 +87,7 @@ class McpClient {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`MCP Request timeout: ${method}`));
-      }, 5000);
+      }, MCP_REQUEST_TIMEOUT_MS);
       this.pendingRequests.set(id, (res) => {
         clearTimeout(timeout);
         resolve(res);

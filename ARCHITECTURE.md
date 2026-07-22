@@ -333,7 +333,9 @@ Raw controls preserve the captured text-like corpus, including intentionally
 messy Markdown/HTML/JSON and versioned source material when present. Each
 provider request has a deterministic input/output budget; context overages and
 provider TPM/rate-limit errors are persisted as operational failures and do
-not crash the remaining suite runs. Experimental runs also record schema-v5
+not crash the remaining suite runs. The evaluator allows MCP calls up to 60
+seconds so dense deterministic context assembly is measured rather than
+misclassified by a five-second client deadline. Experimental runs also record schema-v5
 evidence-protocol telemetry without storing source text. The evaluation gate
 requires the experimental arm to pass a majority of completed seeds for every
 task (two of three in the standard suite) and not regress against either
