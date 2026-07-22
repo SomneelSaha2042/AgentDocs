@@ -377,9 +377,17 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   if (result.navigation.branches.length > 0) {
     lines.push("", "Context map:");
     for (const branch of result.navigation.branches) {
-      lines.push(`- ${branch.title}: ${branch.pageRef}`);
+      const facetLabel = Object.entries(branch.facets)
+        .map(([key, values]) => `${key}=${values.join("|")}`)
+        .join(",");
+      lines.push(`- ${branch.title}: ${branch.pageRef}${facetLabel.length === 0 ? "" : ` [facets=${facetLabel}]`}`);
       for (const heading of branch.headings) {
-        lines.push(`  - ${heading.headingPath.join(" > ")} (${heading.ref})`);
+        const metadata = [
+          `evidence=${heading.evidenceKinds.join("+") || "none"}`,
+          `children=${heading.childHeadingCount}`,
+          heading.matchedFor.length === 0 ? undefined : `matches=${heading.matchedFor.join("|")}`,
+        ].filter((value): value is string => value !== undefined).join(";");
+        lines.push(`  - ${heading.headingPath.join(" > ")} (${heading.ref}) [${metadata}]`);
       }
     }
   }

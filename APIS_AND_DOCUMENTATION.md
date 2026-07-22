@@ -1227,6 +1227,18 @@ evidence refs. Long source text is not copied into the first response; the
 returned `followUpRefs` point to exact chunks or code blocks, and `read_page`
 returns those sources losslessly. Unsupported steps are omitted rather than
 invented.
+Structured facet keys present in the compiled corpus are routing constraints.
+Evidence explicitly tagged with a contradictory value is excluded, but
+provider-neutral or otherwise untagged evidence remains eligible when its text
+is compatible with the request.
+Additional caller-supplied keys are treated as evidence qualifiers when their
+values occur in source content; they do not filter out otherwise compatible
+code. A qualifier whose value has no source candidate remains an unresolved
+requirement and produces `stop`. Generic call, send, and invoke wording for an
+invocable object is normalized into one operation requirement. When setup and
+operation require different canonical examples, both examples are returned;
+there is no fixed one-example cutoff. Selection prefers the smallest local,
+non-overlapping set that covers the evidenced setup and operation requirements.
 The `task` field may contain detailed constraints or an exact task-pack ID. A
 task-pack match is a relevance hint; it never restricts corpus search. The
 assembler searches the complete goal/task text and returns a coverage-first,
@@ -1235,6 +1247,11 @@ token or result limit may remove task requirements, readiness gaps, or required
 source references. The response is requirement-directed rather than a dump of
 all ranked chunks. The navigation map is paginated independently with
 `navigation.nextCursor`; continuing it never truncates a source read.
+The human-readable MCP map includes each branch's facets and each matched
+heading's evidence kinds, requirement matches, and direct-child count. Code
+blocks remain associated with the specific matching chunk when a heading was
+split into several chunks, while reading the heading exposes every chunk via
+lossless `nextRef` continuation.
 `estimatedTokens` remains telemetry; the offline evaluation
 gate may reject an experiment whose first response is too large, but the
 product never truncates a source read. `readiness.recommendation` is `implement` only when selected evidence is

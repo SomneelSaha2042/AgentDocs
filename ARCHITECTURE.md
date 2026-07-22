@@ -199,20 +199,33 @@ deterministic requirement coverage and source specificity, with task-pack
 membership used only as a relevance signal.
 
 The assembler applies a corpus-derived facet-safety pass for implementation
-context. Explicit requested facets remain authoritative; inferred facets are
-limited to unambiguous values already present in the built artifacts, with no
-framework/package vocabulary embedded in serving code. If available evidence
-contains incompatible exclusive facet values, `query_docs` emits a
+context. Requested keys represented by structured facets in the built corpus
+remain authoritative routing constraints: contradictory tagged evidence is
+excluded, while untagged evidence is still eligible when its source text is
+compatible. Free-form qualifier keys are instead
+evidence requirements when their values occur in source content, so labels
+such as language or platform cannot accidentally exclude canonical evidence.
+An explicit qualifier with no corpus candidate remains unresolved and stops
+implementation. Inferred facets are limited to unambiguous values already
+present in the built artifacts, with no framework/package vocabulary embedded
+in serving code. If available evidence contains incompatible exclusive facet
+values, `query_docs` emits a
 `preferred_context_mismatch` warning and `verify_task_context` reports a
 critical issue.
 
 The same decision performs conservative task-readiness assessment over the
 complete goal and task text. It extracts code/configuration symbols, explicit
-constraints, and bounded high-signal phrases, then checks selected evidence
-and corpus candidates. `query_docs` emits a requirement-directed first
-response: source-backed summaries per selected requirement, a compact coverage
-plan, and exact chunk/code-block follow-up refs. It does not serialize every
-ranked chunk. `verify_task_context` exposes full evidence-linked assessments.
+constraints, bounded high-signal phrases, and generic invocable-object
+operations. Equivalent call/send/invoke wording is normalized into the same
+evidence requirement without package-specific vocabulary. `query_docs` emits
+a requirement-directed first response: source-backed summaries per selected
+requirement, canonical code for each distinct evidenced requirement, a compact
+coverage plan, and exact chunk/code-block follow-up refs. Code blocks under a
+heading split across multiple chunks are associated with the chunk containing
+the block; all same-heading chunks remain available through lossless heading
+reads. It does not serialize every ranked chunk. `verify_task_context` exposes
+full evidence-linked assessments. High response confidence requires at least
+one canonical code example.
 Missing candidates produce `stop`, candidate-but-unread evidence
 produces `inspect`, and complete compatible evidence produces `implement`.
 This is evidence assurance, not a guarantee that generated code will pass
@@ -222,9 +235,19 @@ The assembler also derives a `ContextNavigationCatalog` from the validated
 paths, child counts, facets, evidence kinds, and exact `read_page` refs. It
 accepts page/heading scopes and a deterministic continuation cursor so an agent
 can progressively inspect a large map without truncating source evidence.
+The MCP text response includes the projected facet, evidence-kind,
+requirement-match, and direct-child metadata; agents do not need to infer these
+signals from structured content that their client may hide.
 Un-ingested external links are surfaced as `external_uningested` references
 with their source ref; the server never fetches them and does not treat them as
 local evidence.
+
+The Markdown normalizer supplements the syntax-tree walk with a deterministic
+fence recovery pass. This preserves separate fenced examples nested inside
+Markdown/MDX container components when the parser would otherwise represent the
+whole container as one malformed code block. Recovered blocks retain their
+nearest source heading, language info string, and stable source-derived ID; no
+code is executed.
 `packages/mcp-server/src/artifacts.ts` remains the
 artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the

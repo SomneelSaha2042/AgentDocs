@@ -140,18 +140,22 @@ export class TaskContextAssembler {
   private readonly chunks: Map<string, Chunk>;
   private readonly chunkSearch: Map<string, { text: string; tokens: string[] }>;
   private readonly chunkIdsByToken: Map<string, Set<string>>;
-  private readonly chunkByPageHeading: Map<string, Chunk>;
+  private readonly chunksByPageHeading: Map<string, Chunk[]>;
   private readonly firstChunkByPage: Map<string, Chunk>;
   private readonly corpusTerms: string[];
+  private readonly routingFacetKeys: Set<string>;
 
   constructor(private readonly options: TaskContextAssemblerOptions) {
     this.navigationCatalog = new ContextNavigationCatalog(options.agentMap);
     this.pages = new Map(options.agentMap.pages.map((page) => [page.id, page]));
     this.chunks = new Map(options.agentMap.chunks.map((chunk) => [chunk.id, chunk]));
-    this.chunkByPageHeading = new Map(options.agentMap.chunks.map((chunk) => [
-      `${chunk.pageId}\u0000${chunk.headingPath.join("\u0000")}`,
-      chunk,
-    ]));
+    this.chunksByPageHeading = new Map();
+    for (const chunk of options.agentMap.chunks) {
+      const key = `${chunk.pageId}\u0000${chunk.headingPath.join("\u0000")}`;
+      const siblings = this.chunksByPageHeading.get(key) ?? [];
+      siblings.push(chunk);
+      this.chunksByPageHeading.set(key, siblings);
+    }
     this.firstChunkByPage = new Map();
     for (const chunk of options.agentMap.chunks) {
       if (!this.firstChunkByPage.has(chunk.pageId)) this.firstChunkByPage.set(chunk.pageId, chunk);
@@ -160,6 +164,11 @@ export class TaskContextAssembler {
       const text = `${this.pages.get(chunk.pageId)?.title ?? ""} ${chunk.headingPath.join(" ")} ${chunk.text}`;
       return [chunk.id, { text, tokens: tokenize(text) }];
     }));
+    this.routingFacetKeys = new Set([
+      ...options.agentMap.pages.flatMap((page) => page.facets.map((facet) => facet.key)),
+      ...options.agentMap.chunks.flatMap((chunk) => chunk.facets.map((facet) => facet.key)),
+      ...options.agentMap.taskPacks.flatMap((pack) => Object.keys(pack.context.facets)),
+    ]);
     this.chunkIdsByToken = new Map();
     for (const [chunkId, searchable] of this.chunkSearch) {
       for (const token of new Set(searchable.tokens)) {
@@ -495,6 +504,12 @@ export class TaskContextAssembler {
   private buildQueryDocs(options: QueryDocsOptions): QueryDocsResponse {
     const queryText = positiveQueryText(queryTextFor(options.goal, options.task));
     const requestedFacets = requestedFacetsFor(this.options.agentMap, options.goal, options.task, options.facets);
+    const routingFacetEntries = Object.entries(requestedFacets ?? {}).filter(([key, value]) =>
+      this.routingFacetKeys.has(key)
+      || this.candidateEvidenceFor({ kind: "facet", value: `${key}=${value}` }, options.scopeRefs).length === 0);
+    const routingFacets = routingFacetEntries.length === 0
+      ? undefined
+      : Object.fromEntries(routingFacetEntries);
     const taskSelection = this.selectTaskPackCandidate(options.goal, options.task, options.search);
     const selectedPack = taskSelection?.pack;
     const scopedPackEvidence = selectedPack?.evidence.filter((evidence) =>
@@ -505,13 +520,15 @@ export class TaskContextAssembler {
     const scopedPackGotchas = selectedPack?.gotchas
       .map((gotcha) => ({ ...gotcha, evidence: gotcha.evidence.filter((evidence) => this.evidenceInScope(evidence, options.scopeRefs)) }))
       .filter((gotcha) => gotcha.evidence.length > 0) ?? [];
-    const allowUnknownFacets = options.facets === undefined;
+    const allowUnknownFacetKeys = new Set(routingFacetEntries
+      .map(([key]) => key)
+      .filter((key) => this.routingFacetKeys.has(key)));
     const rankedChunks = this.rankChunks(
       queryText,
       options.search,
       selectedPack,
-      requestedFacets,
-      allowUnknownFacets,
+      routingFacets,
+      allowUnknownFacetKeys,
       options.scopeRefs,
     );
     const requirementSeeds = requirementSeedsFor({
@@ -522,10 +539,13 @@ export class TaskContextAssembler {
     });
     const plannedEvidence = requirementSeeds.flatMap((requirement) => {
       const candidates = requirement.kind === "facet"
-        ? scopedPackEvidence ?? []
+        ? [
+          ...this.candidateEvidenceFor(requirement, options.scopeRefs),
+          ...scopedPackEvidence,
+        ]
         : this.candidateEvidenceFor(requirement, options.scopeRefs);
       const compatible = candidates.filter((evidence) =>
-        this.evidenceCompatibleWithRequestedFacets([evidence], requestedFacets));
+        this.evidenceCompatibleWithRequestedFacets([evidence], routingFacets, allowUnknownFacetKeys));
       const selected = selectMinimalEvidence(compatible.length > 0 ? compatible : candidates, requirement.kind === "facet" ? 2 : 1);
       return selected.map((evidence) => ({ requirement, evidence }));
     });
@@ -564,7 +584,7 @@ export class TaskContextAssembler {
         })),
         ...(scopedPackSteps
           .filter((step) => isRelevantPackEvidence(`${step.title} ${step.description}`, queryText))
-          .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, requestedFacets))
+          .filter((step) => this.evidenceCompatibleWithRequestedFacets(step.evidence, routingFacets, allowUnknownFacetKeys))
           .map((step) => ({
             title: step.title,
             text: stripCode(step.description).trim(),
@@ -577,15 +597,15 @@ export class TaskContextAssembler {
       queryText,
       sourceChunks,
       selectedPack,
-      requestedFacets,
-      allowUnknownFacets,
+      routingFacets,
+      allowUnknownFacetKeys,
       options.scopeRefs,
     );
-    const codeExamples = selectPlannedCodeExamples(codeCandidates, requirementSeeds, selectedEvidence);
+    const codeExamples = selectPlannedCodeExamples(codeCandidates, requirementSeeds, selectedEvidence, queryText);
     const gotchas = stableUniqueBy(
       (scopedPackGotchas
         .filter((gotcha) => gotcha.severity === "critical" || isRelevantPackEvidence(gotcha.text, queryText))
-        .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, requestedFacets))
+        .filter((gotcha) => this.evidenceCompatibleWithRequestedFacets(gotcha.evidence, routingFacets, allowUnknownFacetKeys))
         .map((gotcha) => ({
           ...gotcha,
           text: gotcha.text.trim(),
@@ -604,7 +624,7 @@ export class TaskContextAssembler {
     const facetWarnings = contextFacetWarnings([
       ...(options.search?.results.map((result) => result.facets) ?? []),
       ...(selectedPack === undefined ? [] : [facetsFromTaskPack(selectedPack)]),
-    ], requestedFacets);
+    ], routingFacets);
     const warnings = [
       selectedPack?.confidence === "low" ? "Evidence is weak." : undefined,
       steps.length === 0 ? "No source-backed steps found." : undefined,
@@ -1000,7 +1020,7 @@ export class TaskContextAssembler {
     search: SearchResponse | undefined,
     pack: TaskPack | undefined,
     facets: Record<string, string> | undefined,
-    allowUnknownFacets = false,
+    allowUnknownFacetKeys: ReadonlySet<string> = new Set(),
     scopeRefs?: readonly string[],
   ): RankedChunk[] {
     const byId = new Map<string, number>();
@@ -1034,7 +1054,7 @@ export class TaskContextAssembler {
           scopedFacetsForChunks(page, [chunk]),
           facets,
           `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`,
-          allowUnknownFacets,
+          allowUnknownFacetKeys,
         )) return undefined;
         const cachedSearch = this.chunkSearch.get(chunk.id);
         const searchableText = cachedSearch?.text ?? `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`;
@@ -1056,10 +1076,23 @@ export class TaskContextAssembler {
     requirement: Pick<RequirementAssessment, "kind" | "value">,
     scopeRefs?: readonly string[],
   ): Evidence[] {
-    if (requirement.kind === "facet") return [];
+    const separator = requirement.kind === "facet" ? requirement.value.indexOf("=") : -1;
+    const facetKey = separator < 0 ? undefined : requirement.value.slice(0, separator);
+    const searchValue = separator < 0 ? requirement.value : requirement.value.slice(separator + 1);
     const candidateIds = new Set<string>();
-    for (const term of meaningfulTerms(requirement.value)) {
-      for (const chunkId of this.chunkIdsByToken.get(term) ?? []) candidateIds.add(chunkId);
+    for (const term of meaningfulTerms(searchValue)) {
+      for (const alternative of requirementTermAlternatives(term)) {
+        for (const chunkId of this.chunkIdsByToken.get(alternative) ?? []) candidateIds.add(chunkId);
+      }
+    }
+    if (facetKey !== undefined) {
+      for (const chunk of this.options.agentMap.chunks) {
+        const page = this.pages.get(chunk.pageId);
+        if ([...(page?.facets ?? []), ...chunk.facets]
+          .some((facet) => facet.key === facetKey && facet.value === searchValue)) {
+          candidateIds.add(chunk.id);
+        }
+      }
     }
     const candidates = [...candidateIds]
       .map((id) => this.chunks.get(id))
@@ -1070,21 +1103,36 @@ export class TaskContextAssembler {
         const page = this.pages.get(chunk.pageId);
         if (page === undefined) return undefined;
         const text = `${page.title} ${chunk.headingPath.join(" ")} ${chunk.text}`;
-        const normalizedRequirement = normalizeFacetText(requirement.value);
+        const normalizedRequirement = normalizeFacetText(searchValue);
         const normalizedCandidate = normalizeFacetText(text);
-        const terms = meaningfulTerms(requirement.value);
-        const matched = requirement.kind === "constraint"
-          ? terms.filter((term) => containsTerm(text, term)).length
-          : containsRequirement(text, requirement.value) ? terms.length || 1 : 0;
+        const terms = meaningfulTerms(searchValue);
+        const structuredFacetMatch = facetKey !== undefined && scopedFacetsForChunks(page, [chunk])
+          .some((facet) => facet.key === facetKey && facet.value === searchValue);
+        const matched = requirement.kind === "facet"
+          ? (structuredFacetMatch || containsFacetValue(text, searchValue) ? terms.length || 1 : 0)
+          : requirement.kind === "constraint"
+          ? terms.filter((term) => candidateRequirementTermMatches(text, term)).length
+          : containsRequirement(text, searchValue) ? terms.length || 1 : 0;
         const threshold = requirement.kind === "constraint"
           ? Math.max(1, Math.ceil(terms.length * 0.5))
           : 1;
         if (matched < threshold) return undefined;
-        const exactHeading = containsRequirement(`${page.title} ${chunk.headingPath.join(" ")}`, requirement.value);
-        const exactText = containsRequirement(normalizedCandidate, normalizedRequirement);
+        const headingText = `${page.title} ${chunk.headingPath.join(" ")}`;
+        const exactHeading = requirementMatches(searchValue, headingText, requirement.kind);
+        const exactText = requirementMatches(normalizedRequirement, normalizedCandidate, requirement.kind);
+        const directConstraintHeading = requirement.kind === "constraint"
+          && terms.every((term) => requirementTermDirectMatch(headingText, term));
+        const directConstraintText = requirement.kind === "constraint"
+          && terms.every((term) => requirementTermDirectMatch(text, term));
         return {
           evidence: evidenceForChunk(page, chunk),
-          score: (exactHeading ? 100 : 0) + (exactText ? 40 : 0) + matched + scoreTerms(text, requirement.value),
+          score: (structuredFacetMatch ? 160 : 0)
+            + (directConstraintHeading ? 120 : 0)
+            + (exactHeading ? 100 : 0)
+            + (directConstraintText ? 50 : 0)
+            + (exactText ? 40 : 0)
+            + matched
+            + scoreTerms(text, searchValue),
         };
       })
       .filter((candidate): candidate is { evidence: Evidence; score: number } => candidate !== undefined)
@@ -1097,7 +1145,7 @@ export class TaskContextAssembler {
     ranked: RankedChunk[],
     pack: TaskPack | undefined,
     facets: Record<string, string> | undefined,
-    allowUnknownFacets = false,
+    allowUnknownFacetKeys: ReadonlySet<string> = new Set(),
     scopeRefs?: readonly string[],
   ) {
     const rankedChunkIds = new Set(ranked.map(({ chunk }) => chunk.id));
@@ -1106,12 +1154,14 @@ export class TaskContextAssembler {
       page.codeBlocks.map((block) => {
         if (!isUsableCodeExample(block.value, block.language)) return undefined;
         const headingPath = headingPathFor(page, block.sourceHeadingId);
-        const relatedChunk = headingPath.length === 0
-          ? this.firstChunkByPage.get(page.id)
-          : this.chunkByPageHeading.get(`${page.id}\u0000${headingPath.join("\u0000")}`);
+        const headingChunks = headingPath.length === 0
+          ? [this.firstChunkByPage.get(page.id)].filter((chunk): chunk is Chunk => chunk !== undefined)
+          : this.chunksByPageHeading.get(`${page.id}\u0000${headingPath.join("\u0000")}`) ?? [];
+        const contentChunks = headingChunks.filter((chunk) => chunk.text.includes(block.value.trim()));
+        const relatedChunks = contentChunks.length > 0 ? contentChunks : headingChunks;
         const inScope = scopeRefs === undefined || scopeRefs.length === 0
           || this.navigationCatalog.filterChunkIds(
-            relatedChunk === undefined ? [] : [relatedChunk.id],
+            relatedChunks.map((chunk) => chunk.id),
             scopeRefs,
           ).length > 0;
         if (!inScope) return undefined;
@@ -1121,17 +1171,17 @@ export class TaskContextAssembler {
         const blockFacetMatch = facets !== undefined
           && Object.entries(facets).every(([, value]) => containsFacetValue(block.value, value));
         if (!blockFacetMatch && !facetsCompatible(
-          scopedFacetsForChunks(page, relatedChunk === undefined ? [] : [relatedChunk]),
+          scopedFacetsForChunks(page, relatedChunks),
           facets,
           `${page.title} ${headingPath.join(" ")} ${block.value}`,
-          allowUnknownFacets,
+          allowUnknownFacetKeys,
         )) return undefined;
         const searchableText = `${page.title} ${headingPath.join(" ")} ${block.value}`;
         const score = scoreTerms(searchableText, goal)
           + exactAnchorScore(searchableText, goal) * 10
           + exactAnchorScore(headingPath.join(" "), goal) * 10
           + (rankedPageIds.has(page.id) ? 6 : 0)
-          + (relatedChunk !== undefined && rankedChunkIds.has(relatedChunk.id) ? 10 : 0)
+          + (relatedChunks.some((chunk) => rankedChunkIds.has(chunk.id)) ? 10 : 0)
           + (packMatch ? 4 : 0);
         return {
           language: block.language,
@@ -1184,7 +1234,11 @@ export class TaskContextAssembler {
     return selected.map(({ score: _score, ...example }) => example);
   }
 
-  private evidenceCompatibleWithRequestedFacets(evidence: Evidence[], requested: Record<string, string> | undefined): boolean {
+  private evidenceCompatibleWithRequestedFacets(
+    evidence: Evidence[],
+    requested: Record<string, string> | undefined,
+    allowUnknownFacetKeys: ReadonlySet<string> = new Set(),
+  ): boolean {
     if (requested === undefined) return true;
     return evidence.some((item) => {
       const page = item.pageId === undefined ? undefined : this.pages.get(item.pageId);
@@ -1213,6 +1267,7 @@ export class TaskContextAssembler {
         facets,
         requested,
         `${page.title} ${page.headings.map((heading) => heading.text).join(" ")} ${page.markdown}`,
+        allowUnknownFacetKeys,
       );
     });
   }
@@ -1606,13 +1661,15 @@ function facetsCompatible(
   facets: Chunk["facets"],
   requested?: Record<string, string>,
   text = "",
-  allowUnknown = false,
+  allowUnknown: boolean | ReadonlySet<string> = false,
 ): boolean {
   if (requested === undefined) return true;
   return Object.entries(requested).every(([key, value]) => {
     const values = facets.filter((facet) => facet.key === key).map((facet) => facet.value);
     if (values.length > 0) return values.includes(value);
-    return allowUnknown || containsFacetValue(text, value);
+    const keyAllowsUnknown = allowUnknown === true
+      || (typeof allowUnknown !== "boolean" && allowUnknown.has(key));
+    return keyAllowsUnknown || containsFacetValue(text, value);
   });
 }
 
@@ -1633,7 +1690,7 @@ function containsFacetValue(text: string, value: string): boolean {
 }
 
 function confidenceFor(pack: TaskPack | undefined, chunks: RankedChunk[], steps: number, examples: number): "high" | "medium" | "low" {
-  if (pack?.confidence === "high" && steps >= 2 && (examples > 0 || chunks.length >= 2)) return "high";
+  if (pack?.confidence === "high" && steps >= 2 && examples > 0) return "high";
   if (pack?.confidence === "low" || steps === 0) return "low";
   return chunks.length >= 2 || examples > 0 ? "medium" : "low";
 }
@@ -1908,25 +1965,42 @@ function selectPlannedCodeExamples(
   candidates: Array<{ language?: string; value: string; evidence: Evidence[] }>,
   requirements: RequirementSeed[],
   selectedEvidence: Evidence[],
+  queryText: string,
 ): Array<{ language?: string; value: string; evidence: Evidence[] }> {
   if (candidates.length === 0) return [];
+  const intentCandidates = hasInstallationIntent(queryText)
+    ? candidates
+    : candidates.filter((candidate) => !isInstallationOnlyExample(candidate.value));
+  const eligibleCandidates = intentCandidates.length > 0 ? intentCandidates : candidates;
   const selectedKeys = new Set(selectedEvidence.map(evidenceKey));
-  const directlyLinked = candidates.filter((candidate) =>
-    candidate.evidence.some((evidence) => selectedKeys.has(evidenceKey(evidence))));
-  const pool = directlyLinked.length > 0 ? directlyLinked : candidates;
+  const directlyLinked = eligibleCandidates.filter((candidate) =>
+    candidate.evidence.some((evidence) => selectedKeys.has(evidenceKey(evidence))
+      || selectedEvidence.some((selected) => evidenceLocationsOverlap(evidence, selected))));
+  const pool = directlyLinked.length > 0 ? directlyLinked : eligibleCandidates;
   const selected: typeof pool = [];
   const remaining = [...pool];
-  for (const requirement of requirements.filter((item) => item.kind === "symbol" || item.kind === "configuration")) {
-    const index = remaining.findIndex((candidate) =>
-      requirementMatches(requirement.value, candidate.value, requirement.kind));
-    if (index < 0) continue;
-    selected.push(remaining.splice(index, 1)[0]!);
+  for (const requirement of requirements.filter((item) =>
+    item.kind === "symbol"
+      || item.kind === "configuration"
+      || (item.kind === "constraint" && meaningfulTerms(item.value)
+        .some((term) => requirementTermAlternatives(term).length > 1)))) {
+    if (selected.some((candidate) => requirementMatches(requirement.value, candidate.value, requirement.kind))) continue;
+    const matching = remaining
+      .map((candidate, index) => ({ candidate, index }))
+      .filter(({ candidate }) => requirementMatches(requirement.value, candidate.value, requirement.kind))
+      .sort((left, right) => explicitCodeCoverage(right.candidate.value, requirements, selected)
+        - explicitCodeCoverage(left.candidate.value, requirements, selected)
+        || codeExampleComplexity(left.candidate.value) - codeExampleComplexity(right.candidate.value)
+        || left.candidate.value.length - right.candidate.value.length
+        || left.index - right.index);
+    const index = matching[0]?.index ?? -1;
+    if (index >= 0) selected.push(remaining.splice(index, 1)[0]!);
   }
   if (selected.length === 0) selected.push(remaining[0] ?? pool[0]!);
-  // A single canonical example keeps the first response actionable; its exact
-  // code-block ref still exposes the complete source when more detail is
-  // needed.
-  return stableUniqueBy(selected, (candidate) => oneLine(candidate.value)).slice(0, 1);
+  // Preserve one distinct canonical example for each evidenced requirement.
+  // Coherent tasks commonly need separate setup and operation examples; an
+  // arbitrary one-example cap makes the latter unreachable in the first call.
+  return stableUniqueBy(selected, (candidate) => oneLine(candidate.value));
 }
 
 function assessTaskRequirements(options: {
@@ -2069,15 +2143,86 @@ function extractConceptRequirements(task: string): string[] {
     if (previous === undefined || previousNormalized === undefined || ignored.has(previousNormalized)) continue;
     values.push(`${previous} ${token}`);
   }
+  const normalizedTokens = tokens.map((token) => token.toLowerCase());
+  const invocationActions = new Set([
+    "call", "called", "calling", "calls", "execute", "executed", "executes", "executing",
+    "invoke", "invoked", "invokes", "invoking", "invocation", "send", "sending", "sends", "sent",
+  ]);
+  if (normalizedTokens.some((token) => invocationActions.has(token))) {
+    for (const anchor of ["api", "client", "endpoint", "model"]) {
+      if (normalizedTokens.includes(anchor)) values.push(`${anchor} invocation`);
+    }
+  }
   return stableUnique(values.map((value) => value.trim()).filter((value) => meaningfulTerms(value).length >= 2));
 }
 
 function requirementMatches(value: string, text: string, kind: RequirementAssessment["kind"]): boolean {
   if (kind === "constraint") {
     const terms = meaningfulTerms(value);
-    return terms.length > 0 && terms.every((term) => containsTerm(text, term));
+    return terms.length > 0 && terms.every((term) => requirementTermMatches(text, term));
   }
   return containsRequirement(text, value);
+}
+
+function requirementTermMatches(text: string, term: string): boolean {
+  return requirementTermDirectAlternatives(term).some((alternative) => containsTerm(text, alternative));
+}
+
+function candidateRequirementTermMatches(text: string, term: string): boolean {
+  return requirementTermAlternatives(term).some((alternative) => containsTerm(text, alternative));
+}
+
+function requirementTermDirectMatch(text: string, term: string): boolean {
+  return requirementTermDirectAlternatives(term).some((alternative) => containsTerm(text, alternative));
+}
+
+function requirementTermAlternatives(term: string): string[] {
+  return term === "invocation"
+    ? ["invocation", "invoke", "invoked", "invokes", "invoking", "call", "called", "calling", "calls"]
+    : [term];
+}
+
+function requirementTermDirectAlternatives(term: string): string[] {
+  return term === "invocation"
+    ? ["invocation", "invoke", "invoked", "invokes", "invoking"]
+    : [term];
+}
+
+function evidenceLocationsOverlap(left: Evidence, right: Evidence): boolean {
+  if (left.pageId === undefined || right.pageId === undefined || left.pageId !== right.pageId) return false;
+  if (left.chunkId !== undefined && right.chunkId !== undefined) return left.chunkId === right.chunkId;
+  if (left.headingId !== undefined && right.headingId !== undefined) return left.headingId === right.headingId;
+  const leftSpecific = left.chunkId ?? left.headingId ?? left.codeBlockId;
+  const rightSpecific = right.chunkId ?? right.headingId ?? right.codeBlockId;
+  return leftSpecific === undefined || rightSpecific === undefined;
+}
+
+function codeExampleComplexity(value: string): number {
+  const objectKeys = value.match(/\b[A-Za-z_$][\w$]*\s*:/g)?.length ?? 0;
+  const imports = value.match(/\bimport\b/g)?.length ?? 0;
+  const declarations = value.match(/\b(?:const|let|var|class|function)\b/g)?.length ?? 0;
+  return objectKeys * 3 + imports * 2 + declarations;
+}
+
+function explicitCodeCoverage(
+  value: string,
+  requirements: RequirementSeed[],
+  selected: Array<{ value: string }>,
+): number {
+  return requirements.filter((requirement) =>
+    (requirement.kind === "symbol" || requirement.kind === "configuration")
+    && !selected.some((candidate) => requirementMatches(requirement.value, candidate.value, requirement.kind))
+    && requirementMatches(requirement.value, value, requirement.kind)).length;
+}
+
+function hasInstallationIntent(value: string): boolean {
+  return /\b(?:install|installation|npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get)\b/i.test(value);
+}
+
+function isInstallationOnlyExample(value: string): boolean {
+  const hasInstallCommand = /\b(?:npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|pip\s+install|cargo\s+add|go\s+get)\b/i.test(value);
+  const hasImplementation = /\b(?:new\s+[A-Za-z_$]|await\b|\.invoke\s*\(|function\b|class\b|=>)/.test(value);
+  return hasInstallCommand && !hasImplementation;
 }
 
 function meaningfulTerms(value: string): string[] {
