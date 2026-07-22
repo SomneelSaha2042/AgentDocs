@@ -19,6 +19,7 @@ import {
   type StatusReport,
   type TaskPack,
 } from "./models.js";
+import { ContextNavigationCatalog } from "./context-navigation.js";
 
 export type TaskContextAssemblerOptions = {
   agentMap: AgentMap;
@@ -130,6 +131,7 @@ const TASK_INTENT_RULES: TaskIntentRule[] = [
 ];
 
 export class TaskContextAssembler {
+  private readonly navigationCatalog: ContextNavigationCatalog;
   private readonly pages: Map<string, DocPage>;
   private readonly chunks: Map<string, Chunk>;
   private readonly chunkSearch: Map<string, { text: string; tokens: string[] }>;
@@ -139,6 +141,7 @@ export class TaskContextAssembler {
   private readonly corpusTerms: string[];
 
   constructor(private readonly options: TaskContextAssemblerOptions) {
+    this.navigationCatalog = new ContextNavigationCatalog(options.agentMap);
     this.pages = new Map(options.agentMap.pages.map((page) => [page.id, page]));
     this.chunks = new Map(options.agentMap.chunks.map((chunk) => [chunk.id, chunk]));
     this.chunkByPageHeading = new Map(options.agentMap.chunks.map((chunk) => [
@@ -590,6 +593,19 @@ export class TaskContextAssembler {
     );
     const implementationHints = sourceBackedHints(sourceChunks, codeExamples);
     const readiness = readinessFromQueryWarnings(warnings, steps.length, codeExamples.length);
+    const navigation = this.navigationCatalog.build({
+      relevantChunkIds: stableUnique([
+        ...sourceChunks.map(({ chunk }) => chunk.id),
+        ...selectedEvidence
+          .map((evidence) => evidence.chunkId)
+          .filter((value): value is string => value !== undefined),
+        ...codeExamples
+          .flatMap((example) => example.evidence)
+          .map((evidence) => evidence.chunkId)
+          .filter((value): value is string => value !== undefined),
+      ]),
+      requirementValues: requirementSeeds.map((requirement) => requirement.value),
+    });
     const answer = [
       selectedPack === undefined
         ? `Found ${steps.length} source-backed item(s) for "${options.goal}".`
@@ -614,6 +630,7 @@ export class TaskContextAssembler {
       warnings,
       requirements: [],
       readiness,
+      navigation,
     });
   }
 

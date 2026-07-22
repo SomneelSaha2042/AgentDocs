@@ -531,6 +531,51 @@ const QueryRequirementSchema = z
   })
   .strict();
 
+export const ContextNavigationHeadingSchema = z
+  .object({
+    ref: z.string().min(1),
+    headingPath: z.array(z.string()),
+    depth: z.number().int().positive(),
+    matchedFor: z.array(z.string().min(1)),
+    evidenceKinds: z.array(z.enum(["prose", "code", "links"])),
+    childHeadingCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const ContextExternalReferenceSchema = z
+  .object({
+    status: z.literal("external_uningested"),
+    url: z.string().min(1),
+    label: z.string().min(1),
+    sourceRef: z.string().min(1),
+    sourcePageId: z.string().min(1),
+    headingPath: z.array(z.string()),
+  })
+  .strict();
+
+export const ContextNavigationBranchSchema = z
+  .object({
+    pageId: z.string().min(1),
+    pageRef: z.string().min(1),
+    title: z.string().min(1),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    facets: z.record(z.array(z.string().min(1))),
+    headings: z.array(ContextNavigationHeadingSchema),
+    externalReferences: z.array(ContextExternalReferenceSchema),
+  })
+  .strict();
+
+export const ContextNavigationSchema = z
+  .object({
+    scopeRefs: z.array(z.string().min(1)),
+    branches: z.array(ContextNavigationBranchSchema),
+    externalReferences: z.array(ContextExternalReferenceSchema),
+    complete: z.boolean(),
+    nextCursor: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const QueryDocsResponseSchema = z
   .object({
     goal: z.string().min(1),
@@ -585,6 +630,7 @@ export const QueryDocsResponseSchema = z
     warnings: z.array(z.string().min(1)),
     requirements: z.array(QueryRequirementSchema).default([]),
     readiness: ContextReadinessSchema,
+    navigation: ContextNavigationSchema,
     estimatedTokens: z.number().int().nonnegative(),
   })
   .strict();
@@ -1043,6 +1089,10 @@ export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type ContextReadiness = z.infer<typeof ContextReadinessSchema>;
 export type RequirementAssessment = z.infer<typeof RequirementAssessmentSchema>;
 export type QueryDocsResponse = z.infer<typeof QueryDocsResponseSchema>;
+export type ContextNavigationHeading = z.infer<typeof ContextNavigationHeadingSchema>;
+export type ContextExternalReference = z.infer<typeof ContextExternalReferenceSchema>;
+export type ContextNavigationBranch = z.infer<typeof ContextNavigationBranchSchema>;
+export type ContextNavigation = z.infer<typeof ContextNavigationSchema>;
 export type ReadPageResponse = z.infer<typeof ReadPageResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;

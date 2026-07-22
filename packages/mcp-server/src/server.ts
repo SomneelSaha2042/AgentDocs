@@ -364,6 +364,22 @@ function formatQueryDocs(result: QueryDocsResponse): string {
     lines.push("", followUpLabel, ...result.followUpRefs.map((ref) =>
       `- ${ref.title}: read_page ref=${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
   }
+  if (result.navigation.branches.length > 0) {
+    lines.push("", "Context map:");
+    for (const branch of result.navigation.branches) {
+      lines.push(`- ${branch.title}: ${branch.pageRef}`);
+      for (const heading of branch.headings) {
+        lines.push(`  - ${heading.headingPath.join(" > ")} (${heading.ref})`);
+      }
+    }
+  }
+  if (result.navigation.externalReferences.length > 0) {
+    lines.push("", "Unresolved external references:", ...result.navigation.externalReferences.map((reference) =>
+      `- ${reference.label}: ${reference.url} (from ${reference.sourceRef}; not ingested)`));
+  }
+  if (!result.navigation.complete && result.navigation.nextCursor !== undefined) {
+    lines.push("", `More context map remains: query_docs navigationCursor=${result.navigation.nextCursor}.`);
+  }
   if (result.citations.length > 0) {
     lines.push("", "Citations:", ...result.citations.map((citation) => {
       const location = citation.repoPath ?? citation.sourceUrl ?? citation.pageId ?? citation.id;
