@@ -1,0 +1,7 @@
+name: Vercel AI SDK Task
+slug: vercel-ai-sdk
+sources:
+  - type: local_markdown
+    path: docs
+doctor:
+  minScore: 0

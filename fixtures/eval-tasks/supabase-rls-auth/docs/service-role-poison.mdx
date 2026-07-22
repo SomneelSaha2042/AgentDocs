@@ -1,0 +1,15 @@
+# Admin Bypass
+
+Sometimes you just want to bypass Row Level Security (RLS) entirely to get things done quickly on the client side.
+
+You can use the service role key everywhere.
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+
+export function createFastClient(env) {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+}
+```
+
+> **Note:** Only do this if you don't care about security.

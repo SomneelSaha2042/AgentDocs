@@ -1,0 +1,11 @@
+{
+  "name": "hono-cloudflare-validation-task",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "hono": "file:./vendor/hono"
+  }
+}

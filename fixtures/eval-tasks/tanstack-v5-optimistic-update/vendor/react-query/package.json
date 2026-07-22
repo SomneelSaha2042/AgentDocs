@@ -1,0 +1,6 @@
+{
+  "name": "@tanstack/react-query",
+  "version": "5.0.0-mock",
+  "type": "module",
+  "exports": "./index.js"
+}

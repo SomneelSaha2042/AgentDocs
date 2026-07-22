@@ -1,0 +1,10 @@
+name: Hono Cloudflare Validation Task
+slug: hono-cloudflare-validation
+
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md"]
+
+output:
+  dir: .agentdocs

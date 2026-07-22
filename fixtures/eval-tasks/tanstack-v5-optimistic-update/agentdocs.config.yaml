@@ -1,0 +1,10 @@
+name: TanStack Query v5 Optimistic Update Task
+slug: tanstack-v5-optimistic-update
+
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md"]
+
+output:
+  dir: .agentdocs
