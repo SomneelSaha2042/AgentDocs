@@ -24,7 +24,7 @@
     "@agentdocs/shared": "workspace:*",
     "cheerio": "^1.1.0",
     "fast-xml-parser": "^5.2.5",
-    "minimatch": "^10.0.3"
+    "minimatch": "^10.2.6"
   },
   "devDependencies": {
     "vitest": "4.1.9"
