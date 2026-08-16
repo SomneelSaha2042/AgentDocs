@@ -112,11 +112,12 @@ Reuse the built context without crawling again:
 agentdocs status
 agentdocs handoff "implement authentication"
 agentdocs setup-agent --client codex
-agentdocs serve-mcp --tools query_docs,read_page
+agentdocs serve-mcp --tools browse_docs,read_docs
 agentdocs verify-context --task "implement authentication"
 ```
 
-`handoff` is the recommended multi-session command. It wraps the compact
+`setup-agent` emits the default ontology-navigation profile. `handoff` remains
+available as a task-oriented saved view: it wraps the compact
 `context` bundle with freshness, selected task pack, source pages, gotchas,
 setup commands, and MCP tool/resource suggestions, so an agent can start from
 current, scoped, evidence-backed context instead of raw search results. The
@@ -158,6 +159,7 @@ AgentDocs writes a separate `.agentdocs/` context layer:
   agent-brief.md
   manifest.json
   agent-map.json
+  documentation-map.json
   chunks.jsonl
   index.sqlite
   state/build-state.json
@@ -174,6 +176,8 @@ document browsing:
 - `agent-brief.md` is the first persistent file to show a coding agent.
 - Task packs bundle evidence-backed instructions for detected task families.
 - `agent-map.json` exposes pages, chunks, entities, edges, context facets, and evidence.
+- `documentation-map.json` is the compact typed map agents traverse without a
+  text query; its source hash binds it to `agent-map.json`.
 - `manifest.json` records build counts and source coverage for local/repo sources.
 - `index.sqlite` provides ranked offline search.
 - `state/build-state.json` powers freshness checks and changed-source rebuilds.
@@ -249,7 +253,7 @@ Expose only built AgentDocs artifacts to an MCP-compatible coding agent:
 
 ```bash
 agentdocs setup-agent --client codex
-agentdocs serve-mcp --tools query_docs,read_page
+agentdocs serve-mcp --tools browse_docs,read_docs
 ```
 
 The server provides read-only tools for search, pages, task packs, task handoff,
@@ -259,10 +263,12 @@ filesystem paths. When `serve-mcp --tools` is used to restrict exposed tools,
 the allowlist is enforced both when listing tools and when a client attempts to
 call a hidden tool.
 
-In the compact profile, call `query_docs` first, then pass any returned
-`followUpRefs` to `read_page` unchanged. Source reads are losslessly paginated:
-continue with `nextRef` until `complete` is `true` rather than requesting a
-smaller or truncated source.
+In the compact profile, call `browse_docs` at `agentdocs://map`, follow
+collections, sections, authored links, adjacent blocks, and entity occurrences,
+then pass selected refs to `read_docs` unchanged. Map neighborhoods are bounded
+with cursors; source reads are losslessly paginated with `nextRef`. The complete
+compiled map is also available as the read-only
+`agentdocs://documentation-map.json` resource.
 
 For multi-session work, run `agentdocs status` before starting. Reuse existing
 artifacts when fresh, or run `agentdocs rebuild --changed` after local docs

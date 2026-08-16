@@ -78,6 +78,7 @@ They commit:
 llms.txt
 AGENTS.md
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/task-packs/*.md
 ```
 
@@ -176,6 +177,7 @@ llms.txt
 AGENTS.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
@@ -204,6 +206,7 @@ agentdocs://llms.txt
 agentdocs://AGENTS.md
 agentdocs://manifest.json
 agentdocs://agent-map.json
+agentdocs://documentation-map.json
 agentdocs://task-packs/{task}.md
 agentdocs://pages/{pageId}.md
 ```
@@ -240,6 +243,7 @@ v1 outputs:
 - `llms.txt`;
 - `AGENTS.md`;
 - `agent-map.json`;
+- `documentation-map.json`;
 - deterministic task packs;
 - agent-readiness report;
 - SQLite full-text index;
@@ -311,7 +315,8 @@ Acceptance criteria:
 - Builds page-link graph.
 - Extracts entities and relationships.
 - Builds SQLite FTS index.
-- Emits schema-valid `manifest.json`, `agent-map.json`, and `chunks.jsonl`.
+- Emits schema-valid `manifest.json`, `agent-map.json`,
+  `documentation-map.json`, and `chunks.jsonl`.
 
 ### FR5: Generate agent artifacts
 
@@ -526,6 +531,7 @@ And receive:
 llms.txt
 AGENTS.md
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
 .agentdocs/index.sqlite

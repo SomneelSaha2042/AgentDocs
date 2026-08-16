@@ -6,7 +6,7 @@ responsibilities, public contracts, pipeline behavior, generated artifacts,
 readiness checks, search/MCP behavior, dependency relationships, test coverage,
 CI behavior, or known gaps change.
 
-Verified on 2026-07-22 during the deterministic context navigation pass.
+Verified on 2026-08-09 during the compiled Documentation Map implementation.
 
 ## Product Shape
 
@@ -30,10 +30,11 @@ The repository is a strict TypeScript pnpm workspace with these packages:
 | `@agentdocs/crawler` | Deterministic public website crawling, sitemap/link discovery, scope handling, raw HTML snapshots, and normalized Markdown page output. |
 | `@agentdocs/normalizer` | Markdown/MDX/HTML/reST/AsciiDoc normalization, heading/link/code extraction, context facets, deterministic entity extraction helpers, and heading-aware chunking. |
 | `@agentdocs/graph` | Entity and relationship graph construction from normalized pages, links (including already-captured cross-origin targets), extracted entities, and evidence. |
-| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, generic task packs with Markdown diagnostics and evidence-linked code examples, manifest, agent map, chunks JSONL, and artifact validation. |
+| `@agentdocs/generator` | Generated `llms.txt`, generated `AGENTS.md`, `agent-brief.md`, generic task packs with Markdown diagnostics and evidence-linked code examples, manifest, evidence graph, compiled Documentation Map, chunks JSONL, and artifact validation. |
 | `@agentdocs/indexer` | Offline search index creation and querying. Uses Node SQLite/FTS5 when available and a deterministic lexical fallback otherwise. |
+| `@agentdocs/navigator` | Query-free traversal over the compiled documentation map, including hierarchy, source-local adjacency, authored links, entity occurrences, bounded neighborhoods, and exact source reads. |
 | `@agentdocs/doctor` | Agent-readiness checks, scoring, JSON report, and Markdown report generation. |
-| `@agentdocs/mcp-server` | JSON-RPC stdio MCP surface over built artifacts and the local search index. |
+| `@agentdocs/mcp-server` | JSON-RPC stdio MCP surface over built artifacts, the documentation navigator, and the local search index. |
 | `@agentdocs/shared` | Zod schemas, shared TypeScript models, config loading, context bundle assembly, handoff bundle assembly, status models, and verification models. |
 
 Internal dependency direction is intentionally simple:
@@ -42,10 +43,11 @@ Internal dependency direction is intentionally simple:
 cli -> crawler, normalizer, graph, generator, indexer, doctor, mcp-server, shared
 crawler -> normalizer, shared
 graph -> normalizer, shared
-generator -> shared
+generator -> navigator, shared
 indexer -> shared
 doctor -> shared
-mcp-server -> indexer, shared
+mcp-server -> indexer, navigator, shared
+navigator -> shared
 normalizer -> shared
 shared -> zod
 ```
@@ -59,8 +61,8 @@ config/source
   -> crawl or ingest
   -> normalize pages
   -> chunk by headings and content boundaries
-  -> extract entities and relationships
-  -> generate artifacts
+  -> preserve source order and extract entities and relationships
+  -> generate evidence artifacts and compile the Documentation Map
   -> validate JSON/JSONL artifacts
   -> build search index
   -> run readiness checks
@@ -135,6 +137,7 @@ AGENTS.md
 agent-brief.md
 manifest.json
 agent-map.json
+documentation-map.json
 chunks.jsonl
 index.sqlite
 state/build-state.json
@@ -152,13 +155,14 @@ builds so source documentation is not silently overwritten.
 
 The canonical schemas live in `packages/shared/src/models.ts`. They cover:
 
-- normalized document pages, headings, links, code blocks, chunks, and context
-  facets;
+- normalized document pages, headings, role-labelled links, source-ordered code
+  blocks and chunks, and context facets;
 - evidence records for pages, headings, links, code blocks, config, and future
   OpenAPI evidence;
-- entities, edges, task packs, generated agent map, manifest, source coverage,
-  search responses, query/read responses, context bundles, handoff bundles,
-  build state, status reports, context verification, and readiness reports.
+- entities, edges, task packs, generated agent map, compiled Documentation Map,
+  manifest, source coverage, search responses, browse/read responses, query
+  responses, context bundles, handoff bundles, build state, status reports,
+  context verification, and readiness reports.
 
 Stable IDs are derived deterministically from source identity, heading/content
 location, and content hashes. Evidence-linked outputs should point back to
@@ -170,6 +174,10 @@ Current normalizer behavior verified from package tests and implementation:
 
 - Markdown chunking is heading-aware and keeps fenced code blocks intact,
   including oversized, unterminated, and nested fenced examples.
+- Generated chunks and code blocks carry explicit zero-based source order.
+  HTML normalization captures navigation, breadcrumb, table-of-contents, and
+  pagination links as labelled topology before removing page chrome from the
+  readable Markdown.
 - Short setup prose that fits in a normal chunk can stay with an oversized code
   block so downstream scoring can associate explanation with code evidence.
 - MDX parsing first attempts strict `remark-mdx`; tolerant fallback preserves
@@ -180,6 +188,24 @@ Current normalizer behavior verified from package tests and implementation:
   content.
 
 ## Search And Context
+
+`packages/navigator` deterministically compiles `documentation-map.json` from
+the validated `agent-map.json`, and hydrates `DocumentationMapNavigator` from
+both artifacts. It exposes stable refs for map roots,
+collections, pages, sections, evidence blocks, code blocks, entities, and task
+packs. Relations include containment, source-local `precedes`/`follows`,
+authored `links_to`, chunk `mentions`, entity `occurs_in`, task-pack
+`context_for`, and existing evidence-linked graph edges. Responses are bounded
+and cursor-paginated. The navigator accepts refs and relation filters, not a
+natural-language goal, so semantic route selection remains with the calling
+agent. `read_docs` returns exact source content for the selected page or target
+and uses lossless continuation refs for large reads. The standalone map uses
+schema version `1.0.0`; its SHA-256 `sourceHash` binds it to the parsed
+`agent-map.json`. Schema validation rejects missing endpoints, duplicate refs or
+relations, an absent root, and child counts that disagree with `contains`
+relations. MCP accepts older output directories without this file by compiling
+the same map in memory, but rejects a present map whose schema or source hash is
+invalid.
 
 `packages/indexer` builds offline search over pages, headings, chunks, facets,
 and task-pack links. On runtimes with `node:sqlite` and FTS5, the MCP/CLI read
@@ -253,15 +279,17 @@ artifact-loading and search adapter over built files. It supplies a search
 callback to the shared assembler; CLI and MCP surfaces format or expose the
 shared result shapes.
 
-Generated agent guidance and evaluator prompts use the same generic evidence
-protocol: agents start with `query_docs`, may refine with returned `scopeRefs`
-or continue `navigationCursor`, `implement` permits writing, `inspect` requires reading every
-required source reference, and `stop` requires resolving the warning before
-implementation.
-The MCP server is externally stateless while caching its validated index reader
-and context assembler for the lifetime of a request handler. It exposes the
-two-tool compact profile; enforcement in the active evaluation runner is
-diagnostic and does not add package-specific routing logic. `query_docs` is
+Generated agent guidance and setup snippets use the ontology-first protocol:
+agents start at `agentdocs://map` with `browse_docs`, choose a route through
+structural and semantic relations, and pass selected refs unchanged to
+`read_docs`. Text retrieval, task packs, and readiness decisions remain
+available as optional locators, saved views, and audit surfaces.
+The MCP server is externally stateless while caching its validated index reader,
+context assembler, and documentation navigator for the lifetime of a request
+handler. Generated client setup exposes the `browse_docs,read_docs` two-tool
+compact profile; bare `serve-mcp` retains the compatibility surface. Enforcement
+in the active evaluation runner is diagnostic and does not add package-specific
+routing logic. `query_docs` is
 coverage-first: token estimates are telemetry and cannot remove source-backed
 requirements or references. Navigation pagination is independent of source
 reads, so a map can be continued without cutting off evidence. `read_page` accepts exact refs only and returns
@@ -271,9 +299,12 @@ transport parts.
 ## MCP Surface
 
 `packages/mcp-server` implements JSON-RPC over stdio. It reads generated
-artifacts and the local search index only. Implemented tools include:
+artifacts, the compiled documentation map, and the local search index only.
+Implemented tools include:
 
 ```txt
+browse_docs
+read_docs
 query_docs
 read_page
 search_docs
@@ -291,12 +322,14 @@ find_code_examples
 get_related_pages
 ```
 
-Resources include the generated top-level artifacts, task packs, and page
-content through `agentdocs://` URIs. `serve-mcp --tools` filters `tools/list`
+Resources include the generated top-level artifacts, including
+`agentdocs://documentation-map.json`, task packs, and page content through
+`agentdocs://` URIs. `serve-mcp --tools` filters `tools/list`
 and rejects disallowed `tools/call` requests before tool dispatch with a
 structured `TOOL_NOT_ALLOWED` tool error. Generated setup snippets use the
-compact `query_docs,read_page` profile to reduce normal-session tool-schema
-overhead; bare `serve-mcp` continues to expose the full read-only surface.
+compact `browse_docs,read_docs` profile to reduce normal-session tool-schema
+overhead and let the agent make semantic navigation decisions; bare
+`serve-mcp` continues to expose the full read-only compatibility surface.
 
 ## Readiness Scoring
 
@@ -323,6 +356,8 @@ includes:
 - generator tests and snapshots;
 - doctor readiness tests;
 - indexer search tests;
+- navigator tests for root discovery, hierarchy, source-local adjacency,
+  entity occurrences, stable pagination, and exact section reads;
 - MCP artifact/server tests, including scope, cursor, and invalid-reference
   behavior;
 - CLI tests for build, crawl, ingest, context/workflow, doctor, inspect, try,
@@ -466,6 +501,17 @@ The proof confirms stable repeated builds across the sampled targets and records
 
 ## Known Gaps
 
+- The Documentation Map derives path collections from source URLs or repository
+  paths. It serializes collection, section, and block nodes in the separate
+  `documentation-map.json` artifact, but does not yet ingest docs-platform
+  navigation manifests.
+- Entity extraction remains conservative and corpus-dependent. Sparse entity
+  evidence produces a structurally useful map with fewer semantic cross-links;
+  the navigator does not invent missing ontology facts.
+- The existing `north-star-v1` evaluation suite is intentionally still pinned
+  to `query_docs,read_page` for historical comparability. It does not measure
+  the new ontology-first default; a separate `browse_docs,read_docs` experiment
+  and evidence protocol are required before claiming task-quality improvement.
 - OpenAPI ingestion is deferred to a future opt-in adapter. Current builds reject configured OpenAPI sources and direct OpenAPI file ingestion early instead of silently compiling schemas into generic context.
 - Task selection can only choose generated task packs. If the compiler does not generate an organic task pack for a requested family, context falls back to source-ranked sections and verification reports the missing task pack.
 - The current `inspect` command covers generated entities, links, and task-pack

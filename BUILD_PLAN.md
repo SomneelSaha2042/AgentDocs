@@ -325,6 +325,7 @@ llms.txt
 AGENTS.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
