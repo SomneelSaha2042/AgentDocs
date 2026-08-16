@@ -53,7 +53,7 @@
     "@agentdocs/normalizer": "workspace:*",
     "@agentdocs/shared": "workspace:*",
     "commander": "^14.0.0",
-    "minimatch": "^10.0.3",
+    "minimatch": "^10.2.6",
     "vitest": "4.1.9"
   }
 }
