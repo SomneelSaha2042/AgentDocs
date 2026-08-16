@@ -50,6 +50,7 @@ describe("AgentDocs MCP protocol", () => {
     const listedTools = (tools.result as { tools: { name: string; inputSchema: { properties?: Record<string, unknown> } }[] }).tools;
     expect(listedTools.map((tool) => tool.name).sort())
       .toEqual([
+        "browse_docs",
         "explain_warning",
         "find_code_examples",
         "get_agent_start_context",
@@ -62,6 +63,7 @@ describe("AgentDocs MCP protocol", () => {
         "get_version_policy",
         "list_available_tasks",
         "query_docs",
+        "read_docs",
         "read_page",
         "search_docs",
         "verify_task_context",
@@ -70,6 +72,19 @@ describe("AgentDocs MCP protocol", () => {
     expect(listedTools.find((tool) => tool.name === "query_docs")?.inputSchema.properties)
       .toEqual(expect.objectContaining({ scopeRefs: expect.any(Object), navigationCursor: expect.any(Object) }));
     expect(listedTools.find((tool) => tool.name === "read_page")?.inputSchema.properties).toEqual(expect.objectContaining({ ref: expect.any(Object) }));
+    expect(listedTools.find((tool) => tool.name === "browse_docs")?.inputSchema.properties)
+      .toEqual(expect.objectContaining({ ref: expect.any(Object), cursor: expect.any(Object), relations: expect.any(Object) }));
+    const map = await request(handle, 13, "tools/call", {
+      name: "browse_docs",
+      arguments: {},
+    });
+    expect(JSON.stringify(map)).toContain("agentdocs://map/pages");
+    expect((map.result as { content: { text: string }[] }).content[0]?.text).toContain("Documentation map");
+    const selectedSource = await request(handle, 14, "tools/call", {
+      name: "read_docs",
+      arguments: { ref: "agentdocs://pages/page_auth.md#chunk_auth" },
+    });
+    expect(JSON.stringify(selectedSource)).toContain("Use an API key for authentication.");
     const search = await request(handle, 3, "tools/call", {
       name: "search_docs",
       arguments: { query: "authentication" },
@@ -132,6 +147,7 @@ describe("AgentDocs MCP protocol", () => {
     expect(JSON.stringify(exactPage)).toContain("Use an API key for authentication.");
     const resources = await request(handle, 5, "resources/list");
     expect(JSON.stringify(resources)).toContain("agentdocs://llms.txt");
+    expect(JSON.stringify(resources)).toContain("agentdocs://documentation-map.json");
     const pageResource = await request(handle, 6, "resources/read", {
       uri: "agentdocs://pages/page_auth.md",
     });
@@ -140,7 +156,7 @@ describe("AgentDocs MCP protocol", () => {
       name: "get_task_context",
       arguments: { goal: "authentication" },
     });
-    expect(JSON.stringify(taskContext)).toContain("query_docs");
+    expect(JSON.stringify(taskContext)).toContain("browse_docs");
     const verification = await request(handle, 8, "tools/call", {
       name: "verify_task_context",
       arguments: { task: "authentication" },

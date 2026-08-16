@@ -19,7 +19,7 @@ import { minimatch } from "minimatch";
 
 
 export const PERSISTENT_AGENT_PROMPT =
-  "Use the AgentDocs MCP server before web search. Start with query_docs, use its context map to refine with scopeRefs or continue navigationCursor, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.";
+  "Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow the structural and semantic relations that fit the task, and use read_docs on the exact page or section refs you select before implementing.";
 
 type ConfiguredSource = AgentDocsConfig["sources"][number];
 
@@ -36,13 +36,14 @@ const ARTIFACT_PATHS = [
   "AGENTS.md",
   "agent-brief.md",
   "agent-map.json",
+  "documentation-map.json",
   "chunks.jsonl",
   "index.sqlite",
   "llms.txt",
   "manifest.json",
 ];
 
-const CORE_MCP_TOOLS = "query_docs,read_page";
+const CORE_MCP_TOOLS = "browse_docs,read_docs";
 
 export function mcpCommand(out: string): string {
   return `agentdocs --out ${quoteArgument(out)} serve-mcp --tools ${CORE_MCP_TOOLS}`;
@@ -275,9 +276,9 @@ ${context.config?.name ?? "Unknown project"}${context.config?.version === undefi
 ## First Steps
 
 - Start the MCP server with: \`${mcpCommand(context.out)}\`
-- Start with \`query_docs\`; use returned page/heading refs in \`scopeRefs\` for a focused follow-up, or continue \`navigationCursor\` until the map is complete.
-- Use \`read_page\` only when the query response cites a page or chunk that needs more detail.
-- Use \`verify_task_context\` before implementing with retrieved context.
+- Start at \`agentdocs://map\` with \`browse_docs\`; choose a route through collections, pages, sections, links, local neighbors, and entity occurrences.
+- Use \`read_docs\` on exact page, section, block, or code refs selected from the map.
+- Continue a returned cursor when a node has more relations than fit in one response.
 
 ## Persistent Agent Prompt
 

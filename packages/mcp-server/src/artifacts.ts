@@ -4,8 +4,14 @@ import path from "node:path";
 
 import { openSearchIndex, type SearchIndexReader } from "@agentdocs/indexer";
 import {
+  DocumentationMapNavigationError,
+  DocumentationMapNavigator,
+  type BrowseDocumentationMapOptions,
+} from "@agentdocs/navigator";
+import {
   AgentMapSchema,
   BuildStateSchema,
+  DocumentationMapSchema,
   ManifestSchema,
   StatusReportSchema,
   TaskContextAssembler,
@@ -13,6 +19,7 @@ import {
   type ContextVerification,
   type HandoffBundle,
   type DocPage,
+  type DocumentationMap,
   type Manifest,
   type StatusReport,
   type TaskPack,
@@ -59,19 +66,48 @@ export class ArtifactService {
   private manifest?: Manifest;
   private searchReader?: SearchIndexReader;
   private assembler?: TaskContextAssembler;
+  private navigator?: DocumentationMapNavigator;
+  private documentationMap?: DocumentationMap;
+  private documentationMapLoaded = false;
 
   constructor(private readonly options: ArtifactServiceOptions) {
     this.outputRoot = path.resolve(options.cwd, options.out);
   }
 
   async validateArtifacts(): Promise<void> {
-    await this.loadAgentMap();
+    try {
+      const map = await this.loadAgentMap();
+      this.getNavigator(map, await this.loadDocumentationMap());
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
   }
 
   async close(): Promise<void> {
     this.searchReader?.close();
     this.searchReader = undefined;
     this.assembler = undefined;
+    this.navigator = undefined;
+    this.documentationMap = undefined;
+    this.documentationMapLoaded = false;
+  }
+
+  async browseDocs(options: BrowseDocumentationMapOptions = {}) {
+    try {
+      const map = await this.loadAgentMap();
+      return this.getNavigator(map, await this.loadDocumentationMap()).browse(options);
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
+  }
+
+  async readDocs(ref: string) {
+    try {
+      const map = await this.loadAgentMap();
+      return this.getNavigator(map, await this.loadDocumentationMap()).read(ref);
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
   }
 
   async searchDocs(
@@ -122,18 +158,7 @@ export class ArtifactService {
   }
 
   async readPage(ref: string) {
-    try {
-      const map = await this.loadAgentMap();
-      return this.getAssembler(map).readPage({ ref });
-    } catch (error) {
-      if (error instanceof Error && /was not found/.test(error.message)) {
-        throw new McpArtifactError(error.message, "NOT_FOUND");
-      }
-      if (error instanceof Error && /must be|Part \d+ was not found/.test(error.message)) {
-        throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
-      }
-      throw error;
-    }
+    return this.readDocs(ref);
   }
 
   async getPage(pageId: string): Promise<DocPage> {
@@ -241,9 +266,9 @@ export class ArtifactService {
       selectedTaskPackMarkdown: selected?.markdown,
       setupCommands: setup.commands,
       mcp: {
-        command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
-        prompt: "Use the AgentDocs MCP server before web search. Start with query_docs, refine with returned scopeRefs or navigationCursor when needed, and read one cited source before writing if readiness is INSPECT; if STOP, resolve the warning before implementing.",
-        suggestedTools: ["query_docs", "read_page"],
+        command: options.mcpCommand ?? "agentdocs serve-mcp --tools browse_docs,read_docs",
+        prompt: "Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow structural and semantic relations, then call read_docs with the exact page or section refs you select before implementing.",
+        suggestedTools: ["browse_docs", "read_docs"],
       },
     });
   }
@@ -393,6 +418,12 @@ export class ArtifactService {
       const map = await this.loadAgentMap();
       return { mimeType: "application/json", text: `${JSON.stringify(map, null, 2)}\n` };
     }
+    if (uri === "agentdocs://documentation-map.json") {
+      const map = await this.loadAgentMap();
+      const documentationMap = await this.loadDocumentationMap()
+        ?? this.getNavigator(map).documentationMap();
+      return { mimeType: "application/json", text: `${JSON.stringify(documentationMap, null, 2)}\n` };
+    }
     const task = matchResource(uri, /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/);
     if (task !== undefined) {
       return { mimeType: "text/markdown", text: (await this.getTaskPack(task)).markdown };
@@ -503,8 +534,30 @@ export class ArtifactService {
     }
   }
 
+  private async loadDocumentationMap(): Promise<DocumentationMap | undefined> {
+    if (this.documentationMapLoaded) return this.documentationMap;
+    try {
+      this.documentationMap = DocumentationMapSchema.parse(
+        JSON.parse(await this.readArtifact("documentation-map.json", "documentation-map.json was not found.")),
+      );
+      this.documentationMapLoaded = true;
+      return this.documentationMap;
+    } catch (error) {
+      if (error instanceof McpArtifactError && error.code === "NOT_FOUND") {
+        this.documentationMapLoaded = true;
+        return undefined;
+      }
+      if (error instanceof McpArtifactError) throw error;
+      throw invalidArtifact("documentation-map.json", error);
+    }
+  }
+
   private getAssembler(map: AgentMap): TaskContextAssembler {
     return this.assembler ??= new TaskContextAssembler({ agentMap: map });
+  }
+
+  private getNavigator(map: AgentMap, documentationMap?: DocumentationMap): DocumentationMapNavigator {
+    return this.navigator ??= new DocumentationMapNavigator({ agentMap: map, documentationMap });
   }
 
   private async readArtifact(relativePath: string, missingMessage: string): Promise<string> {
@@ -590,6 +643,15 @@ function tokenize(value: string): string[] {
 function invalidArtifact(name: string, error: unknown): McpArtifactError {
   const message = error instanceof Error ? error.message : String(error);
   return new McpArtifactError(`Invalid ${name}: ${message}`, "INVALID_ARTIFACT");
+}
+
+function mapNavigationError(error: unknown): unknown {
+  if (!(error instanceof DocumentationMapNavigationError)) return error;
+  if (/documentation-map\.json does not match/.test(error.message)) {
+    return new McpArtifactError(error.message, "INVALID_ARTIFACT");
+  }
+  const code = /was not found/.test(error.message) ? "NOT_FOUND" : "INVALID_ARGUMENT";
+  return new McpArtifactError(error.message, code);
 }
 
 function stableUnique(values: string[]): string[] {

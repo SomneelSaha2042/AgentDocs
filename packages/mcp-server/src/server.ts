@@ -1,6 +1,11 @@
 import { createInterface } from "node:readline";
 
-import type { QueryDocsResponse, ReadPageResponse } from "@agentdocs/shared";
+import type {
+  BrowseDocsResponse,
+  DocumentationMapRelationType,
+  QueryDocsResponse,
+  ReadPageResponse,
+} from "@agentdocs/shared";
 
 import { ArtifactService, McpArtifactError, type ArtifactServiceOptions } from "./artifacts.js";
 
@@ -29,7 +34,39 @@ type JsonRpcResponse = {
   };
 };
 
+const DOCUMENTATION_RELATIONS: DocumentationMapRelationType[] = [
+  "contains",
+  "precedes",
+  "follows",
+  "links_to",
+  "mentions",
+  "occurs_in",
+  "context_for",
+  "defines",
+  "uses",
+  "requires",
+  "example_for",
+  "error_for",
+  "deprecated_by",
+  "introduced_in",
+  "versioned_as",
+  "related_to",
+];
+
 const TOOLS = [
+  tool("browse_docs", "Browse the compiled documentation ontology without a text query. Start at agentdocs://map, inspect bounded structural and semantic relations, then follow the refs that best fit your task. Use cursor to continue a large neighborhood.", {
+    ref: stringProperty("Map, collection, page, section, block, entity, or task ref. Defaults to agentdocs://map."),
+    cursor: stringProperty("Opaque continuation cursor returned by browse_docs for this ref."),
+    limit: { type: "integer", minimum: 1, maximum: 50 },
+    relations: {
+      type: "array",
+      items: { type: "string", enum: DOCUMENTATION_RELATIONS },
+      minItems: 1,
+    },
+  }, []),
+  tool("read_docs", "Read exact source content for a page, section, block, or code ref selected through browse_docs. Pass the ref unchanged.", {
+    ref: stringProperty("Exact AgentDocs page reference, for example agentdocs://pages/page_id.md#target_id."),
+  }, ["ref"]),
   tool("query_docs", "Start with this evidence-linked query, then refine it with scopeRefs or continue the returned navigationCursor when the context map is incomplete. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
     goal: stringProperty(),
     task: stringProperty(),
@@ -101,6 +138,7 @@ const RESOURCES = [
   resource("agentdocs://AGENTS.md", "text/markdown"),
   resource("agentdocs://manifest.json", "application/json"),
   resource("agentdocs://agent-map.json", "application/json"),
+  resource("agentdocs://documentation-map.json", "application/json"),
 ];
 
 const RESOURCE_TEMPLATES = [
@@ -211,6 +249,17 @@ async function callTool(
   try {
     let result: unknown;
     switch (name) {
+      case "browse_docs":
+        result = await service.browseDocs({
+          ref: optionalString(args.ref),
+          cursor: optionalString(args.cursor),
+          limit: optionalInteger(args.limit),
+          relations: optionalRelations(args.relations),
+        });
+        break;
+      case "read_docs":
+        result = await service.readDocs(requiredString(args.ref, "ref"));
+        break;
       case "search_docs":
         result = await service.searchDocs(
           requiredString(args.query, "query"),
@@ -324,13 +373,42 @@ function toolResult(name: string, result: unknown) {
 }
 
 function formatToolText(name: string, result: unknown): string {
+  if (name === "browse_docs" && isBrowseDocsResponse(result)) {
+    return formatBrowseDocs(result);
+  }
   if (name === "query_docs" && isQueryDocsResponse(result)) {
     return formatQueryDocs(result);
   }
-  if (name === "read_page" && isReadPageResponse(result)) {
-    return formatReadPage(result);
+  if ((name === "read_docs" || name === "read_page") && isReadPageResponse(result)) {
+    return formatReadPage(result, name);
   }
   return JSON.stringify(result);
+}
+
+function formatBrowseDocs(result: BrowseDocsResponse): string {
+  const lines = [
+    `${result.node.kind}: ${result.node.label}`,
+    `Ref: ${result.node.ref}`,
+    result.node.preview === undefined ? undefined : `Preview: ${result.node.preview}`,
+  ].filter((line): line is string => line !== undefined);
+  if (result.breadcrumbs.length > 0) {
+    lines.push(`Path: ${result.breadcrumbs.map((node) => node.label).join(" > ")}`);
+  }
+  for (const relation of result.relations) {
+    lines.push("", `${relation.direction} ${relation.type}:`);
+    for (const node of relation.nodes) {
+      const counts = [
+        node.childCount > 0 ? `children=${node.childCount}` : undefined,
+        node.evidenceCount > 0 ? `evidence=${node.evidenceCount}` : undefined,
+      ].filter((value): value is string => value !== undefined);
+      lines.push(`- ${node.label} (${node.kind}): ${node.ref}${counts.length === 0 ? "" : ` [${counts.join(", ")}]`}`);
+      if (node.preview !== undefined) lines.push(`  ${node.preview}`);
+    }
+  }
+  if (!result.complete && result.nextCursor !== undefined) {
+    lines.push("", `More relations remain: browse_docs ref=${result.node.ref} cursor=${result.nextCursor}.`);
+  }
+  return lines.join("\n");
 }
 
 function formatQueryDocs(result: QueryDocsResponse): string {
@@ -407,7 +485,7 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   return lines.join("\n");
 }
 
-function formatReadPage(result: ReadPageResponse): string {
+function formatReadPage(result: ReadPageResponse, toolName: string): string {
   const location = result.section.repoPath ?? result.section.sourceUrl ?? result.section.pageId;
   const heading = result.section.headingPath.length > 0
     ? ` (${result.section.headingPath.join(" > ")})`
@@ -415,10 +493,19 @@ function formatReadPage(result: ReadPageResponse): string {
   return [
     `Source: ${result.section.title}${heading}`,
     `Location: ${location}`,
-    result.section.complete ? undefined : `More source remains: call read_page with ref=${result.section.nextRef}.`,
+    result.section.complete ? undefined : `More source remains: call ${toolName} with ref=${result.section.nextRef}.`,
     "",
     result.section.text,
   ].filter((line): line is string => line !== undefined).join("\n");
+}
+
+function isBrowseDocsResponse(value: unknown): value is BrowseDocsResponse {
+  return isRecord(value)
+    && isRecord(value.node)
+    && typeof value.node.ref === "string"
+    && Array.isArray(value.breadcrumbs)
+    && Array.isArray(value.relations)
+    && typeof value.complete === "boolean";
 }
 
 function evidenceLabel(evidence: QueryDocsResponse["steps"][number]["evidence"]): string {
@@ -543,6 +630,17 @@ function optionalStringArray(value: unknown, name: string): string[] | undefined
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new ProtocolError(-32602, `${name} must be an array of strings.`);
   return value.map((item) => requiredString(item, name));
+}
+
+function optionalRelations(value: unknown): DocumentationMapRelationType[] | undefined {
+  const relations = optionalStringArray(value, "relations");
+  if (relations === undefined) return undefined;
+  for (const relation of relations) {
+    if (!DOCUMENTATION_RELATIONS.includes(relation as DocumentationMapRelationType)) {
+      throw new ProtocolError(-32602, `Unknown documentation relation "${relation}".`);
+    }
+  }
+  return relations as DocumentationMapRelationType[];
 }
 
 function optionalInteger(value: unknown): number | undefined {

@@ -324,11 +324,11 @@ export class TaskContextAssembler {
       gotchas: decision.gotchas,
       setupCommands: options.setupCommands ?? [],
       mcp: {
-        command: options.mcp?.command ?? "agentdocs serve-mcp --tools query_docs,read_page",
+        command: options.mcp?.command ?? "agentdocs serve-mcp --tools browse_docs,read_docs",
         prompt: options.mcp?.prompt
-          ?? "Use the AgentDocs MCP server before web search. Start with query_docs, refine with returned scopeRefs or navigationCursor when needed, and read one cited source before writing if readiness is INSPECT; if STOP, resolve the warning before implementing.",
+          ?? "Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow structural and semantic relations, then call read_docs with exact selected refs before implementing.",
         suggestedTools: options.mcp?.suggestedTools
-          ?? ["query_docs", "read_page"],
+          ?? ["browse_docs", "read_docs"],
         resources: decision.readFirst,
       },
       warnings: decision.warnings,

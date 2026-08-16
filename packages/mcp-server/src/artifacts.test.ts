@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -12,6 +12,11 @@ describe("ArtifactService", () => {
     const service = new ArtifactService({ cwd: out, out: "." });
 
     await expect(service.validateArtifacts()).resolves.toBeUndefined();
+    expect((await service.browseDocs()).node.ref).toBe("agentdocs://map");
+    expect((await service.browseDocs({ ref: "agentdocs://pages/page_auth.md#chunk_auth" })).node)
+      .toMatchObject({ ref: "agentdocs://pages/page_auth.md#chunk_auth", kind: "block" });
+    expect((await service.readDocs("agentdocs://pages/page_auth.md#chunk_auth")).section.text)
+      .toContain("Use an API key for authentication.");
     expect((await service.searchDocs("authentication")).results[0])
       .toMatchObject({ pageId: "page_auth", chunkId: "chunk_auth" });
     expect((await service.searchDocs("install", 8, "authentication")).results)
@@ -92,6 +97,8 @@ describe("ArtifactService", () => {
       .resolves.toMatchObject({ mimeType: "text/markdown" });
     await expect(service.readResource("agentdocs://task-packs/authentication.md"))
       .resolves.toMatchObject({ mimeType: "text/markdown" });
+    await expect(service.readResource("agentdocs://documentation-map.json"))
+      .resolves.toMatchObject({ mimeType: "application/json", text: expect.stringContaining("agentdocs://map") });
     await expect(service.readResource("agentdocs://pages/../../package.json"))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(service.getPage("../package"))
@@ -100,10 +107,30 @@ describe("ArtifactService", () => {
       .rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
   });
 
+  it("falls back for legacy builds and rejects a compiled map from another graph", async () => {
+    const legacyOut = await writeFixtureArtifacts();
+    await unlink(path.join(legacyOut, "documentation-map.json"));
+    const legacy = new ArtifactService({ cwd: legacyOut, out: "." });
+    await expect(legacy.validateArtifacts()).resolves.toBeUndefined();
+    await expect(legacy.browseDocs()).resolves.toMatchObject({ node: { ref: "agentdocs://map" } });
+
+    const staleOut = await writeFixtureArtifacts();
+    const documentationMap = JSON.parse(await readFile(path.join(staleOut, "documentation-map.json"), "utf8"));
+    await writeFile(
+      path.join(staleOut, "documentation-map.json"),
+      `${JSON.stringify({ ...documentationMap, sourceHash: "b".repeat(64) })}\n`,
+      "utf8",
+    );
+    const stale = new ArtifactService({ cwd: staleOut, out: "." });
+    await expect(stale.validateArtifacts()).rejects.toMatchObject({ code: "INVALID_ARTIFACT" });
+  });
+
   it("returns structured missing and invalid-artifact errors", async () => {
     const out = await writeFixtureArtifacts();
     const service = new ArtifactService({ cwd: out, out: "." });
     await expect(service.getPage("page_missing"))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(service.browseDocs({ ref: "agentdocs://pages/page_missing.md" }))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
 
     await writeFile(path.join(out, "agent-map.json"), "{}\n", "utf8");
