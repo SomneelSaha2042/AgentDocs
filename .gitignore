@@ -13,12 +13,12 @@ docs/.vitepress/.temp/
 .env
 
 # Local agent-development instructions, plans, and working context
-/AGENTS.md
-/APIS_AND_DOCUMENTATION.md
-/ARCHITECTURE.md
-/BUILD_PLAN.md
-/CONTEXT.md
-/PRD.md
+AGENTS.md
+APIS_AND_DOCUMENTATION.md
+ARCHITECTURE.md
+BUILD_PLAN.md
+CONTEXT.md
+PRD.md
 /.agents/
 /docs/adr/
 /docs/agents/
