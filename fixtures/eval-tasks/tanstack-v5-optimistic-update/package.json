@@ -1,0 +1,11 @@
+{
+  "name": "tanstack-v5-optimistic-update-task",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "file:./vendor/react-query"
+  }
+}

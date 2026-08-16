@@ -360,7 +360,7 @@ async function artifactHashes(directory) {
 }
 
 function isGeneratedArtifact(file) {
-  return ["AGENTS.md", "agent-map.json", "chunks.jsonl", "index.sqlite", "llms.txt", "manifest.json", "agent-brief.md"].includes(file)
+  return ["AGENTS.md", "agent-map.json", "documentation-map.json", "chunks.jsonl", "index.sqlite", "llms.txt", "manifest.json", "agent-brief.md"].includes(file)
     || file.startsWith("task-packs/");
 }
 

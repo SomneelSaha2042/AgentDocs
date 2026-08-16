@@ -5,11 +5,16 @@ export type ContextOptions = {
   cwd: string;
   goal: string;
   out: string;
+  scopeRefs?: string[];
+  navigationCursor?: string;
 };
 
 export async function buildContextBundle(options: ContextOptions): Promise<ContextBundle> {
   return new ArtifactService({ cwd: options.cwd, out: options.out })
-    .getContextBundle(options.goal);
+    .getContextBundle(options.goal, undefined, {
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
+    });
 }
 
 export function formatContextBundle(bundle: ContextBundle): string {
@@ -40,6 +45,19 @@ export function formatContextBundle(bundle: ContextBundle): string {
   const goalSteps = bundle.goalBundle.steps.map((step, index) =>
     `${index + 1}. **${step.role}: ${step.title}**\n   ${step.snippet}\n   ${step.resource}`,
   ).join("\n");
+  const map = bundle.navigation.branches.length === 0
+    ? "- No matching context-map branches found."
+    : bundle.navigation.branches.map((branch) => [
+        `- ${branch.title}: ${branch.pageRef}`,
+        ...branch.headings.map((heading) => `  - ${heading.headingPath.join(" > ")} (${heading.ref})`),
+      ].join("\n")).join("\n");
+  const externalReferences = bundle.navigation.externalReferences.length === 0
+    ? "- None"
+    : bundle.navigation.externalReferences.map((reference) =>
+        `- ${reference.label}: ${reference.url} (from ${reference.sourceRef}; not ingested)`).join("\n");
+  const continuation = bundle.navigation.nextCursor === undefined
+    ? ""
+    : `\nMore context map remains: rerun with --navigation-cursor ${bundle.navigation.nextCursor}`;
 
   return `Goal: ${bundle.goal}
 
@@ -66,5 +84,11 @@ ${taskPack}
 
 ## Supporting evidence
 ${evidence}
+
+## Context map
+${map}${continuation}
+
+## Unresolved external references
+${externalReferences}
 `;
 }

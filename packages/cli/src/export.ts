@@ -33,6 +33,7 @@ const LLMS_ROOT_FILES = [
   "agent-brief.md",
   "manifest.json",
   "agent-map.json",
+  "documentation-map.json",
   "chunks.jsonl",
 ];
 

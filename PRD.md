@@ -78,6 +78,7 @@ They commit:
 llms.txt
 AGENTS.md
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/task-packs/*.md
 ```
 
@@ -176,6 +177,7 @@ llms.txt
 AGENTS.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
@@ -204,6 +206,7 @@ agentdocs://llms.txt
 agentdocs://AGENTS.md
 agentdocs://manifest.json
 agentdocs://agent-map.json
+agentdocs://documentation-map.json
 agentdocs://task-packs/{task}.md
 agentdocs://pages/{pageId}.md
 ```
@@ -240,6 +243,7 @@ v1 outputs:
 - `llms.txt`;
 - `AGENTS.md`;
 - `agent-map.json`;
+- `documentation-map.json`;
 - deterministic task packs;
 - agent-readiness report;
 - SQLite full-text index;
@@ -311,7 +315,8 @@ Acceptance criteria:
 - Builds page-link graph.
 - Extracts entities and relationships.
 - Builds SQLite FTS index.
-- Emits schema-valid `manifest.json`, `agent-map.json`, and `chunks.jsonl`.
+- Emits schema-valid `manifest.json`, `agent-map.json`,
+  `documentation-map.json`, and `chunks.jsonl`.
 
 ### FR5: Generate agent artifacts
 
@@ -462,6 +467,10 @@ The current metrics prove the compiler works. What is needed to actually measure
 - **Build cold-start and incremental time**: At repo scale; this matters for CI integration cost.
 - **Per-task token usage delta**: Does using task packs reduce the token budget the agent spends on context retrieval?
 
+Task success and correct source use are the primary product signals. Tokens,
+turns, latency, and cost are secondary descriptive metrics: they never offset a
+failed task or evidence gap.
+
 ## 15. Future scope
 
 Potential future features:
@@ -491,7 +500,9 @@ Mitigation: Stay portable, local-first, open-source, framework-agnostic, and CI-
 
 ### Risk: Agents ignore large context
 
-Mitigation: Prioritize compact task packs and `get_agent_start_context(goal)` over dumping the entire index.
+Mitigation: Return coverage-first task context and exact source references. Use
+lossless continuation reads for more detail instead of silently truncating
+evidence.
 
 ### Risk: Dynamic docs are hard to crawl
 
@@ -520,6 +531,7 @@ And receive:
 llms.txt
 AGENTS.md
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
 .agentdocs/index.sqlite

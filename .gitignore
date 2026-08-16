@@ -12,6 +12,17 @@ docs/.vitepress/.temp/
 *.tsbuildinfo
 .env
 
+# Local agent-development instructions, plans, and working context
+AGENTS.md
+APIS_AND_DOCUMENTATION.md
+ARCHITECTURE.md
+BUILD_PLAN.md
+CONTEXT.md
+PRD.md
+/.agents/
+/docs/adr/
+/docs/agents/
+
 # Ignore large copied mock docs in eval tasks
 fixtures/eval-tasks/aws-js-v3/docs/
 fixtures/eval-tasks/kubernetes-deployment/docs/
@@ -28,3 +39,6 @@ fixtures/eval-tasks/langchain-js/docs/*
 fixtures/eval-tasks/stripe-webhooks/docs/*
 !fixtures/eval-tasks/stripe-webhooks/docs/
 !fixtures/eval-tasks/stripe-webhooks/docs/**/*.md
+fixtures/eval-tasks/stripe-webhooks-holdout/docs/*
+!fixtures/eval-tasks/stripe-webhooks-holdout/docs/
+!fixtures/eval-tasks/stripe-webhooks-holdout/docs/**/*.md

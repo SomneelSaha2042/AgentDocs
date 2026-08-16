@@ -1,0 +1,10 @@
+name: Supabase RLS Auth Task
+slug: supabase-rls-auth
+
+sources:
+  - type: local_markdown
+    path: ./docs
+    include: ["**/*.md", "**/*.mdx"]
+
+output:
+  dir: .agentdocs

@@ -16,6 +16,7 @@ import {
 import {
   AgentMapSchema,
   ChunkSchema,
+  DocumentationMapSchema,
   DocPageSchema,
   IngestManifestSchema,
   SourceCoverageSchema,
@@ -49,6 +50,7 @@ export type BuildResult = {
   edgeCount: number;
   entityCount: number;
   llmsTxtPath?: string;
+  documentationMapPath: string;
   manifestPath?: string;
   indexBackend: "sqlite-fts5" | "lexical";
   indexPath: string;
@@ -74,6 +76,7 @@ export async function buildFromSources(
   const pagesDirectory = path.join(outputRoot, "sources", "pages");
   const chunksPath = path.join(outputRoot, "chunks.jsonl");
   const agentMapPath = path.join(outputRoot, "agent-map.json");
+  const documentationMapPath = path.join(outputRoot, "documentation-map.json");
   const taskPacksDirectory = path.join(outputRoot, "task-packs");
   const pages = await readPages(pagesDirectory);
   const sourceCoverage = await readSourceCoverage(outputRoot);
@@ -122,6 +125,11 @@ export async function buildFromSources(
   }
   await writeChunks(chunksPath, chunks);
   await writeFile(agentMapPath, `${JSON.stringify(agentMap, null, 2)}\n`, "utf8");
+  await writeFile(
+    documentationMapPath,
+    `${JSON.stringify(DocumentationMapSchema.parse(generated.documentationMap), null, 2)}\n`,
+    "utf8",
+  );
   const llmsTxtPath = options.writeLlmsTxt === false
     ? undefined
     : path.join(outputRoot, "llms.txt");
@@ -170,6 +178,7 @@ export async function buildFromSources(
     chunkCount: chunks.length,
     edgeCount: agentMap.edges.length,
     entityCount: agentMap.entities.length,
+    documentationMapPath,
     llmsTxtPath,
     manifestPath,
     indexBackend: index.backend,

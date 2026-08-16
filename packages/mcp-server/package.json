@@ -14,13 +14,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/indexer build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/navigator build",
     "test": "vitest run src",
-    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/indexer build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/indexer build && corepack pnpm --filter @agentdocs/navigator build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@agentdocs/indexer": "workspace:*",
+    "@agentdocs/navigator": "workspace:*",
     "@agentdocs/shared": "workspace:*"
   },
   "devDependencies": {

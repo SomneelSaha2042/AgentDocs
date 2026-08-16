@@ -88,7 +88,7 @@ node scripts/eval-suite-runner.mjs --suite north-star-v1 \
   --max-input-tokens 24000 --max-output-tokens 2000
 ```
 
-It runs Auth.js v5, Stripe webhooks, and LangChain JavaScript against the
+It runs Auth.js v5, the provenance-complete Stripe webhook holdout, and LangChain JavaScript against the
 experimental `query_docs,read_page` surface and both raw-document controls.
 Each invocation receives a unique result directory. The runner validates each
 fixture's Markdown corpus hash and required evidence before making any model
@@ -101,8 +101,25 @@ Aggregate only the isolated run directory:
 ```bash
 node scripts/aggregate-metrics.mjs \
   --results-dir .dogfood/evals/<run-id>-north-star-v1 \
-  authjs-v5 stripe-webhooks langchain-js
+  authjs-v5 stripe-webhooks-holdout langchain-js
 ```
+
+The suite runner performs an offline context gate before any provider request.
+It rebuilds each AgentDocs fixture, calls `query_docs` once, and fails the
+suite when the requirement-directed first response exceeds 25% of the input
+budget or emits an invalid source reference. This is a preflight safety gate,
+not a product truncation policy: full source content remains available through
+lossless `read_page` pagination.
+
+Run the gate directly when iterating on the compiler or context planner:
+
+```bash
+corepack pnpm eval:context-gate
+```
+
+The suite runner records the gate result in `suite-manifest.json`. Skipping it
+is reserved for debugging (`--skip-context-gate`) and is not a valid metrics
+run.
 
 The suite uses a dual gate. Operational failures remain failed reliability
 outcomes, while task success is compared only among completed, valid runs.

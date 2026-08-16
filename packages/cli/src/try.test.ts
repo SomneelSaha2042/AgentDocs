@@ -39,7 +39,7 @@ describe("try CLI", () => {
       context: { goal: "install the SDK" },
       readiness: { score: expect.any(Number) },
       next: {
-        command: "agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page",
+        command: "agentdocs --out .agentdocs serve-mcp --tools browse_docs,read_docs",
         prompt: "Use the AgentDocs MCP server and install the SDK.",
       },
     });
@@ -51,7 +51,7 @@ describe("try CLI", () => {
     expect(formatTryResult(result)).toContain("Selected task pack: installation");
     expect(formatTryResult(result)).toContain("Warnings:");
     expect(formatTryResult(result)).toContain(
-      "1. Run: agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page",
+      "1. Run: agentdocs --out .agentdocs serve-mcp --tools browse_docs,read_docs",
     );
     await expect(readFile(path.join(cwd, ".agentdocs", "reports", "agent-readiness.md"), "utf8"))
       .resolves.toContain("# Agent-readiness report");
@@ -59,7 +59,7 @@ describe("try CLI", () => {
 
   it("crawls an HTTP source before building context", async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "agentdocs-try-web-"));
-    const server = createServer((request, response) => {
+    const server = createServer((_request, response) => {
       response.setHeader("content-type", "text/html");
       response.end(`<html><head><title>Authentication</title></head><body>
         <h1>Authentication</h1>

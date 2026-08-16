@@ -1,0 +1,9 @@
+{
+  "name": "hono",
+  "version": "4.0.0-mock",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./validator": "./validator.js"
+  }
+}

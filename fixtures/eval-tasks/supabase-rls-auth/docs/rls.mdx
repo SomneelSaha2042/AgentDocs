@@ -1,0 +1,14 @@
+# Row Level Security
+
+Enable RLS on protected tables and write policies using `auth.uid()`.
+
+```sql
+alter table public.profiles enable row level security;
+
+create policy "Profiles are visible to their owner"
+on public.profiles
+for select
+using (auth.uid() = user_id);
+```
+
+Use the anon key from browser code. Do not place the service role key in browser bundles, client components, or public environment variables.

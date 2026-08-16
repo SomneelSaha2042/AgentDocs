@@ -68,12 +68,17 @@ collecting sources again.
 ```bash
 agentdocs context "implement authentication"
 agentdocs context "debug webhook verification" --json
+agentdocs context "debug webhook verification" --scope-ref agentdocs://pages/webhooks.md#verify-signatures
+agentdocs context "debug webhook verification" --navigation-cursor agentdocs:navigation:v1:4 --json
 ```
 
 The bundle includes the strongest matching task pack when available, rules,
 supporting resources, and a dynamic goal bundle composed from up to five
 complementary evidence sections. Fixed task packs are included only when they
-materially match the goal.
+materially match the goal. The bundle also includes a deterministic context map
+of matched pages and headings plus unresolved external links. `--scope-ref`
+accepts a page or heading ref from that map; `--navigation-cursor` continues
+map pagination.
 
 ### 2.0.2 `agentdocs handoff <goal>`
 
@@ -100,9 +105,10 @@ agentdocs setup-agent --client claude --json
 ```
 
 Supported clients are `codex`, `claude`, `cursor`, and `generic`.
-Generated setup snippets expose the compact `query_docs,read_page` MCP tool
-profile. Users can run `serve-mcp` without `--tools` when they need the full
-read-only tool surface.
+Generated setup snippets expose the compact `browse_docs,read_docs` MCP tool
+profile. Agents start at `agentdocs://map`, traverse bounded relationships, and
+read exact selected evidence. Users can run `serve-mcp` without `--tools` when
+they need the full compatibility surface.
 
 ### 2.0.4 `agentdocs status`
 
@@ -237,6 +243,7 @@ Ingests a local docs folder or file.
 agentdocs ingest ./docs
 agentdocs ingest ./README.md
 agentdocs ingest ./docs --strict
+agentdocs ingest ./docs --source-manifest ./docs.provenance.json
 ```
 
 Supported inputs:
@@ -259,6 +266,14 @@ MDX ingestion is tolerant by default. Strict parsing is attempted first. On
 failure, AgentDocs removes imports/exports and replaces JSX tags and brace
 expressions outside fenced code with explicit omission markers, then records
 file-level diagnostics. `--strict` disables this fallback.
+
+For captured/offline documentation, `--source-manifest <path>` accepts a local
+JSON provenance sidecar. Each listed file must include its source URL and
+SHA-256; AgentDocs verifies the hash before normalization, attaches the URL to
+the generated page, and copies the validated sidecar to
+`.agentdocs/sources/provenance-manifest.json`. Files without a sidecar record
+remain ingestible but receive an explicit provenance warning. No network fetch
+is performed to fill missing records.
 
 OpenAPI ingestion is deferred in this build. Configured OpenAPI sources and direct OpenAPI file ingestion attempts fail early with an actionable unsupported-source message instead of producing generic chunks. OpenAPI files encountered inside mixed docs directories are not compiled into context.
 
@@ -299,6 +314,7 @@ Outputs:
 .agentdocs/agent-brief.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/index.sqlite
@@ -417,7 +433,8 @@ Options:
 
 `static` copies the complete built output directory. `llms` copies only the
 publishable agent-facing subset: `llms.txt`, generated `AGENTS.md`,
-`agent-brief.md`, `manifest.json`, `agent-map.json`, `chunks.jsonl`,
+`agent-brief.md`, `manifest.json`, `agent-map.json`, `documentation-map.json`,
+`chunks.jsonl`,
 `task-packs/`, and `reports/` when present. Export refuses destinations inside
 the active output directory or equal to it.
 
@@ -428,7 +445,7 @@ Starts a local MCP server over stdio.
 ```bash
 agentdocs serve-mcp
 agentdocs serve-mcp --out .agentdocs
-agentdocs serve-mcp --tools query_docs,read_page,verify_task_context
+agentdocs serve-mcp --tools browse_docs,read_docs
 ```
 
 Behavior:
@@ -445,6 +462,14 @@ errors return structured `code` and `message` fields. Resource and tool
 arguments are validated and cannot be used as arbitrary filesystem paths.
 Disallowed allowlisted tool calls return a structured `TOOL_NOT_ALLOWED` tool
 error before artifact access.
+`browse_docs` traverses the validated compiled Documentation Map. When a legacy
+output directory has no `documentation-map.json`, MCP compiles the same map in
+memory from `agent-map.json`; a present but invalid or source-mismatched map is
+rejected. `query_docs` remains a
+compatibility and audit interface and returns a navigation projection with exact page/heading refs,
+facets, evidence kinds, child counts, and `external_uningested` links. Scope
+refs are validated against the built map; external links are reported for an
+agent to investigate separately and are never fetched by MCP.
 
 ## 3. Configuration file
 
@@ -475,6 +500,7 @@ sources:
 
   - type: local_markdown
     path: ./docs
+    sourceManifest: ./docs.provenance.json
     include:
       - "**/*.md"
       - "**/*.mdx"
@@ -656,6 +682,8 @@ type Link = {
   href: string;
   resolvedHref?: string;
   kind: "internal" | "external" | "anchor" | "asset" | "unknown";
+  role?: "content" | "navigation" | "breadcrumb" | "toc" | "pagination";
+  sourceOrder?: number;
   sourceHeadingId?: string;
   isBroken?: boolean;
 };
@@ -666,6 +694,7 @@ type Link = {
 ```ts
 type CodeBlock = {
   id: string;
+  sourceOrder?: number;
   language?: string;
   value: string;
   sourceHeadingId?: string;
@@ -685,6 +714,9 @@ type CodeBlock = {
 type Chunk = {
   id: string;
   pageId: string;
+  sourceOrder?: number;
+  headingId?: string;
+  kind: "section" | "table_row";
   headingPath: string[];
   text: string;
   tokenEstimate: number;
@@ -700,6 +732,10 @@ type ContextFacet = {
   evidence: Evidence[];
 };
 ```
+
+New builds always emit `sourceOrder` for links, code blocks, and chunks, and
+emit `headingId` for heading-derived chunks. These fields remain optional in
+the reader schema so existing `0.2.0` artifacts continue to load.
 
 AgentDocs deterministically extracts these common facet keys when evidence is
 available:
@@ -779,6 +815,7 @@ type Evidence = {
   source: "page" | "heading" | "link" | "code_block" | "openapi" | "config";
   pageId?: string;
   headingId?: string;
+  chunkId?: string;
   codeBlockId?: string;
   url?: string;
   repoPath?: string;
@@ -798,7 +835,13 @@ type TaskPack = {
   relatedEntities: string[];
   steps: TaskStep[];
   gotchas: Gotcha[];
-  codeExamples: string[];
+  codeExamples: Array<string | TaskCodeExample>;
+  evidence: Evidence[];
+};
+
+type TaskCodeExample = {
+  language?: string;
+  value: string;
   evidence: Evidence[];
 };
 
@@ -862,7 +905,7 @@ Purpose: build metadata.
 
 ### 5.2 `agent-map.json`
 
-Purpose: machine-readable graph.
+Purpose: machine-readable source and evidence graph.
 
 ```json
 {
@@ -874,6 +917,44 @@ Purpose: machine-readable graph.
   "taskPacks": []
 }
 ```
+
+### 5.2.1 `documentation-map.json`
+
+Purpose: compact, query-free traversal map compiled from `agent-map.json`.
+
+```json
+{
+  "schemaVersion": "1.0.0",
+  "sourceHash": "<sha256-of-agent-map>",
+  "rootRef": "agentdocs://map",
+  "nodes": [
+    {
+      "ref": "agentdocs://map",
+      "kind": "root",
+      "label": "Documentation map",
+      "headingPath": [],
+      "facets": {},
+      "order": 0,
+      "childCount": 1,
+      "evidenceCount": 0
+    }
+  ],
+  "relations": [
+    {
+      "from": "agentdocs://map",
+      "to": "agentdocs://collection/guides",
+      "type": "contains"
+    }
+  ]
+}
+```
+
+Node kinds are `root`, `collection`, `page`, `section`, `block`, `code_block`,
+`entity`, and `task`. Relations cover containment, source-local adjacency,
+authored links, entity occurrences, task context, and evidence-graph edge
+types. Refs and relation endpoints are unique and valid; `childCount` equals the
+number of outgoing `contains` relations. `sourceHash` prevents serving a map
+compiled from a different `agent-map.json`.
 
 ### 5.3 `chunks.jsonl`
 
@@ -1101,6 +1182,8 @@ The MCP server reads from generated artifacts and the SQLite index.
 Implemented tools:
 
 ```txt
+browse_docs
+read_docs
 query_docs
 read_page
 search_docs
@@ -1118,10 +1201,70 @@ find_code_examples
 get_related_pages
 ```
 
+#### `browse_docs`
+
+Default first-call interface. It accepts no goal or query. Start at
+`agentdocs://map`, inspect a bounded neighborhood, and follow whichever
+structural or semantic refs fit the current task.
+
+Input:
+
+```json
+{
+  "ref": "agentdocs://map",
+  "limit": 24,
+  "relations": ["contains", "links_to", "mentions", "occurs_in"]
+}
+```
+
+All fields are optional. `ref` defaults to `agentdocs://map`; `limit` is from 1
+through 50. `cursor` continues the same node and becomes invalid if used with a
+different ref. Supported relations are `contains`, `precedes`, `follows`,
+`mentions`, `occurs_in`, `context_for`, and all edge types already defined by
+`agent-map.json` (`links_to`, `defines`, `uses`, `requires`, `example_for`,
+`error_for`, `deprecated_by`, `introduced_in`, `versioned_as`, `related_to`).
+
+Output:
+
+```json
+{
+  "node": {
+    "ref": "agentdocs://map",
+    "kind": "root",
+    "label": "Documentation map",
+    "headingPath": [],
+    "facets": {},
+    "childCount": 2,
+    "evidenceCount": 0
+  },
+  "breadcrumbs": [],
+  "relations": [
+    {
+      "type": "contains",
+      "direction": "outgoing",
+      "nodes": []
+    }
+  ],
+  "complete": true,
+  "estimatedTokens": 80
+}
+```
+
+When `complete` is false, pass `nextCursor` back with the same `ref`. Results
+are ordered deterministically using authored source order and stable IDs. This
+tool performs no natural-language ranking.
+
+#### `read_docs`
+
+Reads exact source content for a page, heading, chunk, or code-block ref chosen
+through `browse_docs`. Its input and output schemas match `read_page`. When
+`complete` is false, pass `nextRef` unchanged to `read_docs` until complete.
+
 #### `query_docs`
 
-Preferred first-call interface for implementation goals. It returns compact,
-extractive, evidence-linked task context without dumping full pages.
+Optional text-retrieval and readiness interface for implementation goals. It
+returns compact, extractive, evidence-linked task context without dumping full
+pages. It is not part of the generated default two-tool profile.
 
 Input:
 
@@ -1132,7 +1275,8 @@ Input:
   "facets": {
     "runtime": "node"
   },
-  "limit": 5
+  "scopeRefs": ["agentdocs://pages/page_pagination.md#heading_cursor"],
+  "navigationCursor": "agentdocs:navigation:v1:4"
 }
 ```
 
@@ -1150,6 +1294,15 @@ Output:
   "citations": [],
   "followUpRefs": [],
   "warnings": [],
+  "requirements": [
+    {
+      "kind": "constraint",
+      "value": "preserve the documented next-page token",
+      "source": "explicit",
+      "status": "partial",
+      "evidence": []
+    }
+  ],
   "readiness": {
     "recommendation": "inspect",
     "coverage": "partial",
@@ -1158,16 +1311,68 @@ Output:
       { "requirement": "next-page token", "status": "partial", "ref": "agentdocs://pages/page_pagination.md#chunk_pagination" }
     ]
   },
+  "navigation": {
+    "scopeRefs": [],
+    "branches": [
+      {
+        "pageId": "page_pagination",
+        "pageRef": "agentdocs://pages/page_pagination.md",
+        "title": "Pagination",
+        "headings": [
+          {
+            "ref": "agentdocs://pages/page_pagination.md#heading_cursor",
+            "headingPath": ["Pagination", "Cursor API"],
+            "depth": 2,
+            "matchedFor": ["next-page token"],
+            "evidenceKinds": ["prose", "code", "links"],
+            "childHeadingCount": 1
+          }
+        ],
+        "externalReferences": []
+      }
+    ],
+    "externalReferences": [],
+    "complete": true
+  },
   "estimatedTokens": 420
 }
 ```
 
-Every step, code example, gotcha, and citation must have source evidence.
-Unsupported steps are omitted rather than invented.
+Every step, code example, gotcha, and citation must have source evidence. The
+`requirements` array makes the deterministic coverage plan visible: it lists
+explicit and inferred requirements with their status and the smallest selected
+evidence refs. Long source text is not copied into the first response; the
+returned `followUpRefs` point to exact chunks or code blocks, and `read_page`
+returns those sources losslessly. Unsupported steps are omitted rather than
+invented.
+Structured facet keys present in the compiled corpus are routing constraints.
+Evidence explicitly tagged with a contradictory value is excluded, but
+provider-neutral or otherwise untagged evidence remains eligible when its text
+is compatible with the request.
+Additional caller-supplied keys are treated as evidence qualifiers when their
+values occur in source content; they do not filter out otherwise compatible
+code. A qualifier whose value has no source candidate remains an unresolved
+requirement and produces `stop`. Generic call, send, and invoke wording for an
+invocable object is normalized into one operation requirement. When setup and
+operation require different canonical examples, both examples are returned;
+there is no fixed one-example cutoff. Selection prefers the smallest local,
+non-overlapping set that covers the evidenced setup and operation requirements.
 The `task` field may contain detailed constraints or an exact task-pack ID. A
 task-pack match is a relevance hint; it never restricts corpus search. The
-assembler searches the complete goal/task text and returns a bounded evidence
-set. `readiness.recommendation` is `implement` only when selected evidence is
+assembler searches the complete goal/task text and returns a coverage-first,
+evidence-linked context bundle. `estimatedTokens` is telemetry only; no fixed
+token or result limit may remove task requirements, readiness gaps, or required
+source references. The response is requirement-directed rather than a dump of
+all ranked chunks. The navigation map is paginated independently with
+`navigation.nextCursor`; continuing it never truncates a source read.
+The human-readable MCP map includes each branch's facets and each matched
+heading's evidence kinds, requirement matches, and direct-child count. Code
+blocks remain associated with the specific matching chunk when a heading was
+split into several chunks, while reading the heading exposes every chunk via
+lossless `nextRef` continuation.
+`estimatedTokens` remains telemetry; the offline evaluation
+gate may reject an experiment whose first response is too large, but the
+product never truncates a source read. `readiness.recommendation` is `implement` only when selected evidence is
 fresh, compatible, and complete for the deterministically extracted task
 requirements. Use `inspect` when a source candidate exists but requires audit;
 read every `followUpRefs` entry whose `requiredFor` is present. Use `stop` when
@@ -1177,20 +1382,18 @@ contradictory. The full requirement evidence is returned by
 
 #### `read_page`
 
-Reads a bounded source section by page or chunk ID. `chunkId` may also be a
-cited code block ID returned by `query_docs`. By default it returns the matching
-chunk/section, not the full normalized page. Full pages are available only when
-`fullPage` is explicitly true.
+Reads the exact source reference returned by `query_docs`. Pass `ref`
+unchanged, for example `agentdocs://pages/page_123.md#chunk_456` or a
+code-block reference. The schema accepts only `ref`. Reads are losslessly
+paginated: when `complete` is false, call `read_page` with `nextRef` until the
+selected source is complete. This is a compatibility alias for the same exact
+reader used by `read_docs`.
 
 Input:
 
 ```json
 {
-  "pageId": "page_123",
-  "chunkId": "chunk_456",
-  "heading": "Pagination",
-  "maxChars": 4000,
-  "fullPage": false
+  "ref": "agentdocs://pages/page_123.md#chunk_456"
 }
 ```
 
@@ -1200,11 +1403,13 @@ Output:
 {
   "section": {
     "pageId": "page_123",
-    "chunkId": "chunk_456",
+    "targetId": "chunk_456",
     "title": "Pagination",
     "headingPath": ["Guides", "Pagination"],
     "text": "...",
-    "truncated": false,
+    "part": 1,
+    "complete": false,
+    "nextRef": "agentdocs://pages/page_123.md?part=2#chunk_456",
     "evidence": []
   }
 }
@@ -1436,6 +1641,7 @@ agentdocs://llms.txt
 agentdocs://AGENTS.md
 agentdocs://manifest.json
 agentdocs://agent-map.json
+agentdocs://documentation-map.json
 agentdocs://task-packs/{task}.md
 agentdocs://pages/{pageId}.md
 ```

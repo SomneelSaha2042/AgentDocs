@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { buildSearchIndex } from "@agentdocs/indexer";
+import { compileDocumentationMap } from "@agentdocs/navigator";
 import { AgentMapSchema, ManifestSchema, type AgentMap } from "@agentdocs/shared";
 import { expect } from "vitest";
 
@@ -12,6 +13,11 @@ export async function writeFixtureArtifacts(): Promise<string> {
   const map = fixtureMap();
   await mkdir(path.join(out, "task-packs"), { recursive: true });
   await writeFile(path.join(out, "agent-map.json"), `${JSON.stringify(map)}\n`, "utf8");
+  await writeFile(
+    path.join(out, "documentation-map.json"),
+    `${JSON.stringify(compileDocumentationMap({ agentMap: map }))}\n`,
+    "utf8",
+  );
   await writeFile(path.join(out, "manifest.json"), `${JSON.stringify(ManifestSchema.parse({
     schemaVersion: "0.1.0",
     project: { name: "Fixture", slug: "fixture" },

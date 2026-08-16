@@ -36,6 +36,11 @@ export type SearchIndexOptions = {
   task?: string;
 };
 
+export type SearchIndexReader = {
+  search(options: Omit<SearchIndexOptions, "cwd" | "out">): Promise<SearchResponse>;
+  close(): void;
+};
+
 type IndexData = {
   documents: SearchDocument[];
   preferredFacets: Record<string, string>;
@@ -99,12 +104,16 @@ export async function buildSearchIndex(
 export async function searchIndex(
   options: SearchIndexOptions,
 ): Promise<SearchResponse> {
-  const indexPath = path.resolve(options.cwd, options.out, "index.sqlite");
-  const limit = options.limit ?? 10;
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new SearchIndexError("Search result limit must be a positive integer.");
+  const reader = await openSearchIndex({ cwd: options.cwd, out: options.out });
+  try {
+    return await reader.search(options);
+  } finally {
+    reader.close();
   }
+}
 
+export async function openSearchIndex(options: Pick<SearchIndexOptions, "cwd" | "out">): Promise<SearchIndexReader> {
+  const indexPath = path.resolve(options.cwd, options.out, "index.sqlite");
   let contents: Buffer;
   try {
     contents = await readFile(indexPath);
@@ -117,23 +126,195 @@ export async function searchIndex(
     throw error;
   }
 
-  const data = isSqlite(contents)
-    ? await readSqliteDocuments(indexPath)
-    : readFallbackDocuments(contents, indexPath);
-  const documents = data.documents.filter((document) =>
-    matchesFacetFilters(document, options.facets ?? {})
-    && (options.task === undefined || document.taskPackIds.includes(options.task)));
-  const results = diversifyResults(rankDocuments(
-    documents,
-    options.query,
-    data.preferredFacets,
-    data.exclusiveKeys,
-  ), limit);
-  return SearchResponseSchema.parse({
-    query: options.query,
-    results,
-    warnings: contextWarnings(results, data.exclusiveKeys),
-  });
+  if (isSqlite(contents)) {
+    return createSqliteReader(indexPath);
+  }
+  const data = readFallbackDocuments(contents, indexPath);
+  return createLexicalReader(data);
+}
+
+function createLexicalReader(data: IndexData): SearchIndexReader {
+  return {
+    async search(options) {
+      const limit = validateSearchLimit(options.limit);
+      const documents = data.documents.filter((document) =>
+        matchesFacetFilters(document, options.facets ?? {})
+        && (options.task === undefined || document.taskPackIds.includes(options.task)),
+      );
+      const results = diversifyResults(rankDocuments(
+        documents,
+        options.query,
+        data.preferredFacets,
+        data.exclusiveKeys,
+      ), limit);
+      return SearchResponseSchema.parse({
+        query: options.query,
+        results,
+        warnings: contextWarnings(results, data.exclusiveKeys),
+      });
+    },
+    close() {
+      // The lexical fallback is an immutable in-memory snapshot.
+    },
+  };
+}
+
+function createSqliteReader(indexPath: string): SearchIndexReader {
+  const sqliteModulePromise = loadSqlite();
+  let database: SqliteDatabase | undefined;
+  let metadata: IndexData | undefined;
+  let closed = false;
+  const ensureDatabase = async (): Promise<{ database: SqliteDatabase; data: IndexData }> => {
+    if (closed) throw new SearchIndexError("Search index reader is closed.");
+    if (database !== undefined && metadata !== undefined) return { database, data: metadata };
+    const sqlite = await sqliteModulePromise;
+    if (sqlite === undefined) {
+      throw new SearchIndexError(
+        `The index at ${indexPath} uses SQLite, but this Node.js runtime does not provide node:sqlite. Rebuild with this runtime to create the lexical fallback index.`,
+      );
+    }
+    database = new sqlite.DatabaseSync(indexPath);
+    try {
+      const rows = database.prepare("SELECT key, value FROM metadata ORDER BY key").all() as Record<string, unknown>[];
+      const values = Object.fromEntries(rows.map((row) => [String(row.key), String(row.value)]));
+      if (values.schema_version !== "2" || values.backend !== "sqlite-fts5") {
+        throw new SearchIndexError(
+          `Unsupported search index metadata: schema_version=${values.schema_version ?? "missing"}, backend=${values.backend ?? "missing"}.`,
+        );
+      }
+      metadata = {
+        preferredFacets: JSON.parse(values.preferred_facets ?? "{}"),
+        exclusiveKeys: JSON.parse(values.exclusive_keys ?? "[]"),
+        documents: [],
+      };
+      return { database, data: metadata };
+    } catch (error) {
+      database.close();
+      database = undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof SearchIndexError) throw error;
+      throw new SearchIndexError(`Invalid search index at ${indexPath}: ${message}`);
+    }
+  };
+  return {
+    async search(options) {
+      const limit = validateSearchLimit(options.limit);
+      const { database: db, data } = await ensureDatabase();
+      const candidates = sqliteCandidates(db, options.query, options.facets ?? {}, options.task, Math.max(64, limit * 8));
+      const results = diversifyResults(rankDocuments(
+        candidates,
+        options.query,
+        data.preferredFacets,
+        data.exclusiveKeys,
+      ), limit);
+      return SearchResponseSchema.parse({
+        query: options.query,
+        results,
+        warnings: contextWarnings(results, data.exclusiveKeys),
+      });
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      database?.close();
+      database = undefined;
+      metadata = undefined;
+    },
+  };
+}
+
+function validateSearchLimit(limit: number | undefined): number {
+  const value = limit ?? 10;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new SearchIndexError("Search result limit must be a positive integer.");
+  }
+  return value;
+}
+
+function sqliteCandidates(
+  database: SqliteDatabase,
+  query: string,
+  facets: Record<string, string>,
+  task: string | undefined,
+  candidateLimit: number,
+): SearchDocument[] {
+  const terms = stableUnique(tokenize(oneLine(query)));
+  if (terms.length === 0) return [];
+  const match = terms.map((term) => `"${term.replaceAll('"', '""')}"*`).join(" OR ");
+  const facetEntries = Object.entries(facets);
+  const conditions = ["search_fts MATCH ?"];
+  const values: unknown[] = [match];
+  if (task !== undefined) {
+    conditions.push("EXISTS (SELECT 1 FROM json_each(documents.task_pack_ids_json) WHERE json_each.value = ?)");
+    values.push(task);
+  }
+  for (const [key, value] of facetEntries) {
+    conditions.push("EXISTS (SELECT 1 FROM json_each(documents.facets_json) WHERE json_extract(json_each.value, '$.key') = ? AND json_extract(json_each.value, '$.value') = ?)");
+    values.push(key, value);
+  }
+  values.push(candidateLimit);
+  try {
+    let rows = database.prepare(`
+      SELECT
+        documents.page_id,
+        documents.chunk_id,
+        documents.title,
+        documents.source_url,
+        documents.repo_path,
+        documents.heading_path,
+        documents.text,
+        documents.content_hash,
+        documents.facets_json,
+        documents.task_pack_ids_json
+      FROM search_fts
+      JOIN search_documents AS documents ON documents.rowid = search_fts.rowid
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY bm25(search_fts, 12.0, 8.0, 1.0) ASC, documents.chunk_id ASC
+      LIMIT ?
+    `).all(...values) as Record<string, unknown>[];
+    if (rows.length === 0) {
+      const taskValue = task ?? oneLine(query).toLowerCase();
+      const taskValues: unknown[] = [taskValue];
+      const taskConditions = ["EXISTS (SELECT 1 FROM json_each(documents.task_pack_ids_json) WHERE lower(json_each.value) = ?)"];
+      for (const [key, value] of facetEntries) {
+        taskConditions.push("EXISTS (SELECT 1 FROM json_each(documents.facets_json) WHERE json_extract(json_each.value, '$.key') = ? AND json_extract(json_each.value, '$.value') = ?)");
+        taskValues.push(key, value);
+      }
+      taskValues.push(candidateLimit);
+      rows = database.prepare(`
+        SELECT
+          documents.page_id,
+          documents.chunk_id,
+          documents.title,
+          documents.source_url,
+          documents.repo_path,
+          documents.heading_path,
+          documents.text,
+          documents.content_hash,
+          documents.facets_json,
+          documents.task_pack_ids_json
+        FROM search_documents AS documents
+        WHERE ${taskConditions.join(" AND ")}
+        ORDER BY documents.chunk_id ASC
+        LIMIT ?
+      `).all(...taskValues) as Record<string, unknown>[];
+    }
+    return rows.map((row) => SearchDocumentSchema.parse({
+      pageId: row.page_id,
+      chunkId: row.chunk_id,
+      title: row.title,
+      sourceUrl: row.source_url ?? undefined,
+      repoPath: row.repo_path ?? undefined,
+      headingPath: JSON.parse(String(row.heading_path)),
+      text: row.text,
+      contentHash: row.content_hash,
+      facets: JSON.parse(String(row.facets_json)),
+      taskPackIds: JSON.parse(String(row.task_pack_ids_json)),
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new SearchIndexError(`Invalid search query for ${message}`);
+  }
 }
 
 export function formatSearchResponse(response: SearchResponse): string {
@@ -269,67 +450,6 @@ function writeSqliteIndex(
       insertFts.run(rowid, document.title, headingPath, document.text);
     });
     database.exec("VACUUM;");
-  } finally {
-    database.close();
-  }
-}
-
-async function readSqliteDocuments(
-  indexPath: string,
-): Promise<IndexData> {
-  const sqlite = await loadSqlite();
-  if (sqlite === undefined) {
-    throw new SearchIndexError(
-      `The index at ${indexPath} uses SQLite, but this Node.js runtime does not provide node:sqlite. Rebuild with this runtime to create the lexical fallback index.`,
-    );
-  }
-  const database = new sqlite.DatabaseSync(indexPath);
-  try {
-    const metadata = database.prepare(`
-      SELECT key, value FROM metadata ORDER BY key
-    `).all() as Record<string, unknown>[];
-    const values = Object.fromEntries(
-      metadata.map((row) => [String(row.key), String(row.value)]),
-    );
-    if (values.schema_version !== "2" || values.backend !== "sqlite-fts5") {
-      throw new SearchIndexError(
-        `Unsupported search index metadata: schema_version=${values.schema_version ?? "missing"}, backend=${values.backend ?? "missing"}.`,
-      );
-    }
-    const rows = database.prepare(`
-      SELECT
-        documents.page_id,
-        documents.chunk_id,
-        documents.title,
-        documents.source_url,
-        documents.repo_path,
-        documents.heading_path,
-        documents.text,
-        documents.content_hash,
-        documents.facets_json,
-        documents.task_pack_ids_json
-      FROM search_documents AS documents
-      ORDER BY documents.chunk_id
-    `).all() as Record<string, unknown>[];
-    return {
-      preferredFacets: JSON.parse(values.preferred_facets ?? "{}"),
-      exclusiveKeys: JSON.parse(values.exclusive_keys ?? "[]"),
-      documents: rows.map((row) => SearchDocumentSchema.parse({
-      pageId: row.page_id,
-      chunkId: row.chunk_id,
-      title: row.title,
-      sourceUrl: row.source_url ?? undefined,
-      repoPath: row.repo_path ?? undefined,
-      headingPath: JSON.parse(String(row.heading_path)),
-      text: row.text,
-      contentHash: row.content_hash,
-      facets: JSON.parse(String(row.facets_json)),
-      taskPackIds: JSON.parse(String(row.task_pack_ids_json)),
-    })),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new SearchIndexError(`Invalid search index at ${indexPath}: ${message}`);
   } finally {
     database.close();
   }

@@ -6,7 +6,8 @@
 | `AGENTS.md` | Setup, concepts, tasks, mistakes, and source links |
 | `agent-brief.md` | Persistent first-read brief for coding agents |
 | `manifest.json` | Build metadata and artifact inventory |
-| `agent-map.json` | Pages, chunks, entities, edges, and task packs |
+| `agent-map.json` | Source/evidence graph: pages, chunks, entities, edges, and task packs |
+| `documentation-map.json` | Compact typed map for query-free agent traversal |
 | `chunks.jsonl` | Stable source-linked chunks |
 | `index.sqlite` | SQLite/FTS5 or deterministic lexical search |
 | `state/build-state.json` | Source fingerprints, artifact hashes, and freshness inputs |
@@ -18,6 +19,9 @@ Generated JSON and JSONL must pass repository schemas before a build succeeds.
 Task packs are emitted only when the source provides sufficient task evidence.
 New build artifacts use schema `0.2.0`. Readers accept `0.1.0` agent maps,
 manifests, and readiness reports and upgrade missing context facets in memory.
+The separate Documentation Map uses schema `1.0.0` and carries a source hash
+that binds it to the parsed `agent-map.json`. Legacy output directories without
+the map remain readable because MCP can compile it deterministically in memory.
 
 `manifest.json` includes `sourceCoverage` when local or repo ingest manifests
 are available. The coverage object counts supported `.md` and `.mdx` files,
@@ -35,8 +39,8 @@ freshness warnings, and MCP context verification.
 AgentDocs keeps two kinds of generated files in the same output directory:
 
 - publishable context, such as `llms.txt`, generated `AGENTS.md`,
-  `agent-brief.md`, `agent-map.json`, `chunks.jsonl`, task packs, and readiness
-  reports;
+  `agent-brief.md`, `agent-map.json`, `documentation-map.json`, `chunks.jsonl`,
+  task packs, and readiness reports;
 - local operational state, such as source snapshots, crawl manifests, the search
   index, and `state/build-state.json`.
 

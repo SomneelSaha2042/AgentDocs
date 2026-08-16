@@ -40,7 +40,7 @@ context verification, setup commands, version policy, code examples, and related
 pages. Prefer this flow inside an agent:
 
 ```txt
-Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
+Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow the structural and semantic relations that fit the task, and use read_docs on exact selected refs before implementing.
 ```
 
 For multi-session work:
@@ -54,5 +54,12 @@ agentdocs rebuild --changed
 
 The server reads only validated built artifacts. It cannot crawl, execute code,
 or provide arbitrary filesystem access. Tool allowlists configured with
-`serve-mcp --tools query_docs,read_page` are enforced when tools are listed and
+`serve-mcp --tools browse_docs,read_docs` are enforced when tools are listed and
 when clients call tools directly.
+
+`browse_docs` hydrates the compiled `documentation-map.json` artifact and starts
+at `agentdocs://map`. Agents can also read the complete map through the
+`agentdocs://documentation-map.json` resource. Output directories created before
+this artifact was introduced remain compatible: the server derives the same map
+from `agent-map.json` in memory, while rejecting a present map that does not
+validate or match its source graph.

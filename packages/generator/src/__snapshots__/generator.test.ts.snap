@@ -32,10 +32,10 @@ No deterministic concepts extracted.
 
 ## Guidelines for coding agents
 
-- **Retrieve compact context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, and citations.
-- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, use \`read_page\` with one cited ID (passed as \`chunkId\`) before writing. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
-- **Read only cited detail**: Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
-- **Coding & Implementation**: Once readiness is satisfied, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
+- **Traverse before implementing**: Start at \`agentdocs://map\` with \`browse_docs\`. Follow collections, document sections, authored links, adjacent blocks, and entity occurrences according to the task.
+- **Read selected evidence**: Pass exact page, section, block, or code refs from the map to \`read_docs\`. Keep following \`nextRef\` until the selected source is complete.
+- **Use retrieval as an optional locator**: \`query_docs\`, \`search_docs\`, task packs, and readiness checks remain available as evidence-backed saved views and audit tools; they do not replace map traversal.
+- **Coding & Implementation**: Implement and test only after reading the source evidence selected during traversal. Return to the map whenever the task needs more context.
 
 ## Evidence and source docs
 
@@ -64,6 +64,7 @@ Example SDK documentation.
 
 - Manifest: manifest.json
 - Agent map: agent-map.json
+- Documentation map: documentation-map.json
 - Chunks: chunks.jsonl
 ",
   "taskPackMarkdown": {
@@ -89,7 +90,7 @@ No exclusive context conflicts detected.
 
 ## Code examples
 
-\`\`\`text
+\`\`\`bash
 pnpm add @example/sdk
 \`\`\`
 
@@ -130,7 +131,7 @@ No exclusive context conflicts detected.
 
 ## Code examples
 
-\`\`\`text
+\`\`\`bash
 pnpm add @example/sdk
 \`\`\`
 

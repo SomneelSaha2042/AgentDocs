@@ -12,6 +12,7 @@ import {
   suiteById,
 } from "./eval-suites.mjs";
 import { validateFixtureSnapshot } from "./eval-fixtures.mjs";
+import { runContextGate } from "./eval-context-gate.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 
@@ -39,6 +40,20 @@ async function main() {
   const runId = getArg(args, "--run-id") || defaultRunId();
   const resultsDir = path.resolve(repositoryRoot, resultDirectoryFor(suite.id, runId));
   const dryRun = args.includes("--dry-run");
+  const keepSandbox = args.includes("--keep-sandbox");
+  const contextGate = args.includes("--skip-context-gate")
+    ? { skipped: true, reason: "explicitly skipped" }
+    : await runContextGate({
+      suiteId: suite.id,
+      tasks: suite.tasks,
+      maxInputTokens,
+    });
+  if (contextGate.passed === false) {
+    throw new Error(`Offline context gate failed: ${contextGate.results
+      .filter((result) => !result.passed)
+      .map((result) => `${result.task}: ${result.errors.join(" | ")}`)
+      .join("; ")}`);
+  }
 
   const validations = [];
   for (const task of suite.tasks) {
@@ -61,6 +76,7 @@ async function main() {
     maxCost,
     tokenBudget: { maxInputTokens, maxOutputTokens },
     dryRun,
+    contextGate,
     mcpTools: suite.mcpTools,
     gitCommit: gitCommit(),
     validations,
@@ -85,6 +101,7 @@ async function main() {
       "--results-dir", resultsDir,
     ];
     if (dryRun) childArgs.push("--dry-run");
+    if (keepSandbox) childArgs.push("--keep-sandbox");
     console.log(`\n=== ${run.task} / ${run.group} / seed ${run.seed} ===`);
     execFileSync(process.execPath, childArgs, {
       cwd: repositoryRoot,

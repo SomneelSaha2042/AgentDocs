@@ -13,13 +13,15 @@
     "dist"
   ],
   "scripts": {
+    "prebuild": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "corepack pnpm --filter @agentdocs/shared build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
     "test": "vitest run src",
-    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@agentdocs/navigator": "workspace:*",
     "@agentdocs/shared": "workspace:*"
   },
   "devDependencies": {

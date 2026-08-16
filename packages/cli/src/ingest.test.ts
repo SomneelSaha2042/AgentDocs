@@ -51,6 +51,43 @@ describe("ingestLocalMarkdown", () => {
     );
   });
 
+  it("verifies and preserves URLs from an offline provenance sidecar", async () => {
+    const output = await (await import("node:fs/promises")).mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-provenance-"));
+    const result = await ingestLocalMarkdown({
+      cwd: REPOSITORY_ROOT,
+      out: output,
+      source: "fixtures/eval-tasks/stripe-webhooks-holdout/docs",
+      sourceManifest: "fixtures/eval-tasks/stripe-webhooks-holdout/fixture.manifest.json",
+    });
+
+    const page = result.pages.find((candidate) => candidate.repoPath === "stripe-webhooks.md");
+    expect(page?.sourceUrl).toBe("https://docs.stripe.com/webhooks.md?lang=node");
+    expect(result.manifest.provenancePath).toBe("sources/provenance-manifest.json");
+    expect(JSON.parse(await readFile(path.join(output, "sources", "provenance-manifest.json"), "utf8")))
+      .toEqual(JSON.parse(await readFile(path.join(REPOSITORY_ROOT, "fixtures/eval-tasks/stripe-webhooks-holdout/fixture.manifest.json"), "utf8")));
+  });
+
+  it("stops before normalization when a provenance hash is stale", async () => {
+    const cwd = await (await import("node:fs/promises")).mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-provenance-stale-"));
+    await mkdir(path.join(cwd, "docs"), { recursive: true });
+    await writeFile(path.join(cwd, "docs", "guide.md"), "# Guide\n\nUseful source content.\n", "utf8");
+    await writeFile(path.join(cwd, "provenance.json"), JSON.stringify({
+      schemaVersion: 1,
+      files: [{
+        path: "guide.md",
+        sourceUrl: "https://example.com/guide.md",
+        sha256: "0".repeat(64),
+      }],
+    }), "utf8");
+
+    await expect(ingestLocalMarkdown({
+      cwd,
+      out: ".agentdocs",
+      source: "docs",
+      sourceManifest: "provenance.json",
+    })).rejects.toThrowError(/Provenance hash mismatch/);
+  });
+
   it("compiles Markdown and reST files together with full source coverage", async () => {
     const { mkdtemp } = await import("node:fs/promises");
     const output = await mkdtemp(path.join(os.tmpdir(), "agentdocs-ingest-coverage-rest-"));

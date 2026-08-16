@@ -21,6 +21,8 @@ export const LinkSchema = z
     href: z.string(),
     resolvedHref: z.string().optional(),
     kind: z.enum(["internal", "external", "anchor", "asset", "unknown"]),
+    role: z.enum(["content", "navigation", "breadcrumb", "toc", "pagination"]).optional(),
+    sourceOrder: z.number().int().nonnegative().optional(),
     sourceHeadingId: z.string().optional(),
     isBroken: z.boolean().optional(),
   })
@@ -29,6 +31,7 @@ export const LinkSchema = z
 export const CodeBlockSchema = z
   .object({
     id: z.string().min(1),
+    sourceOrder: z.number().int().nonnegative().optional(),
     language: z.string().optional(),
     value: z.string(),
     sourceHeadingId: z.string().optional(),
@@ -50,6 +53,7 @@ export const EvidenceSchema = z
     source: z.enum(["page", "heading", "link", "code_block", "openapi", "config"]),
     pageId: z.string().min(1).optional(),
     headingId: z.string().min(1).optional(),
+    chunkId: z.string().min(1).optional(),
     codeBlockId: z.string().min(1).optional(),
     url: z.string().optional(),
     repoPath: z.string().min(1).optional(),
@@ -98,6 +102,9 @@ export const ChunkSchema = z
   .object({
     id: z.string().min(1),
     pageId: z.string().min(1),
+    sourceOrder: z.number().int().nonnegative().optional(),
+    headingId: z.string().min(1).optional(),
+    kind: z.enum(["section", "table_row"]).default("section"),
     headingPath: z.array(z.string().min(1)),
     text: z.string().min(1),
     tokenEstimate: z.number().int().positive(),
@@ -174,6 +181,14 @@ export const GotchaSchema = z
   })
   .strict();
 
+export const TaskCodeExampleSchema = z
+  .object({
+    language: z.string().optional(),
+    value: z.string().min(1),
+    evidence: z.array(EvidenceSchema).min(1),
+  })
+  .strict();
+
 export const TaskPackSchema = z
   .object({
     id: z.string().min(1),
@@ -184,7 +199,9 @@ export const TaskPackSchema = z
     relatedEntities: z.array(z.string().min(1)),
     steps: z.array(TaskStepSchema).min(1),
     gotchas: z.array(GotchaSchema),
-    codeExamples: z.array(z.string()),
+    // Strings remain accepted for older hand-authored maps; generated packs
+    // emit structured examples with their own code-block evidence.
+    codeExamples: z.array(z.union([z.string(), TaskCodeExampleSchema])),
     evidence: z.array(EvidenceSchema).min(1),
     context: z
       .object({
@@ -493,8 +510,8 @@ export const ContextReadinessSchema = z
   .object({
     recommendation: z.enum(["implement", "inspect", "stop"]),
     coverage: z.enum(["complete", "partial", "unknown"]),
-    issueCodes: z.array(z.string().min(1)).max(6),
-    gaps: z.array(ContextRequirementGapSchema).max(3).default([]),
+    issueCodes: z.array(z.string().min(1)),
+    gaps: z.array(ContextRequirementGapSchema).default([]),
   })
   .strict();
 
@@ -506,6 +523,173 @@ export const RequirementAssessmentSchema = z
     status: z.enum(["covered", "partial", "missing", "contradicted", "unknown"]),
     message: z.string().min(1),
     evidence: z.array(EvidenceSchema),
+  })
+  .strict();
+
+const QueryRequirementSchema = z
+  .object({
+    kind: z.enum(["facet", "symbol", "configuration", "constraint"]),
+    value: z.string().min(1),
+    source: z.enum(["explicit", "inferred"]),
+    status: z.enum(["covered", "partial", "missing", "contradicted", "unknown"]),
+    evidence: z.array(EvidenceSchema),
+  })
+  .strict();
+
+export const ContextNavigationHeadingSchema = z
+  .object({
+    ref: z.string().min(1),
+    headingPath: z.array(z.string()),
+    depth: z.number().int().positive(),
+    matchedFor: z.array(z.string().min(1)),
+    evidenceKinds: z.array(z.enum(["prose", "code", "links"])),
+    childHeadingCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const ContextExternalReferenceSchema = z
+  .object({
+    status: z.literal("external_uningested"),
+    url: z.string().min(1),
+    label: z.string().min(1),
+    sourceRef: z.string().min(1),
+    sourcePageId: z.string().min(1),
+    headingPath: z.array(z.string()),
+  })
+  .strict();
+
+export const ContextNavigationBranchSchema = z
+  .object({
+    pageId: z.string().min(1),
+    pageRef: z.string().min(1),
+    title: z.string().min(1),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    facets: z.record(z.array(z.string().min(1))),
+    headings: z.array(ContextNavigationHeadingSchema),
+    externalReferences: z.array(ContextExternalReferenceSchema),
+  })
+  .strict();
+
+export const ContextNavigationSchema = z
+  .object({
+    scopeRefs: z.array(z.string().min(1)),
+    branches: z.array(ContextNavigationBranchSchema),
+    externalReferences: z.array(ContextExternalReferenceSchema),
+    complete: z.boolean(),
+    nextCursor: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const DocumentationMapNodeKindSchema = z.enum([
+  "root",
+  "collection",
+  "page",
+  "section",
+  "block",
+  "code_block",
+  "entity",
+  "task",
+]);
+
+export const DocumentationMapRelationTypeSchema = z.enum([
+  "contains",
+  "precedes",
+  "follows",
+  "mentions",
+  "occurs_in",
+  "context_for",
+  ...EdgeTypeSchema.options,
+]);
+
+export const DocumentationMapNodeSchema = z
+  .object({
+    ref: z.string().min(1),
+    kind: DocumentationMapNodeKindSchema,
+    label: z.string().min(1),
+    preview: z.string().optional(),
+    pageId: z.string().min(1).optional(),
+    targetId: z.string().min(1).optional(),
+    entityId: z.string().min(1).optional(),
+    entityType: EntityTypeSchema.optional(),
+    headingPath: z.array(z.string().min(1)).default([]),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    facets: z.record(z.array(z.string().min(1))).default({}),
+    order: z.number().int().nonnegative().default(0),
+    childCount: z.number().int().nonnegative().default(0),
+    evidenceCount: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+
+export const DocumentationMapRelationSchema = z
+  .object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    type: DocumentationMapRelationTypeSchema,
+  })
+  .strict();
+
+export const DocumentationMapSchema = z
+  .object({
+    schemaVersion: z.literal("1.0.0"),
+    sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    rootRef: z.literal("agentdocs://map"),
+    nodes: z.array(DocumentationMapNodeSchema).min(1),
+    relations: z.array(DocumentationMapRelationSchema),
+  })
+  .strict()
+  .superRefine((map, context) => {
+    const refs = new Set<string>();
+    for (const [index, node] of map.nodes.entries()) {
+      if (refs.has(node.ref)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate documentation map node ref "${node.ref}".`, path: ["nodes", index, "ref"] });
+      }
+      refs.add(node.ref);
+    }
+    if (!refs.has(map.rootRef)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: `Documentation map root "${map.rootRef}" was not found.`, path: ["rootRef"] });
+    }
+    const relationKeys = new Set<string>();
+    const childCounts = new Map<string, number>();
+    for (const [index, relation] of map.relations.entries()) {
+      if (!refs.has(relation.from)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Relation source "${relation.from}" was not found.`, path: ["relations", index, "from"] });
+      }
+      if (!refs.has(relation.to)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Relation target "${relation.to}" was not found.`, path: ["relations", index, "to"] });
+      }
+      const key = `${relation.from}\u0000${relation.type}\u0000${relation.to}`;
+      if (relationKeys.has(key)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate documentation map relation.", path: ["relations", index] });
+      }
+      relationKeys.add(key);
+      if (relation.type === "contains") childCounts.set(relation.from, (childCounts.get(relation.from) ?? 0) + 1);
+    }
+    for (const [index, node] of map.nodes.entries()) {
+      const expected = childCounts.get(node.ref) ?? 0;
+      if (node.childCount !== expected) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Node childCount is ${node.childCount}; expected ${expected}.`, path: ["nodes", index, "childCount"] });
+      }
+    }
+  });
+
+export const DocumentationMapRelationGroupSchema = z
+  .object({
+    type: DocumentationMapRelationTypeSchema,
+    direction: z.enum(["outgoing", "incoming"]),
+    nodes: z.array(DocumentationMapNodeSchema),
+  })
+  .strict();
+
+export const BrowseDocsResponseSchema = z
+  .object({
+    node: DocumentationMapNodeSchema,
+    breadcrumbs: z.array(DocumentationMapNodeSchema),
+    relations: z.array(DocumentationMapRelationGroupSchema),
+    complete: z.boolean(),
+    nextCursor: z.string().min(1).optional(),
+    estimatedTokens: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -541,6 +725,7 @@ export const QueryDocsResponseSchema = z
         id: z.string().min(1),
         pageId: z.string().min(1).optional(),
         headingId: z.string().min(1).optional(),
+        chunkId: z.string().min(1).optional(),
         codeBlockId: z.string().min(1).optional(),
         sourceUrl: z.string().optional(),
         repoPath: z.string().min(1).optional(),
@@ -549,18 +734,20 @@ export const QueryDocsResponseSchema = z
     ),
     followUpRefs: z.array(
       z.object({
-        type: z.enum(["chunk", "page", "task_pack"]),
+        type: z.enum(["chunk", "code_block", "page", "task_pack"]),
         ref: z.string().min(1),
         pageId: z.string().min(1).optional(),
         chunkId: z.string().min(1).optional(),
         title: z.string().min(1),
         sourceUrl: z.string().optional(),
         repoPath: z.string().min(1).optional(),
-        requiredFor: z.array(z.string().min(1)).max(3).optional(),
+        requiredFor: z.array(z.string().min(1)).optional(),
       }).strict(),
     ),
     warnings: z.array(z.string().min(1)),
+    requirements: z.array(QueryRequirementSchema).default([]),
     readiness: ContextReadinessSchema,
+    navigation: ContextNavigationSchema,
     estimatedTokens: z.number().int().nonnegative(),
   })
   .strict();
@@ -569,13 +756,15 @@ export const ReadPageResponseSchema = z
   .object({
     section: z.object({
       pageId: z.string().min(1),
-      chunkId: z.string().min(1).optional(),
+      targetId: z.string().min(1).optional(),
       title: z.string().min(1),
       headingPath: z.array(z.string()),
       sourceUrl: z.string().optional(),
       repoPath: z.string().min(1).optional(),
       text: z.string(),
-      truncated: z.boolean(),
+      part: z.number().int().positive(),
+      complete: z.boolean(),
+      nextRef: z.string().min(1).optional(),
       evidence: z.array(EvidenceSchema).min(1),
     }).strict(),
   })
@@ -631,6 +820,7 @@ export const ContextBundleSchema = z
       .optional(),
     supportingResources: z.array(z.string().min(1)),
     search: SearchResponseSchema,
+    navigation: ContextNavigationSchema,
   })
   .strict();
 
@@ -808,6 +998,7 @@ export const IngestManifestSchema = z
     schemaVersion: z.literal(1),
     sourceType: z.enum(["local_markdown", "repo"]),
     sourcePath: z.string().min(1),
+    provenancePath: z.string().min(1).optional(),
     pageCount: z.number().int().nonnegative(),
     counts: z
       .object({
@@ -845,6 +1036,55 @@ export const IngestManifestSchema = z
         })
         .strict(),
     ),
+  })
+  .strict();
+
+export const SourceProvenanceManifestSchema = z
+  .object({
+    schemaVersion: z.number().int().positive(),
+    task: z.string().min(1).optional(),
+    source: z
+      .object({
+        type: z.string().min(1).optional(),
+        origin: z.string().url().optional(),
+        capturedAt: z.string().datetime().optional(),
+        provenance: z.string().min(1).optional(),
+        format: z.string().min(1).optional(),
+        pageCount: z.number().int().nonnegative().optional(),
+        byteCount: z.number().int().nonnegative().optional(),
+        corpusHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+      })
+      .strict()
+      .optional(),
+    sources: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          origin: z.string().url(),
+          capturedAt: z.string().datetime().optional(),
+          format: z.string().min(1).optional(),
+          derived: z.boolean().optional(),
+        })
+        .strict(),
+    ).optional(),
+    files: z.array(
+      z
+        .object({
+          path: z.string().min(1),
+          sourceId: z.string().min(1).optional(),
+          sourceUrl: z.string().url(),
+          canonicalUrl: z.string().url().optional(),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .strict(),
+    ).min(1),
+    evaluation: z
+      .object({
+        oracle: z.string().min(1).optional(),
+        visibleTest: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -948,6 +1188,7 @@ export type EdgeType = z.infer<typeof EdgeTypeSchema>;
 export type Edge = z.infer<typeof EdgeSchema>;
 export type TaskStep = z.infer<typeof TaskStepSchema>;
 export type Gotcha = z.infer<typeof GotchaSchema>;
+export type TaskCodeExample = z.infer<typeof TaskCodeExampleSchema>;
 export type TaskPack = z.infer<typeof TaskPackSchema>;
 export type AgentMap = z.infer<typeof AgentMapSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
@@ -966,6 +1207,17 @@ export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type ContextReadiness = z.infer<typeof ContextReadinessSchema>;
 export type RequirementAssessment = z.infer<typeof RequirementAssessmentSchema>;
 export type QueryDocsResponse = z.infer<typeof QueryDocsResponseSchema>;
+export type ContextNavigationHeading = z.infer<typeof ContextNavigationHeadingSchema>;
+export type ContextExternalReference = z.infer<typeof ContextExternalReferenceSchema>;
+export type ContextNavigationBranch = z.infer<typeof ContextNavigationBranchSchema>;
+export type ContextNavigation = z.infer<typeof ContextNavigationSchema>;
+export type DocumentationMapNodeKind = z.infer<typeof DocumentationMapNodeKindSchema>;
+export type DocumentationMapRelationType = z.infer<typeof DocumentationMapRelationTypeSchema>;
+export type DocumentationMapNode = z.infer<typeof DocumentationMapNodeSchema>;
+export type DocumentationMapRelation = z.infer<typeof DocumentationMapRelationSchema>;
+export type DocumentationMap = z.infer<typeof DocumentationMapSchema>;
+export type DocumentationMapRelationGroup = z.infer<typeof DocumentationMapRelationGroupSchema>;
+export type BrowseDocsResponse = z.infer<typeof BrowseDocsResponseSchema>;
 export type ReadPageResponse = z.infer<typeof ReadPageResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
@@ -976,6 +1228,7 @@ export type ContextVerification = z.infer<typeof ContextVerificationSchema>;
 export type AgentSetupSnippet = z.infer<typeof AgentSetupSnippetSchema>;
 export type HandoffBundle = z.infer<typeof HandoffBundleSchema>;
 export type IngestManifest = z.infer<typeof IngestManifestSchema>;
+export type SourceProvenanceManifest = z.infer<typeof SourceProvenanceManifestSchema>;
 export type CrawlManifest = z.infer<typeof CrawlManifestSchema>;
 
 function upgradeSchemaVersion(value: unknown): unknown {

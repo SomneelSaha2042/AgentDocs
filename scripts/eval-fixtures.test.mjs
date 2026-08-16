@@ -22,6 +22,13 @@ test("the legacy Stripe fixture is quarantined from north-star metrics", async (
   assert.ok(result.issues.some((issue) => issue.startsWith("fixture is quarantined:")));
 });
 
+test("the provenance-complete Stripe holdout is eligible for north-star metrics", async () => {
+  const result = await validateFixtureSnapshot(path.join(root, "stripe-webhooks-holdout"));
+  assert.equal(result.valid, true, result.issues.join("; "));
+  assert.equal(result.pageCount, 4);
+  assert.deepEqual(result.missingEvidence, []);
+});
+
 test("the validator blocks a corpus that cannot support its task", async () => {
   const taskDir = await mkdtemp(path.join(".dogfood", "fixture-validator-"));
   try {

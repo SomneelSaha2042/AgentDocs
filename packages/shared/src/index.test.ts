@@ -6,12 +6,32 @@ import {
   AgentMapSchema,
   AGENTDOCS_PACKAGE_NAME,
   ConfigValidationError,
+  DocumentationMapSchema,
   parseConfig,
 } from "./index.js";
 
 describe("@agentdocs/shared", () => {
   it("exposes the package placeholder", () => {
     expect(AGENTDOCS_PACKAGE_NAME).toBe("AgentDocs");
+  });
+
+  it("validates a self-contained documentation map and its relation references", () => {
+    const map = DocumentationMapSchema.parse({
+      schemaVersion: "1.0.0",
+      sourceHash: "a".repeat(64),
+      rootRef: "agentdocs://map",
+      nodes: [
+        { ref: "agentdocs://map", kind: "root", label: "Documentation map", childCount: 1 },
+        { ref: "agentdocs://map/pages", kind: "collection", label: "Pages" },
+      ],
+      relations: [{ from: "agentdocs://map", to: "agentdocs://map/pages", type: "contains" }],
+    });
+
+    expect(map.nodes[0]).toMatchObject({ order: 0, childCount: 1 });
+    expect(() => DocumentationMapSchema.parse({
+      ...map,
+      relations: [{ from: "agentdocs://map", to: "agentdocs://missing", type: "contains" }],
+    })).toThrow(/Relation target.*was not found/);
   });
 
   it("upgrades 0.1.0 artifacts with missing facets in memory", async () => {

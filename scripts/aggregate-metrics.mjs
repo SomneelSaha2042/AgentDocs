@@ -109,16 +109,26 @@ function aggregateSuite(summaries, resultsDir, suiteManifest = null) {
     .map((group) => ({ group, summary: groups[group] }))
     .filter((item) => item.summary);
   const taskRegressions = [];
+  const taskMajorityFailures = [];
   const inconclusiveTasks = [];
   const experimentalIncompleteTasks = [];
   const missingControls = expectedControlGroups.filter((group) => groups[group] === undefined);
   for (const summary of summaries) {
     const agent = summary.groups["experimental-agentdocs"];
     const expectedAgentN = plannedCount(suiteManifest, summary.task, "experimental-agentdocs", agent?.n ?? 0);
+    const requiredAgentPasses = Math.ceil(expectedAgentN / 2);
     if (agent && agent.completedN < expectedAgentN) {
       experimentalIncompleteTasks.push({
         task: summary.task,
         completedN: agent.completedN,
+        requiredN: expectedAgentN,
+      });
+    }
+    if (agent && agent.completedN >= expectedAgentN && agent.passed < requiredAgentPasses) {
+      taskMajorityFailures.push({
+        task: summary.task,
+        agentPassed: agent.passed,
+        requiredPasses: requiredAgentPasses,
         requiredN: expectedAgentN,
       });
     }
@@ -152,6 +162,7 @@ function aggregateSuite(summaries, resultsDir, suiteManifest = null) {
     || experimental === undefined
     || missingControls.length > 0
     || experimentalIncompleteTasks.length > 0
+    || taskMajorityFailures.length > 0
     || taskRegressions.length > 0
     ? "do_not_advance"
     : inconclusiveTasks.length > 0
@@ -165,10 +176,11 @@ function aggregateSuite(summaries, resultsDir, suiteManifest = null) {
     tasks: summaries.map((summary) => summary.task),
     groups,
     decision: {
-      gate: "dual_reliability_and_capability",
+      gate: "per_task_majority_and_dual_non_regression",
       status,
       aggregateTieOrBetter: Boolean(aggregateTie),
       taskRegressions,
+      taskMajorityFailures,
       inconclusiveTasks,
       experimentalIncompleteTasks,
       missingControls,
@@ -192,6 +204,9 @@ function printSuiteSummary(summary, suitePath) {
   }
   if (summary.decision.taskRegressions.length > 0) {
     console.log(`  Task regressions: ${summary.decision.taskRegressions.length}`);
+  }
+  if (summary.decision.taskMajorityFailures.length > 0) {
+    console.log(`  Experimental task-majority failures: ${summary.decision.taskMajorityFailures.length}`);
   }
   console.log(`Saved suite summary to ${suitePath}`);
 }

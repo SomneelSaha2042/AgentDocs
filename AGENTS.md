@@ -15,6 +15,7 @@ llms.txt
 AGENTS.md
 .agentdocs/manifest.json
 .agentdocs/agent-map.json
+.agentdocs/documentation-map.json
 .agentdocs/chunks.jsonl
 .agentdocs/task-packs/*.md
 .agentdocs/reports/agent-readiness.md
@@ -196,6 +197,21 @@ Include:
 - task packs;
 - source metadata;
 - content hashes.
+
+### `documentation-map.json`
+
+Must be a compact, machine-readable, schema-valid traversal map compiled from
+`agent-map.json`.
+
+Include:
+
+- stable refs for roots, collections, pages, sections, blocks, code blocks,
+  entities, and task packs;
+- deterministic node order and child counts;
+- typed structural, local-adjacency, authored-link, entity-occurrence, task,
+  and evidence-graph relations;
+- a source hash that binds the map to the exact `agent-map.json` evidence graph
+  used to compile it.
 
 ### Task packs
 

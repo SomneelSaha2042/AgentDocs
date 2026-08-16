@@ -6,11 +6,14 @@ import {
   type Evidence,
   type Manifest,
   type SourceCoverage,
+  type TaskCodeExample,
   type TaskPack,
   type Chunk,
   type CodeBlock,
   type DocPage,
+  type DocumentationMap,
 } from "@agentdocs/shared";
+import { compileDocumentationMap } from "@agentdocs/navigator";
 
 export type ProjectIdentity = {
   name: string;
@@ -32,6 +35,7 @@ export type GenerateStaticArtifactsOptions = {
 export type GeneratedStaticArtifacts = {
   agentsMd: string;
   agentMap: AgentMap;
+  documentationMap: DocumentationMap;
   llmsTxt: string;
   manifest: Manifest;
   taskPackMarkdown: Record<string, string>;
@@ -137,7 +141,9 @@ type TaskShapeSignal = {
 };
 
 type ScoredCodeExample = {
+  evidence: Evidence[];
   implementationEvidence: boolean;
+  language?: string;
   relevance: number;
   source: "chunk" | "sibling";
   value: string;
@@ -286,6 +292,7 @@ export function generateStaticArtifacts(
   const diagnosticsByTask = new Map(generatedTaskPacks.map(({ pack, diagnostics }) => [pack.id, diagnostics]));
   validateTaskPackReferences(taskPacks, inputMap);
   const agentMap = AgentMapSchema.parse({ ...inputMap, taskPacks });
+  const documentationMap = compileDocumentationMap({ agentMap });
   const manifest = ManifestSchema.parse({
     schemaVersion: "0.2.0",
     project: options.project,
@@ -310,6 +317,7 @@ export function generateStaticArtifacts(
   return {
     agentsMd: renderAgentsMd(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     agentMap,
+    documentationMap,
     llmsTxt: renderLlmsTxt(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     manifest,
     taskPackMarkdown,
@@ -401,6 +409,8 @@ function generateTaskPack(
     const codeBlocks = getChunkCodeBlocks(agentMap, chunk);
     if (codeBlocks.length > 0) {
       return codeBlocks.map<ScoredCodeExample>((block) => ({
+        evidence: [evidenceForCodeBlock(page, block)],
+        language: block.language,
         value: block.value,
         relevance: codeBlockRelevance(block, page, family, topChunkHeadingPath),
         implementationEvidence: codeBlockImplementationScore(block, family) > 0,
@@ -409,6 +419,8 @@ function generateTaskPack(
     }
 
     return getSiblingHeadingCodeBlocks(agentMap, chunk).map<ScoredCodeExample>((block) => ({
+      evidence: [evidenceForCodeBlock(page, block)],
+      language: block.language,
       value: block.value,
       relevance: codeBlockRelevance(block, page, family),
       implementationEvidence: codeBlockImplementationScore(block, family) > 0,
@@ -419,16 +431,23 @@ function generateTaskPack(
   const selectedExamples = scoredExamples
     .filter((ex) => ex.source === "chunk" ? ex.relevance >= -2 : ex.relevance > 0)
     .sort((a, b) => b.relevance - a.relevance);
-  const codeExamples = stableUniqueInOrder(
-    selectedExamples.map((ex) => ex.value)
-  ).slice(0, 4);
+  const codeExamples: TaskCodeExample[] = stableUniqueInOrder(
+    selectedExamples.map((ex) => ex.value),
+  ).slice(0, 4).map((value) => {
+    const selected = selectedExamples.find((example) => example.value === value)!;
+    return {
+      language: selected.language,
+      value,
+      evidence: selected.evidence,
+    };
+  });
 
   const context = taskContext(ranked.map(({ chunk }) => chunk.facets), exclusiveKeys);
   const hasImplementationEvidence = ranked.some((candidate) => candidate.shapeScore > 0)
     || selectedExamples.some((example) => example.implementationEvidence);
   const hasImplementationProse = ranked.some(({ chunk }) => hasImplementationShapedProse(chunk.text));
   const hasCodeOrCommandEvidence = selectedExamples.some((example) => example.implementationEvidence)
-    || codeExamples.some((example) => hasCommandOrCodeEvidence(example));
+    || codeExamples.some((example) => hasCommandOrCodeEvidence(example.value));
   const baseConfidence = strongest >= 6 && requiredPages.length >= 2 && hasImplementationEvidence && hasImplementationProse && hasCodeOrCommandEvidence
     ? "high"
     : strongest >= 4 || strongTaskEvidence || (strongest >= 3 && codeExamples.length > 0)
@@ -599,6 +618,18 @@ function evidenceForChunk(
   };
 }
 
+function evidenceForCodeBlock(page: DocPage, block: CodeBlock): Evidence {
+  return {
+    source: "code_block",
+    pageId: page.id,
+    headingId: block.sourceHeadingId,
+    codeBlockId: block.id,
+    url: page.canonicalUrl ?? page.sourceUrl,
+    repoPath: page.repoPath,
+    quote: block.value,
+  };
+}
+
 function renderLlmsTxt(
   project: ProjectIdentity,
   agentMap: AgentMap,
@@ -626,6 +657,7 @@ ${linesOrFallback([...rules, "Use only claims supported by source evidence.", "D
 
 - Manifest: manifest.json
 - Agent map: agent-map.json
+- Documentation map: documentation-map.json
 - Chunks: chunks.jsonl
 `;
 }
@@ -677,10 +709,10 @@ ${linesOrFallback([...rules.map((rule) => `- ${rule}`), ...concepts.filter((valu
 
 ## Guidelines for coding agents
 
-- **Retrieve compact context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, and citations.
-- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, use \`read_page\` with one cited ID (passed as \`chunkId\`) before writing. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
-- **Read only cited detail**: Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
-- **Coding & Implementation**: Once readiness is satisfied, avoid calling documentation tools again. Perform writing and testing using only \`write_file\`, \`read_file\`, and \`run_command\` to keep token consumption minimal.
+- **Traverse before implementing**: Start at \`agentdocs://map\` with \`browse_docs\`. Follow collections, document sections, authored links, adjacent blocks, and entity occurrences according to the task.
+- **Read selected evidence**: Pass exact page, section, block, or code refs from the map to \`read_docs\`. Keep following \`nextRef\` until the selected source is complete.
+- **Use retrieval as an optional locator**: \`query_docs\`, \`search_docs\`, task packs, and readiness checks remain available as evidence-backed saved views and audit tools; they do not replace map traversal.
+- **Coding & Implementation**: Implement and test only after reading the source evidence selected during traversal. Return to the map whenever the task needs more context.
 
 ## Evidence and source docs
 
@@ -711,7 +743,11 @@ ${pack.steps.map((step, index) => `${index + 1}. **${step.title}**: ${oneLine(st
 
 ## Code examples
 
-${pack.codeExamples.length === 0 ? "No canonical code examples found." : pack.codeExamples.map((example) => `\`\`\`text\n${example}\n\`\`\``).join("\n\n")}
+${pack.codeExamples.length === 0 ? "No canonical code examples found." : pack.codeExamples.map((example) => {
+    const value = typeof example === "string" ? example : example.value;
+    const language = typeof example === "string" ? "text" : example.language ?? "text";
+    return `\`\`\`${language}\n${value}\n\`\`\``;
+  }).join("\n\n")}
 
 ## Gotchas
 
@@ -1011,7 +1047,7 @@ function hasCommandOrCodeEvidence(value: string): boolean {
 }
 
 function weakEvidenceReason(options: {
-  codeExamples: string[];
+  codeExamples: Array<{ value: string }>;
   contextConflicts: number;
   hasCodeOrCommandEvidence: boolean;
   hasImplementationEvidence: boolean;

@@ -19,7 +19,7 @@ afterEach(async () => {
 
 describe("crawlWebsite", () => {
   it("uses sitemap discovery with filters and canonical duplicate handling", async () => {
-    const origin = await startFixtureServer((path, origin) => {
+    const origin = await startFixtureServer((path, _origin) => {
       if (path === "/sitemap.xml") {
         return xml(`<urlset>
           <url><loc>${origin}/docs/a</loc></url>
@@ -44,7 +44,7 @@ describe("crawlWebsite", () => {
   });
 
   it("applies max page limits", async () => {
-    const origin = await startFixtureServer((path, origin) => {
+    const origin = await startFixtureServer((path, _origin) => {
       if (path === "/sitemap.xml") {
         return xml(`<urlset>
           <url><loc>${origin}/docs/a</loc></url>
@@ -59,7 +59,7 @@ describe("crawlWebsite", () => {
   });
 
   it("falls back to same-origin links and avoids assets and excluded pages", async () => {
-    const origin = await startFixtureServer((path, origin) => {
+    const origin = await startFixtureServer((path, _origin) => {
       if (path === "/sitemap.xml") {
         return { body: "missing", contentType: "text/plain", status: 404 };
       }
@@ -87,7 +87,7 @@ describe("crawlWebsite", () => {
   });
 
   it("uses an excluded start page as a fallback discovery seed", async () => {
-    const origin = await startFixtureServer((path, origin) => {
+    const origin = await startFixtureServer((path, _origin) => {
       if (path === "/sitemap.xml") {
         return { body: "missing", contentType: "text/plain", status: 404 };
       }

@@ -9,7 +9,6 @@ describe("TaskContextAssembler", () => {
     const result = assembler.queryDocs({
       goal: "authenticate requests with an API key",
       task: "authentication",
-      limit: 3,
       search: {
         query: "authenticate requests with an API key",
         results: [{
@@ -26,7 +25,7 @@ describe("TaskContextAssembler", () => {
       },
     });
 
-    expect(result.estimatedTokens).toBeLessThan(800);
+    expect(result.estimatedTokens).toBeGreaterThan(0);
     expect(result.steps.length).toBeGreaterThan(0);
     expect(result.steps.every((step) => step.evidence.length > 0)).toBe(true);
     expect(result.gotchas.every((gotcha) => gotcha.evidence.length > 0)).toBe(true);
@@ -34,8 +33,93 @@ describe("TaskContextAssembler", () => {
     expect(result.readiness.recommendation).toBe("inspect");
     expect(result.readiness.coverage).toBe("unknown");
     expect(result.answer).toContain("Inspect the cited source evidence");
-    expect(result.followUpRefs).toHaveLength(0);
+    expect(result.followUpRefs.length).toBeGreaterThan(0);
     expect(JSON.stringify(result)).toContain("code_auth");
+  });
+
+  it("keeps query evidence and navigation inside an explicit heading scope", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const result = assembler.queryDocs({
+      goal: "authenticate requests with an API key",
+      task: "authentication",
+      scopeRefs: ["agentdocs://pages/page_auth.md#heading_auth"],
+      search: {
+        query: "authenticate requests with an API key",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(result.navigation.scopeRefs).toEqual(["agentdocs://pages/page_auth.md#heading_auth"]);
+    expect(result.navigation.branches).toHaveLength(1);
+    expect(result.steps.every((step) => step.evidence.every((evidence) => evidence.pageId === "page_auth"))).toBe(true);
+    expect(result.codeExamples.every((example) => example.evidence.every((evidence) => evidence.pageId === "page_auth"))).toBe(true);
+  });
+
+  it("uses structured task-pack code evidence when selecting an example", () => {
+    const map = fixtureMap();
+    map.taskPacks[0]!.codeExamples = [{
+      language: "ts",
+      value: "const client = createClient({ auth: process.env.API_KEY });",
+      evidence: [{
+        source: "code_block",
+        pageId: "page_auth",
+        codeBlockId: "code_auth",
+        repoPath: "docs/auth.md",
+        quote: "const client = createClient({ auth: process.env.API_KEY });",
+      }],
+    }];
+
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "authenticate requests with an API key",
+      task: "authentication",
+      search: {
+        query: "authenticate requests with an API key",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(result.codeExamples[0]?.evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: "code_block", codeBlockId: "code_auth" }),
+    ]));
+  });
+
+  it("does not report high confidence when implementation code is absent", () => {
+    const map = fixtureMap();
+    map.pages[0]!.codeBlocks = [];
+    map.taskPacks[0]!.codeExamples = [];
+    map.chunks.push({
+      ...map.chunks[0]!,
+      id: "chunk_auth_safety",
+      text: "Keep authentication credentials on the server.",
+    });
+
+    const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
+      goal: "authentication API keys",
+    });
+
+    expect(result.steps.length).toBeGreaterThanOrEqual(2);
+    expect(result.codeExamples).toHaveLength(0);
+    expect(result.confidence).not.toBe("high");
   });
 
   it("stops when an explicit symbol has no source candidate", () => {
@@ -66,6 +150,297 @@ describe("TaskContextAssembler", () => {
     ]));
     expect(decision.query.readiness.recommendation).toBe("stop");
     expect(decision.query.answer).not.toContain("sufficient to implement");
+  });
+
+  it("stops when an explicit facet has no source evidence", () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = assembler.buildContextDecision({
+      goal: "authenticate requests",
+      task: "Use the Next.js App Router implementation.",
+      facets: { framework: "Next.js", router: "app" },
+      search: {
+        query: "authenticate requests Next.js App Router",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.recommendation).toBe("stop");
+    expect(decision.verification.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "missing_task_requirement_evidence",
+        severity: "critical",
+        message: expect.stringContaining("framework=Next.js"),
+      }),
+    ]));
+    expect(decision.query.readiness.recommendation).toBe("stop");
+    expect(decision.query.steps).toHaveLength(0);
+    expect(decision.query.codeExamples).toHaveLength(0);
+  });
+
+  it("uses corpus-backed free-form facets without excluding canonical implementation code", () => {
+    const decision = new TaskContextAssembler({ agentMap: chatSdkFixtureMap() }).buildContextDecision({
+      goal: "integrate the Acme chat model in Node.js using JavaScript",
+      task: "create an async function that sends user prompts and returns responses as plain strings",
+      facets: {
+        language: "JavaScript",
+        library: "Acme SDK",
+        platform: "Node.js",
+      },
+      search: {
+        query: "integrate the Acme chat model in Node.js using JavaScript",
+        results: [{
+          title: "Chat models",
+          repoPath: "docs/models.md",
+          headingPath: ["Chat models", "Initialize a model"],
+          snippet: "Initialize AcmeChatModel from the modular package.",
+          score: 10,
+          pageId: "page_models",
+          chunkId: "chunk_initialize",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "language=JavaScript", status: "covered" }),
+      expect.objectContaining({ value: "library=Acme SDK", status: "covered" }),
+      expect.objectContaining({ value: "platform=Node.js", status: "covered" }),
+    ]));
+    expect(decision.verification.recommendation).not.toBe("stop");
+    expect(decision.query.codeExamples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: expect.stringContaining("AcmeChatModel") }),
+    ]));
+  });
+
+  it.each([
+    "invoke the model with a prompt and return its response content",
+    "send a user prompt to the model and return the response as a string",
+  ])("assembles initialization and invocation code for equivalent operation wording: %s", (task) => {
+    const decision = new TaskContextAssembler({ agentMap: chatSdkFixtureMap() }).buildContextDecision({
+      goal: "integrate the Acme chat model in JavaScript",
+      task,
+      search: {
+        query: `integrate the Acme chat model in JavaScript ${task}`,
+        results: [{
+          title: "Chat models",
+          repoPath: "docs/models.md",
+          headingPath: ["Chat models", "Initialize a model"],
+          snippet: "Initialize AcmeChatModel from the modular package.",
+          score: 10,
+          pageId: "page_models",
+          chunkId: "chunk_initialize",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.query.codeExamples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: expect.stringContaining("new AcmeChatModel") }),
+      expect.objectContaining({ value: expect.stringContaining("model.invoke(prompt)") }),
+    ]));
+    expect(decision.query.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "model invocation", status: "covered" }),
+    ]));
+  });
+
+  it("prefers direct invocation evidence over pages about call limits", () => {
+    const map = chatSdkFixtureMap();
+    map.pages[1]!.headings.push({
+      id: "heading_call_limit",
+      depth: 2,
+      text: "Model call limits",
+      slug: "model-call-limits",
+      position: {},
+    });
+    map.chunks.push({
+      id: "chunk_call_limit",
+      kind: "section",
+      pageId: "page_models",
+      headingPath: ["Chat models", "Model call limits"],
+      text: "A model call limit stops execution after the configured number of calls.",
+      tokenEstimate: 15,
+      links: [],
+      entityIds: [],
+      contentHash: "d".repeat(64),
+      facets: [],
+    });
+
+    const decision = new TaskContextAssembler({ agentMap: map }).buildContextDecision({
+      goal: "integrate the Acme chat model in JavaScript",
+      task: "send a user prompt to the model and return the response as a string",
+      search: { query: "Acme chat model", results: [], warnings: [] },
+    });
+    const invocation = decision.verification.requirements.find((requirement) =>
+      requirement.value === "model invocation");
+
+    expect(invocation).toMatchObject({
+      status: "covered",
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ headingId: "heading_invoke" }),
+      ]),
+    });
+    expect(invocation?.evidence).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ headingId: "heading_call_limit" }),
+    ]));
+  });
+
+  it("selects the smallest non-overlapping code sequence for setup and invocation", () => {
+    const map = chatSdkFixtureMap();
+    map.pages[1]!.codeBlocks.push({
+      id: "code_large_workflow",
+      language: "ts",
+      value: [
+        'import { AcmeChatModel } from "@acme/chat";',
+        'import { createWorkflow, createMemory, createTools } from "@acme/workflows";',
+        "const model = new AcmeChatModel({ apiKey: process.env.ACME_API_KEY, retries: 3, tracing: true });",
+        "const workflow = createWorkflow({ model, memory: createMemory(), tools: createTools() });",
+        "const response = await model.invoke(prompt);",
+        "return response.content;",
+      ].join("\n"),
+      sourceHeadingId: "heading_invoke",
+    });
+
+    const decision = new TaskContextAssembler({ agentMap: map }).buildContextDecision({
+      goal: "integrate the Acme chat model in JavaScript",
+      task: "send a user prompt to the model and return the response as a string",
+      search: { query: "Acme chat model", results: [], warnings: [] },
+    });
+
+    expect(decision.query.codeExamples.map((example) => example.value)).toEqual([
+      'import { AcmeChatModel } from "@acme/chat";\nconst model = new AcmeChatModel({ apiKey: process.env.ACME_API_KEY });',
+      "const response = await model.invoke(prompt);\nreturn response.content;",
+    ]);
+  });
+
+  it("allows provider-neutral core evidence alongside a compatible structured facet", () => {
+    const map = chatSdkFixtureMap();
+    map.pages[0]!.facets = [{
+      key: "provider",
+      value: "Acme",
+      evidence: [{ source: "heading", pageId: "page_setup", headingId: "heading_setup", repoPath: "docs/setup.md" }],
+    }];
+    const decision = new TaskContextAssembler({ agentMap: map }).buildContextDecision({
+      goal: "integrate the chat model",
+      task: "send a user prompt to the model and return the response content",
+      facets: { provider: "Acme" },
+      search: { query: "chat model", results: [], warnings: [] },
+    });
+
+    expect(decision.query.codeExamples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: expect.stringContaining("model.invoke(prompt)") }),
+    ]));
+    expect(decision.verification.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "provider=Acme", status: "covered" }),
+      expect.objectContaining({ value: "model invocation", status: "covered" }),
+    ]));
+  });
+
+  it("associates code with the matching chunk when one heading is split across chunks", () => {
+    const map = chatSdkFixtureMap();
+    map.chunks = map.chunks.map((chunk) => chunk.id === "chunk_setup_runtime"
+      ? {
+          ...chunk,
+          text: `${chunk.text}\n\n\`\`\`bash\nnpm install @acme/chat\n\`\`\``,
+          facets: [{
+            key: "version",
+            value: "current",
+            evidence: [{ source: "heading", pageId: "page_setup", headingId: "heading_setup", repoPath: "docs/setup.md" }],
+          }],
+        }
+      : chunk.id === "chunk_setup_install"
+        ? {
+            ...chunk,
+            text: "Additional provider-specific setup follows.",
+            facets: [{
+              key: "version",
+              value: "legacy",
+              evidence: [{ source: "heading", pageId: "page_setup", headingId: "heading_setup", repoPath: "docs/setup.md" }],
+            }],
+          }
+        : chunk);
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const decision = assembler.buildContextDecision({
+      goal: "install @acme/chat",
+      task: "Use the setup instructions for the package.",
+      facets: { version: "current" },
+      scopeRefs: ["agentdocs://pages/page_setup.md#chunk_setup_runtime"],
+      search: {
+        query: "install @acme/chat",
+        results: [{
+          title: "Setup",
+          repoPath: "docs/setup.md",
+          headingPath: ["Setup"],
+          snippet: "Install the modular package.",
+          score: 10,
+          pageId: "page_setup",
+          chunkId: "chunk_setup_runtime",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.query.codeExamples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "npm install @acme/chat" }),
+    ]));
+    const heading = assembler.readPage({ ref: "agentdocs://pages/page_setup.md#heading_setup" });
+    expect(heading.section.text).toContain("Node.js 22");
+    expect(heading.section.complete).toBe(false);
+    const continuation = assembler.readPage({ ref: heading.section.nextRef! });
+    expect(continuation.section.text).toContain("provider-specific setup");
+    expect(continuation.section.complete).toBe(true);
+  });
+
+  it("infers an unambiguous facet from atomic chunk evidence", () => {
+    const map = fixtureMap();
+    const frameworkFacet = {
+      key: "framework",
+      value: "Next.js",
+      evidence: [{ source: "heading" as const, pageId: "page_auth", headingId: "heading_auth", repoPath: "docs/auth.md" }],
+    };
+    const routerFacet = {
+      key: "router",
+      value: "app",
+      evidence: [{ source: "heading" as const, pageId: "page_auth", headingId: "heading_auth", repoPath: "docs/auth.md" }],
+    };
+    map.chunks[0]!.facets = [frameworkFacet, routerFacet];
+    map.taskPacks[0]!.context.facets = { framework: ["Next.js"], router: ["app"] };
+
+    const decision = new TaskContextAssembler({ agentMap: map }).buildContextDecision({
+      goal: "authenticate requests",
+      task: "Use the Next.js App Router implementation.",
+      search: {
+        query: "authenticate requests Next.js App Router",
+        results: [{
+          title: "Authentication",
+          repoPath: "docs/auth.md",
+          headingPath: ["Authentication"],
+          snippet: "Use an API key for authentication.",
+          score: 10,
+          pageId: "page_auth",
+          chunkId: "chunk_auth",
+          facets: [],
+        }],
+        warnings: [],
+      },
+    });
+
+    expect(decision.verification.requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "facet", value: "framework=Next.js", status: "covered", source: "inferred" }),
+      expect.objectContaining({ kind: "facet", value: "router=app", status: "covered", source: "inferred" }),
+    ]));
   });
 
   it("inspects when no task pack matches but no explicit requirement is blocked", () => {
@@ -101,6 +476,7 @@ describe("TaskContextAssembler", () => {
     });
     map.chunks.push({
       id: "chunk_adapter",
+      kind: "section",
       pageId: "page_adapter",
       headingPath: ["Database adapter"],
       text: "Use @example/adapter for the documented auth adapter.",
@@ -127,39 +503,38 @@ describe("TaskContextAssembler", () => {
         }],
         warnings: [],
       },
-      limit: 3,
     });
 
     expect(JSON.stringify(result)).toContain("@example/adapter");
     expect(result.readiness.gaps).toEqual([]);
   });
 
-  it("reads bounded sections by default and respects maxChars", () => {
+  it("reads exact references without truncating the selected source", () => {
     const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
-    const result = assembler.readPage({ pageId: "page_auth", maxChars: 20 });
+    const result = assembler.readPage({ ref: "agentdocs://pages/page_auth.md#chunk_auth" });
 
-    expect(result.section.chunkId).toBe("chunk_auth");
-    expect(result.section.text).toHaveLength(20);
-    expect(result.section.truncated).toBe(true);
-    expect(result.section.text).not.toContain("# Authentication");
+    expect(result.section.targetId).toBe("chunk_auth");
+    expect(result.section.complete).toBe(true);
+    expect(result.section.nextRef).toBeUndefined();
+    expect(result.section.text).toContain("Use an API key for authentication.");
   });
 
-  it("caps non-full section reads even when maxChars is broad", () => {
+  it("paginates oversized source reads without losing content", () => {
     const map = fixtureMap();
-    map.chunks[0]!.text = "Use an API key for authentication. ".repeat(80);
-    const result = new TaskContextAssembler({ agentMap: map }).readPage({
-      pageId: "page_auth",
-      maxChars: 5000,
-    });
+    map.chunks[0]!.text = "Use an API key for authentication.\n".repeat(400);
+    const assembler = new TaskContextAssembler({ agentMap: map });
+    const first = assembler.readPage({ ref: "agentdocs://pages/page_auth.md#chunk_auth" });
+    const second = assembler.readPage({ ref: first.section.nextRef! });
 
-    expect(result.section.chunkId).toBe("chunk_auth");
-    expect(result.section.text.length).toBeLessThanOrEqual(1000);
-    expect(result.section.truncated).toBe(true);
+    expect(first.section.complete).toBe(false);
+    expect(first.section.nextRef).toBe("agentdocs://pages/page_auth.md?part=2#chunk_auth");
+    expect(second.section.complete).toBe(true);
+    expect(`${first.section.text}${second.section.text}`).toBe(map.chunks[0]!.text);
   });
 
-  it("can read a cited code block id passed as chunkId", () => {
+  it("reads cited code blocks through exact references", () => {
     const result = new TaskContextAssembler({ agentMap: fixtureMap() }).readPage({
-      chunkId: "code_auth",
+      ref: "agentdocs://pages/page_auth.md#code_auth",
     });
 
     expect(result.section.title).toBe("Code example");
@@ -167,7 +542,7 @@ describe("TaskContextAssembler", () => {
     expect(result.section.evidence[0]?.source).toBe("code_block");
   });
 
-  it("keeps query output compact even when callers request a high limit", () => {
+  it("plans source-backed context with exact refs instead of dumping the former transport budget", () => {
     const hash = "b".repeat(64);
     const largeText = "Use octokit.paginate with octokit.rest.repos.listCommits. ".repeat(80);
     const map = AgentMapSchema.parse({
@@ -213,7 +588,6 @@ describe("TaskContextAssembler", () => {
     });
     const result = new TaskContextAssembler({ agentMap: map }).queryDocs({
       goal: "fetch commits with octokit pagination",
-      limit: 10,
       search: {
         query: "fetch commits with octokit pagination",
         results: map.chunks.map((chunk, index) => ({
@@ -230,13 +604,15 @@ describe("TaskContextAssembler", () => {
       },
     });
 
-    expect(result.estimatedTokens).toBeLessThan(800);
+    expect(result.estimatedTokens).toBeGreaterThan(100);
     expect(result.steps.length).toBeGreaterThan(0);
-    expect(result.steps.length).toBeLessThanOrEqual(3);
-    expect(result.followUpRefs).toHaveLength(0);
-    expect(JSON.stringify(result).length).toBeLessThan(3200);
+    expect(result.steps.length).toBeLessThan(10);
+    expect(result.followUpRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "code_block" }),
+    ]));
     expect(result.citations.every((citation) => (citation.quote?.length ?? 0) <= 160)).toBe(true);
-    expect(result.codeExamples[0]?.value).toContain("GET /repos/{owner}/{repo}/commits");
+    expect(result.codeExamples[0]?.value).toContain("octokit.paginate");
+    expect(result.codeExamples[0]?.value).not.toContain("truncated by AgentDocs");
   });
 
   it("keeps follow-up refs when evidence is weak or incomplete", () => {
@@ -343,6 +719,7 @@ describe("TaskContextAssembler", () => {
     });
     map.chunks.push({
       id: "chunk_validate_body",
+      kind: "section",
       pageId: "page_routes",
       headingPath: ["Validate your data"],
       text: "To validate incoming request bodies, pass route options with schema.body as a JSON Schema object.",
@@ -526,6 +903,29 @@ describe("TaskContextAssembler facet safety", () => {
       }],
       warnings: [],
     };
+    map.chunks.push({
+      id: "chunk_app_legacy_row",
+      pageId: "page_app",
+      kind: "table_row",
+      headingPath: ["Modern Router webhook route handlers", "Legacy row on this page"],
+      text: "Legacy row on this page uses LegacyRequest and legacyBodyParser.",
+      tokenEstimate: 12,
+      links: [],
+      entityIds: [],
+      contentHash: hash,
+      facets: [pagesFacet],
+    });
+    map.taskPacks[0]!.steps.push({
+      title: "Wrong row on the same page",
+      description: "Legacy row on this page uses LegacyRequest.",
+      evidence: [{
+        source: "heading",
+        pageId: "page_app",
+        headingId: "heading_app",
+        repoPath: "docs/modern-router.md",
+        quote: "Legacy row on this page uses LegacyRequest and legacyBodyParser.",
+      }],
+    });
     const assembler = new TaskContextAssembler({ agentMap: map });
     const result = assembler.queryDocs({
       goal: "Write a Modern Router webhook route handler",
@@ -541,12 +941,27 @@ describe("TaskContextAssembler facet safety", () => {
     expect(result.task).toBe("webhooks");
     expect(JSON.stringify(result.steps)).toContain("req.text");
     expect(JSON.stringify(result.steps)).not.toContain("LegacyRequest");
+    expect(JSON.stringify(result.steps)).not.toContain("Wrong row on the same page");
     expect(result.codeExamples[0]?.value).toContain("POST(req: Request)");
     expect(result.codeExamples[0]?.value).not.toContain("legacyBodyParser");
     expect(result.warnings.some((warning) => warning.startsWith("preferred_context_mismatch: router=modern-router"))).toBe(true);
     expect(verification.status).toBe("fail");
     expect(verification.issues.map((issue) => issue.code)).toContain("preferred_context_mismatch");
     expect(verification.issues.map((issue) => issue.code)).toContain("mixed_context");
+  });
+
+  it("preserves short version requirements and does not turn negative prose into source routing", async () => {
+    const assembler = new TaskContextAssembler({ agentMap: fixtureMap() });
+    const decision = await assembler.resolveContextDecision({
+      goal: "Use the v5 client setup.",
+      task: "Use the current client. Do not use legacy callbacks or deprecated APIs.",
+      search: async ({ query }) => ({ query, results: [], warnings: [] }),
+    });
+    const version = decision.verification.requirements.find((requirement) => requirement.value === "v5");
+    expect(version).toBeDefined();
+    const negative = decision.verification.requirements.find((requirement) => requirement.value.startsWith("Do not use"));
+    expect(negative).toMatchObject({ status: "unknown", evidence: [] });
+    expect(decision.query.followUpRefs.some((ref) => ref.requiredFor?.some((value) => value.startsWith("Do not use")))).toBe(false);
   });
 });
 
@@ -1143,5 +1558,157 @@ function genericRoutingFixtureMap(): AgentMap {
       evidence: [{ source: "heading", pageId: `page_${family.id}`, headingId: `heading_${family.id}`, repoPath: `docs/${family.id}.md` }],
       context: { facets: {}, conflicts: [] },
     })),
+  });
+}
+
+function chatSdkFixtureMap(): AgentMap {
+  const hash = "d".repeat(64);
+  return AgentMapSchema.parse({
+    schemaVersion: "0.2.0",
+    pages: [
+      {
+        id: "page_setup",
+        sourceType: "local_markdown",
+        repoPath: "docs/setup.md",
+        title: "Acme Chat SDK setup",
+        markdown: [
+          "# Acme Chat SDK setup",
+          "The Acme SDK supports JavaScript applications on Node.js 22 or newer.",
+          "```sh",
+          "npm install @acme/chat",
+          "```",
+        ].join("\n"),
+        headings: [{ id: "heading_setup", depth: 1, text: "Acme Chat SDK setup", slug: "acme-chat-sdk-setup", position: {} }],
+        links: [],
+        codeBlocks: [{
+          id: "code_install",
+          language: "sh",
+          value: "npm install @acme/chat",
+          sourceHeadingId: "heading_setup",
+        }],
+        contentHash: hash,
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+        facets: [],
+      },
+      {
+        id: "page_models",
+        sourceType: "local_markdown",
+        repoPath: "docs/models.md",
+        title: "Chat models",
+        markdown: [
+          "# Chat models",
+          "## Initialize a model",
+          "```ts",
+          'import { AcmeChatModel } from "@acme/chat";',
+          "const model = new AcmeChatModel({ apiKey: process.env.ACME_API_KEY });",
+          "```",
+          "## Invoke",
+          "```ts",
+          "const response = await model.invoke(prompt);",
+          "return response.content;",
+          "```",
+        ].join("\n"),
+        headings: [
+          { id: "heading_models", depth: 1, text: "Chat models", slug: "chat-models", position: {} },
+          { id: "heading_initialize", depth: 2, text: "Initialize a model", slug: "initialize-a-model", position: {} },
+          { id: "heading_invoke", depth: 2, text: "Invoke", slug: "invoke", position: {} },
+        ],
+        links: [],
+        codeBlocks: [
+          {
+            id: "code_initialize",
+            language: "ts",
+            value: 'import { AcmeChatModel } from "@acme/chat";\nconst model = new AcmeChatModel({ apiKey: process.env.ACME_API_KEY });',
+            sourceHeadingId: "heading_initialize",
+          },
+          {
+            id: "code_invoke",
+            language: "ts",
+            value: "const response = await model.invoke(prompt);\nreturn response.content;",
+            sourceHeadingId: "heading_invoke",
+          },
+        ],
+        contentHash: hash,
+        discoveredAt: "1970-01-01T00:00:00.000Z",
+        versionHints: [],
+        facets: [],
+      },
+    ],
+    chunks: [
+      {
+        id: "chunk_setup_runtime",
+        pageId: "page_setup",
+        headingPath: ["Acme Chat SDK setup"],
+        text: "The Acme SDK supports JavaScript applications running on Node.js 22 or newer.",
+        tokenEstimate: 18,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [],
+      },
+      {
+        id: "chunk_setup_install",
+        pageId: "page_setup",
+        headingPath: ["Acme Chat SDK setup"],
+        text: "Install the modular package with npm install @acme/chat.",
+        tokenEstimate: 12,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [],
+      },
+      {
+        id: "chunk_initialize",
+        pageId: "page_models",
+        headingPath: ["Chat models", "Initialize a model"],
+        text: 'Initialize the model from the modular package.\n```ts\nimport { AcmeChatModel } from "@acme/chat";\nconst model = new AcmeChatModel({ apiKey: process.env.ACME_API_KEY });\n```',
+        tokenEstimate: 40,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [],
+      },
+      {
+        id: "chunk_invoke",
+        pageId: "page_models",
+        headingPath: ["Chat models", "Invoke"],
+        text: "Invoke the model with a prompt and return the response content.\n```ts\nconst response = await model.invoke(prompt);\nreturn response.content;\n```",
+        tokenEstimate: 32,
+        links: [],
+        entityIds: [],
+        contentHash: hash,
+        facets: [],
+      },
+    ],
+    entities: [],
+    edges: [],
+    taskPacks: [{
+      id: "api-usage",
+      title: "API usage",
+      description: "Initialize and invoke the documented client.",
+      confidence: "high",
+      requiredPages: ["page_models"],
+      relatedEntities: [],
+      steps: [
+        {
+          title: "Initialize a model",
+          description: "Initialize the documented model from its modular package.",
+          evidence: [{ source: "heading", pageId: "page_models", headingId: "heading_initialize", repoPath: "docs/models.md" }],
+        },
+        {
+          title: "Invoke",
+          description: "Invoke the model and return its response content.",
+          evidence: [{ source: "heading", pageId: "page_models", headingId: "heading_invoke", repoPath: "docs/models.md" }],
+        },
+      ],
+      gotchas: [],
+      codeExamples: [],
+      evidence: [
+        { source: "heading", pageId: "page_models", headingId: "heading_initialize", repoPath: "docs/models.md" },
+        { source: "heading", pageId: "page_models", headingId: "heading_invoke", repoPath: "docs/models.md" },
+      ],
+      context: { facets: {}, conflicts: [] },
+    }],
   });
 }

@@ -28,7 +28,7 @@ describe("agent workflow CLI", () => {
     expect(snippet.client).toBe("codex");
     expect(snippet.contents).toContain("[mcp_servers.agentdocs]");
     expect(snippet.contents).toContain(".custom-agentdocs");
-    expect(snippet.contents).toContain('"--tools", "query_docs,read_page"');
+    expect(snippet.contents).toContain('"--tools", "browse_docs,read_docs"');
     expect(snippet.prompt).toContain("Use the AgentDocs MCP server before web search.");
 
     const human = await captureStdout(async () => {
@@ -135,8 +135,8 @@ doctor:
         "node", "agentdocs", "--cwd", cwd, "--out", ".agentdocs", "--json", "handoff", "authenticate with api key",
       ]);
     })));
-    expect(handoff.mcp.suggestedTools).toContain("query_docs");
-    expect(handoff.mcp.command).toBe("agentdocs --out .agentdocs serve-mcp --tools query_docs,read_page");
+    expect(handoff.mcp.suggestedTools).toEqual(["browse_docs", "read_docs"]);
+    expect(handoff.mcp.command).toBe("agentdocs --out .agentdocs serve-mcp --tools browse_docs,read_docs");
     expect(handoff.selectedTaskPack?.id).toBe("authentication");
     expect(handoff.context.selectedTaskPack?.id).toBe(handoff.selectedTaskPack?.id);
     expect(handoff.topSources.length).toBeGreaterThan(0);

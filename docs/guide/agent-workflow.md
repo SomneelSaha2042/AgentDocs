@@ -146,7 +146,7 @@ developer stays in control of where it is installed.
 The persistent prompt is:
 
 ```txt
-Use the AgentDocs MCP server before web search. Call query_docs once first, follow its readiness recommendation, and read_page only for cited source detail. Stop when readiness is STOP; inspect cited evidence when readiness is INSPECT.
+Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow structural and semantic relations that fit the task, and use read_docs on exact selected refs before implementing.
 ```
 
 The MCP server is still read-only. New workflow tools expose richer built
@@ -154,6 +154,8 @@ artifact behavior, but they do not crawl, execute commands from docs, or read
 arbitrary files:
 
 - `list_available_tasks`
+- `browse_docs`
+- `read_docs`
 - `query_docs`
 - `read_page`
 - `get_task_context`

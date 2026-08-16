@@ -35,4 +35,24 @@ describe("normalizeHtml", () => {
     expect(page.markdown).not.toContain("Global navigation");
     expect(page.markdown).not.toContain("Was this helpful?");
   });
+
+  it("preserves authored navigation links as topology before removing page chrome", () => {
+    const page = normalizeHtml({
+      canonicalUrl: "https://docs.example.com/guides/auth",
+      sourceUrl: "https://docs.example.com/guides/auth",
+      html: `<body>
+        <nav><a href="/guides/start">Start</a></nav>
+        <div class="breadcrumbs"><a href="/guides">Guides</a></div>
+        <main><h1>Auth</h1><p>Authenticate requests.</p></main>
+        <div class="pagination"><a href="/guides/webhooks">Next</a></div>
+      </body>`,
+    });
+
+    expect(page.markdown).not.toContain("Start");
+    expect(page.links).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "navigation", resolvedHref: "https://docs.example.com/guides/start" }),
+      expect.objectContaining({ role: "breadcrumb", resolvedHref: "https://docs.example.com/guides" }),
+      expect.objectContaining({ role: "pagination", resolvedHref: "https://docs.example.com/guides/webhooks" }),
+    ]));
+  });
 });

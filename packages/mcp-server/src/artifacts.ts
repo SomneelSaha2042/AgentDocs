@@ -2,10 +2,16 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
-import { searchIndex } from "@agentdocs/indexer";
+import { openSearchIndex, type SearchIndexReader } from "@agentdocs/indexer";
+import {
+  DocumentationMapNavigationError,
+  DocumentationMapNavigator,
+  type BrowseDocumentationMapOptions,
+} from "@agentdocs/navigator";
 import {
   AgentMapSchema,
   BuildStateSchema,
+  DocumentationMapSchema,
   ManifestSchema,
   StatusReportSchema,
   TaskContextAssembler,
@@ -13,6 +19,7 @@ import {
   type ContextVerification,
   type HandoffBundle,
   type DocPage,
+  type DocumentationMap,
   type Manifest,
   type StatusReport,
   type TaskPack,
@@ -57,13 +64,50 @@ export class ArtifactService {
   readonly outputRoot: string;
   private agentMap?: AgentMap;
   private manifest?: Manifest;
+  private searchReader?: SearchIndexReader;
+  private assembler?: TaskContextAssembler;
+  private navigator?: DocumentationMapNavigator;
+  private documentationMap?: DocumentationMap;
+  private documentationMapLoaded = false;
 
   constructor(private readonly options: ArtifactServiceOptions) {
     this.outputRoot = path.resolve(options.cwd, options.out);
   }
 
   async validateArtifacts(): Promise<void> {
-    await this.loadAgentMap();
+    try {
+      const map = await this.loadAgentMap();
+      this.getNavigator(map, await this.loadDocumentationMap());
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
+  }
+
+  async close(): Promise<void> {
+    this.searchReader?.close();
+    this.searchReader = undefined;
+    this.assembler = undefined;
+    this.navigator = undefined;
+    this.documentationMap = undefined;
+    this.documentationMapLoaded = false;
+  }
+
+  async browseDocs(options: BrowseDocumentationMapOptions = {}) {
+    try {
+      const map = await this.loadAgentMap();
+      return this.getNavigator(map, await this.loadDocumentationMap()).browse(options);
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
+  }
+
+  async readDocs(ref: string) {
+    try {
+      const map = await this.loadAgentMap();
+      return this.getNavigator(map, await this.loadDocumentationMap()).read(ref);
+    } catch (error) {
+      throw mapNavigationError(error);
+    }
   }
 
   async searchDocs(
@@ -73,57 +117,48 @@ export class ArtifactService {
     facets?: Record<string, string>,
   ) {
     validateLimit(limit);
-    const response = await searchIndex({
+    const reader = this.searchReader ??= await openSearchIndex({
       cwd: this.options.cwd,
       out: this.options.out,
+    });
+    return reader.search({
       query,
       limit,
       task,
       facets,
     });
-    return response;
   }
 
   async queryDocs(
     goal: string,
     task?: string,
     facets?: Record<string, string>,
-    limit = 5,
+    options: {
+      scopeRefs?: string[];
+      navigationCursor?: string;
+    } = {},
   ) {
-    validateContextLimit(limit);
     const freshness = await this.getRecordedStatus();
-    const input = await this.buildContextInput({ goal, task, facets, limit, freshness });
-    return input.decision.query;
-  }
-
-  async readPage(options: {
-    pageId?: string;
-    chunkId?: string;
-    heading?: string;
-    maxChars?: number;
-    fullPage?: boolean;
-  }) {
-    if (options.pageId !== undefined) validateId(options.pageId, "pageId");
-    if (options.chunkId !== undefined) validateId(options.chunkId, "chunkId");
-    if (options.pageId === undefined && options.chunkId === undefined) {
-      throw new McpArtifactError("pageId or chunkId is required.", "INVALID_ARGUMENT");
-    }
-    const maxChars = options.maxChars ?? 4000;
-    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 50000) {
-      throw new McpArtifactError("maxChars must be an integer from 1 to 50000.", "INVALID_ARGUMENT");
-    }
     try {
-      const map = await this.loadAgentMap();
-      return new TaskContextAssembler({ agentMap: map }).readPage(options);
+      const input = await this.buildContextInput({
+        goal,
+        task,
+        facets,
+        freshness,
+        scopeRefs: options.scopeRefs,
+        navigationCursor: options.navigationCursor,
+      });
+      return input.decision.query;
     } catch (error) {
-      if (error instanceof Error && /was not found/.test(error.message)) {
-        throw new McpArtifactError(error.message, "NOT_FOUND");
-      }
-      if (error instanceof Error && /is required/.test(error.message)) {
+      if (error instanceof Error && /navigation (?:scope|cursor)|Navigation scope|Navigation cursor|Invalid navigation/.test(error.message)) {
         throw new McpArtifactError(error.message, "INVALID_ARGUMENT");
       }
       throw error;
     }
+  }
+
+  async readPage(ref: string) {
+    return this.readDocs(ref);
   }
 
   async getPage(pageId: string): Promise<DocPage> {
@@ -180,14 +215,25 @@ export class ArtifactService {
     };
   }
 
-  async getContextBundle(goal: string, facets?: Record<string, string>) {
-    const { assembler, decision, search } = await this.buildContextInput({ goal, facets });
+  async getContextBundle(
+    goal: string,
+    facets?: Record<string, string>,
+    navigation: { scopeRefs?: string[]; navigationCursor?: string } = {},
+  ) {
+    const { assembler, decision, search } = await this.buildContextInput({
+      goal,
+      facets,
+      scopeRefs: navigation.scopeRefs,
+      navigationCursor: navigation.navigationCursor,
+    });
     const selected = decision.selectedTaskPack === undefined
       ? undefined
       : await this.getTaskPack(decision.selectedTaskPack.id);
     return assembler.buildContextBundle({
       goal,
       facets,
+      scopeRefs: navigation.scopeRefs,
+      navigationCursor: navigation.navigationCursor,
       search,
       selectedTaskPackMarkdown: selected?.markdown,
     });
@@ -220,9 +266,9 @@ export class ArtifactService {
       selectedTaskPackMarkdown: selected?.markdown,
       setupCommands: setup.commands,
       mcp: {
-        command: options.mcpCommand ?? "agentdocs serve-mcp --tools query_docs,read_page",
-        prompt: "Use the AgentDocs MCP server before web search. Call query_docs once first. If readiness is INSPECT, read one cited source before writing; if STOP, resolve the warning before implementing.",
-        suggestedTools: ["query_docs", "read_page"],
+        command: options.mcpCommand ?? "agentdocs serve-mcp --tools browse_docs,read_docs",
+        prompt: "Use the AgentDocs MCP server before web search. Start at agentdocs://map with browse_docs, follow structural and semantic relations, then call read_docs with the exact page or section refs you select before implementing.",
+        suggestedTools: ["browse_docs", "read_docs"],
       },
     });
   }
@@ -242,16 +288,18 @@ export class ArtifactService {
     task?: string;
     facets?: Record<string, string>;
     freshness?: StatusReport;
-    limit?: number;
+    scopeRefs?: string[];
+    navigationCursor?: string;
   }) {
     const map = await this.loadAgentMap();
-    const assembler = new TaskContextAssembler({ agentMap: map });
+    const assembler = this.getAssembler(map);
     const decision = await assembler.resolveContextDecision({
       goal: options.goal,
       task: options.task,
       facets: options.facets,
+      scopeRefs: options.scopeRefs,
+      navigationCursor: options.navigationCursor,
       freshness: options.freshness,
-      limit: options.limit,
       search: ({ query, limit, task, facets }) => this.searchDocs(query, limit, task, facets),
     });
     return { assembler, decision, search: decision.search };
@@ -370,6 +418,12 @@ export class ArtifactService {
       const map = await this.loadAgentMap();
       return { mimeType: "application/json", text: `${JSON.stringify(map, null, 2)}\n` };
     }
+    if (uri === "agentdocs://documentation-map.json") {
+      const map = await this.loadAgentMap();
+      const documentationMap = await this.loadDocumentationMap()
+        ?? this.getNavigator(map).documentationMap();
+      return { mimeType: "application/json", text: `${JSON.stringify(documentationMap, null, 2)}\n` };
+    }
     const task = matchResource(uri, /^agentdocs:\/\/task-packs\/([a-zA-Z0-9_-]+)\.md$/);
     if (task !== undefined) {
       return { mimeType: "text/markdown", text: (await this.getTaskPack(task)).markdown };
@@ -480,6 +534,32 @@ export class ArtifactService {
     }
   }
 
+  private async loadDocumentationMap(): Promise<DocumentationMap | undefined> {
+    if (this.documentationMapLoaded) return this.documentationMap;
+    try {
+      this.documentationMap = DocumentationMapSchema.parse(
+        JSON.parse(await this.readArtifact("documentation-map.json", "documentation-map.json was not found.")),
+      );
+      this.documentationMapLoaded = true;
+      return this.documentationMap;
+    } catch (error) {
+      if (error instanceof McpArtifactError && error.code === "NOT_FOUND") {
+        this.documentationMapLoaded = true;
+        return undefined;
+      }
+      if (error instanceof McpArtifactError) throw error;
+      throw invalidArtifact("documentation-map.json", error);
+    }
+  }
+
+  private getAssembler(map: AgentMap): TaskContextAssembler {
+    return this.assembler ??= new TaskContextAssembler({ agentMap: map });
+  }
+
+  private getNavigator(map: AgentMap, documentationMap?: DocumentationMap): DocumentationMapNavigator {
+    return this.navigator ??= new DocumentationMapNavigator({ agentMap: map, documentationMap });
+  }
+
   private async readArtifact(relativePath: string, missingMessage: string): Promise<string> {
     return (await this.readArtifactBuffer(relativePath, missingMessage)).toString("utf8");
   }
@@ -513,12 +593,6 @@ function validateId(value: string, name: string): void {
 function validateLimit(limit: number): void {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new McpArtifactError("limit must be an integer from 1 to 100.", "INVALID_ARGUMENT");
-  }
-}
-
-function validateContextLimit(limit: number): void {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
-    throw new McpArtifactError("limit must be an integer from 1 to 3.", "INVALID_ARGUMENT");
   }
 }
 
@@ -569,6 +643,15 @@ function tokenize(value: string): string[] {
 function invalidArtifact(name: string, error: unknown): McpArtifactError {
   const message = error instanceof Error ? error.message : String(error);
   return new McpArtifactError(`Invalid ${name}: ${message}`, "INVALID_ARTIFACT");
+}
+
+function mapNavigationError(error: unknown): unknown {
+  if (!(error instanceof DocumentationMapNavigationError)) return error;
+  if (/documentation-map\.json does not match/.test(error.message)) {
+    return new McpArtifactError(error.message, "INVALID_ARTIFACT");
+  }
+  const code = /was not found/.test(error.message) ? "NOT_FOUND" : "INVALID_ARGUMENT";
+  return new McpArtifactError(error.message, code);
 }
 
 function stableUnique(values: string[]): string[] {

@@ -22,6 +22,7 @@ const GENERATED_ARTIFACT_NAMES = new Set([
   "llms.txt",
   "AGENTS.md",
   "agent-map.json",
+  "documentation-map.json",
   "chunks.jsonl",
 ]);
 const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
@@ -35,7 +36,8 @@ const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
   "bun.lockb",
 ]);
 const DOCS_DIR_NAME = "docs";
-const MAX_TOOL_RESULT_CHARS = 30000;
+const RAW_READ_PART_CHARS = 12000;
+const MCP_REQUEST_TIMEOUT_MS = 60_000;
 
 class McpClient {
   constructor(cwd, allowedTools = null) {
@@ -86,7 +88,7 @@ class McpClient {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`MCP Request timeout: ${method}`));
-      }, 5000);
+      }, MCP_REQUEST_TIMEOUT_MS);
       this.pendingRequests.set(id, (res) => {
         clearTimeout(timeout);
         resolve(res);
@@ -157,16 +159,21 @@ class RawDocsCorpus {
     ].join("\n")).join("\n\n");
   }
 
-  readRawDoc(relativePath, maxChars = 12000) {
+  readRawDoc(relativePath, part = 1) {
     const safePath = normalizeRelativePath(relativePath);
     const file = this.files.find((candidate) => toPosix(candidate.relativePath) === safePath);
     if (!file) {
       return `Raw documentation file not found: ${relativePath}`;
     }
-    return truncate(file.content, maxChars, `raw documentation file ${safePath}`);
+    return formatRawReadPart({
+      label: `Raw documentation file ${safePath}`,
+      path: safePath,
+      part,
+      text: file.content,
+    });
   }
 
-  fetchWebpage(url) {
+  fetchWebpage(url, part = 1) {
     const parsed = parseDocsExampleUrl(url);
     if (parsed === undefined) {
       return `Webpage fetch error: URL is outside the deterministic docs corpus: ${url}`;
@@ -177,7 +184,7 @@ class RawDocsCorpus {
     }
     const body = file.extension === ".html" ? cleanRawHtmlToText(file.content) : file.content;
     const noisy = addWebScraperBoilerplate(body, titleFor(file));
-    return truncate(noisy, MAX_TOOL_RESULT_CHARS, `webpage ${url}`);
+    return formatRawReadPart({ label: `Webpage ${url}`, path: url, part, text: noisy });
   }
 }
 
@@ -729,13 +736,13 @@ async function executeToolCall({ toolCall, workspaceDir, corpus, mcpClient, docs
       resultText = corpus.search(requiredString(args.query, "query"), optionalLimit(args.limit, 5));
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     } else if (toolCall.name === "read_raw_doc") {
-      resultText = corpus.readRawDoc(requiredString(args.path, "path"), optionalLimit(args.maxChars, 12000));
+      resultText = corpus.readRawDoc(requiredString(args.path, "path"), optionalPart(args.part));
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     } else if (toolCall.name === "web_search") {
       resultText = corpus.search(requiredString(args.query, "query"), optionalLimit(args.limit, 5));
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     } else if (toolCall.name === "fetch_webpage") {
-      resultText = corpus.fetchWebpage(requiredString(args.url, "url"));
+      resultText = corpus.fetchWebpage(requiredString(args.url, "url"), optionalPart(args.part));
       recordDocsPayload(docsTelemetry, toolCall.name, resultText);
     } else {
       const mcpResult = await mcpClient.callTool(toolCall.name, args);
@@ -801,6 +808,8 @@ function installDependencies(workspaceDir) {
 
 async function buildAgentDocs(buildDir) {
   const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
+  console.log("Ingesting raw documentation in hidden build workspace...");
+  execSync(`"${process.execPath}" "${cliPath}" --cwd "${buildDir}" ingest ./docs`, { stdio: "inherit" });
   console.log("Building AgentDocs artifacts in hidden build workspace...");
   execSync(`"${process.execPath}" "${cliPath}" --cwd "${buildDir}" build`, { stdio: "inherit" });
   return hashPath(path.join(buildDir, ".agentdocs"));
@@ -1074,7 +1083,7 @@ function rawLocalTools() {
         type: "object",
         properties: {
           path: { type: "string", description: "Relative raw docs path" },
-          maxChars: { type: "integer", minimum: 1000, maximum: 30000, description: "Maximum characters to return" },
+          part: { type: "integer", minimum: 1, description: "Lossless source part number; continue with the returned nextPart until complete" },
         },
         required: ["path"],
         additionalProperties: false,
@@ -1105,6 +1114,7 @@ function rawWebTools() {
         type: "object",
         properties: {
           url: { type: "string", description: "The full URL of the webpage to fetch" },
+          part: { type: "integer", minimum: 1, description: "Lossless source part number; continue with the returned nextPart until complete" },
         },
         required: ["url"],
         additionalProperties: false,
@@ -1149,7 +1159,7 @@ function hotTokenEstimatesFor({ inputTokens, outputTokens, turns, docsToolSchema
 function systemPromptFor(group) {
   const cliPath = path.join(repositoryRoot, "packages", "cli", "dist", "agentdocs.js");
   const docsInstruction = group === "experimental-agentdocs"
-    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Call query_docs once before coding. If readiness is INSPECT, call read_page with one cited ID before writing. If readiness is STOP, resolve the warning before implementing."
+    ? "You have access to AgentDocs MCP documentation tools backed by prebuilt local artifacts. Start with query_docs before coding. Use its context map to issue a focused follow-up with scopeRefs or continue navigationCursor when needed. If readiness is INSPECT, call read_page with a cited ID before writing. If readiness is STOP, resolve the warning before implementing."
     : group === "experimental-agentdocs-local-coldstart"
       ? `CRITICAL REQUIREMENT: The AgentDocs context layer is NOT compiled yet. You MUST compile it in Turn 1 before doing anything else.
 To do this, you MUST immediately call run_command in Turn 1 with the following commands:
@@ -1301,7 +1311,7 @@ function assertWorkspaceCommand(command, group) {
   const lower = command.toLowerCase();
   const forbidden = group === "experimental-agentdocs-local-coldstart"
     ? ["..", "raw-docs-corpus", "agentdocs-build"]
-    : ["..", ".agentdocs", "raw-docs-corpus", "agentdocs-build", "agent-map.json", "chunks.jsonl", "task-packs"];
+    : ["..", ".agentdocs", "raw-docs-corpus", "agentdocs-build", "agent-map.json", "documentation-map.json", "chunks.jsonl", "task-packs"];
   const hit = forbidden.find((item) => lower.includes(item));
   if (hit) {
     throw new Error(`Command rejected because it references forbidden path/context marker: ${hit}`);
@@ -1440,6 +1450,15 @@ function optionalLimit(value, fallback) {
   return Number.isInteger(parsed) ? Math.max(1, Math.min(parsed, 30000)) : fallback;
 }
 
+function optionalPart(value) {
+  if (value === undefined) return 1;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error("part must be a positive integer");
+  }
+  return parsed;
+}
+
 function normalizeQuery(query) {
   return query.toLowerCase().replace(/site:\S+/g, "").replace(/[^a-z0-9\s./:@-]/g, " ").trim();
 }
@@ -1452,6 +1471,42 @@ function tokenize(value) {
 function truncate(value, maxChars, label) {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}\n\n[... ${label} truncated by eval harness ...]`;
+}
+
+function formatRawReadPart({ label, path, part, text }) {
+  const parts = splitLosslessText(text, RAW_READ_PART_CHARS);
+  const current = parts[part - 1];
+  if (current === undefined) {
+    return `${label} part ${part} was not found.`;
+  }
+  const complete = part === parts.length;
+  return [
+    `Source: ${label}`,
+    `Part: ${part}`,
+    `Complete: ${complete}`,
+    complete ? undefined : `Next: ${path} (part ${part + 1})`,
+    "",
+    current,
+  ].filter((line) => line !== undefined).join("\n");
+}
+
+function splitLosslessText(text, targetChars) {
+  if (text.length <= targetChars) return [text];
+  const blocks = text.split(/(?<=\n)(?=\n)/);
+  const lines = blocks.flatMap((block) => block.length <= targetChars
+    ? [block]
+    : (block.match(/[^\n]*\n|[^\n]+/g) ?? [block]));
+  const parts = [];
+  let current = "";
+  for (const line of lines) {
+    if (current.length > 0 && current.length + line.length > targetChars) {
+      parts.push(current);
+      current = "";
+    }
+    current += line;
+  }
+  if (current.length > 0) parts.push(current);
+  return parts.length === 0 ? [""] : parts;
 }
 
 function recordDocsPayload(telemetry, toolName, text) {

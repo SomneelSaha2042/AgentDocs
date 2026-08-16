@@ -15,7 +15,7 @@ describe("agentdocs CLI", () => {
 
     expect(help).toContain("Usage: agentdocs");
     expect(help).toContain("try [options] <url-or-path>");
-    expect(help).toContain("context <goal>");
+    expect(help).toContain("context [options] <goal>");
     expect(help).toContain("handoff <goal>");
     expect(help).toContain("setup-agent");
     expect(help).toContain("status");

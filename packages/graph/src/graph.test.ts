@@ -62,6 +62,19 @@ const client = new Client({ apiKey: process.env.ACME_API_KEY });
     ).toThrowError(/references missing page/);
   });
 
+  it("stores chunks in source order instead of stable-ID order", () => {
+    const page = normalizeMarkdown({
+      markdown: "# Guide\n\n## First\n\nOne.\n\n## Second\n\nTwo.\n",
+      repoPath: "guide.md",
+    });
+    const chunks = chunkMarkdownByHeading(page);
+
+    const graph = buildAgentMap({ pages: [page], chunks: [...chunks].reverse() });
+
+    expect(graph.chunks.map((chunk) => chunk.headingPath.at(-1))).toEqual(["Guide", "First", "Second"]);
+    expect(graph.chunks.map((chunk) => chunk.sourceOrder)).toEqual([0, 1, 2]);
+  });
+
   it("does not represent relative imports as packages", () => {
     const page = normalizeMarkdown({
       markdown: `# Example
@@ -100,6 +113,28 @@ import { Client } from "@acme/sdk";
 
     expect(graph.edges.some((edge) =>
       edge.type === "links_to" && edge.from === index.id && edge.to === setup.id
+    )).toBe(true);
+  });
+
+  it("resolves captured cross-origin links without fetching them", () => {
+    const source = normalizeMarkdown({
+      markdown: "# Guide\n\n[Reference](https://other.example.com/reference)\n",
+      repoPath: "guide.md",
+      sourceUrl: "https://docs.example.com/guide",
+    });
+    const capturedTarget = normalizeMarkdown({
+      markdown: "# Reference\n\nCaptured reference content.\n",
+      repoPath: "reference.md",
+      sourceUrl: "https://other.example.com/reference",
+    });
+
+    const graph = buildAgentMap({
+      pages: [source, capturedTarget],
+      chunks: [source, capturedTarget].flatMap((page) => chunkMarkdownByHeading(page)),
+    });
+
+    expect(graph.edges.some((edge) =>
+      edge.type === "links_to" && edge.from === source.id && edge.to === capturedTarget.id,
     )).toBe(true);
   });
 

@@ -31,6 +31,9 @@ importers:
       '@agentdocs/mcp-server':
         specifier: workspace:*
         version: link:packages/mcp-server
+      '@agentdocs/navigator':
+        specifier: workspace:*
+        version: link:packages/navigator
       '@agentdocs/normalizer':
         specifier: workspace:*
         version: link:packages/normalizer
@@ -141,6 +144,9 @@ importers:
 
   packages/generator:
     dependencies:
+      '@agentdocs/navigator':
+        specifier: workspace:*
+        version: link:../navigator
       '@agentdocs/shared':
         specifier: workspace:*
         version: link:../shared
@@ -177,6 +183,19 @@ importers:
       '@agentdocs/indexer':
         specifier: workspace:*
         version: link:../indexer
+      '@agentdocs/navigator':
+        specifier: workspace:*
+        version: link:../navigator
+      '@agentdocs/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      vitest:
+        specifier: 4.1.9
+        version: 4.1.9(@types/node@22.19.20)(vite@6.4.3(@types/node@22.19.20)(jiti@1.21.7)(yaml@2.9.0))
+
+  packages/navigator:
+    dependencies:
       '@agentdocs/shared':
         specifier: workspace:*
         version: link:../shared

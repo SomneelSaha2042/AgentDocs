@@ -1,6 +1,11 @@
 import { createInterface } from "node:readline";
 
-import type { QueryDocsResponse, ReadPageResponse } from "@agentdocs/shared";
+import type {
+  BrowseDocsResponse,
+  DocumentationMapRelationType,
+  QueryDocsResponse,
+  ReadPageResponse,
+} from "@agentdocs/shared";
 
 import { ArtifactService, McpArtifactError, type ArtifactServiceOptions } from "./artifacts.js";
 
@@ -29,20 +34,53 @@ type JsonRpcResponse = {
   };
 };
 
+const DOCUMENTATION_RELATIONS: DocumentationMapRelationType[] = [
+  "contains",
+  "precedes",
+  "follows",
+  "links_to",
+  "mentions",
+  "occurs_in",
+  "context_for",
+  "defines",
+  "uses",
+  "requires",
+  "example_for",
+  "error_for",
+  "deprecated_by",
+  "introduced_in",
+  "versioned_as",
+  "related_to",
+];
+
 const TOOLS = [
-  tool("query_docs", "Preferred first call. Call once per task to get compact, evidence-linked steps and examples. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
+  tool("browse_docs", "Browse the compiled documentation ontology without a text query. Start at agentdocs://map, inspect bounded structural and semantic relations, then follow the refs that best fit your task. Use cursor to continue a large neighborhood.", {
+    ref: stringProperty("Map, collection, page, section, block, entity, or task ref. Defaults to agentdocs://map."),
+    cursor: stringProperty("Opaque continuation cursor returned by browse_docs for this ref."),
+    limit: { type: "integer", minimum: 1, maximum: 50 },
+    relations: {
+      type: "array",
+      items: { type: "string", enum: DOCUMENTATION_RELATIONS },
+      minItems: 1,
+    },
+  }, []),
+  tool("read_docs", "Read exact source content for a page, section, block, or code ref selected through browse_docs. Pass the ref unchanged.", {
+    ref: stringProperty("Exact AgentDocs page reference, for example agentdocs://pages/page_id.md#target_id."),
+  }, ["ref"]),
+  tool("query_docs", "Start with this evidence-linked query, then refine it with scopeRefs or continue the returned navigationCursor when the context map is incomplete. Put the outcome in goal and any provider, adapter, framework, API, or constraint details in task. Task-pack matches are relevance hints only; the full corpus is searched. If readiness is INSPECT, read every follow-up marked requiredFor before writing; if STOP, resolve the missing evidence or conflict.", {
     goal: stringProperty(),
     task: stringProperty(),
     facets: { type: "object", additionalProperties: { type: "string" } },
-    limit: contextLimitProperty(),
+    scopeRefs: {
+      type: "array",
+      items: stringProperty("A page or heading ref from the returned context map."),
+      minItems: 1,
+    },
+    navigationCursor: stringProperty("Continue the context map from the cursor returned by query_docs."),
   }, ["goal"]),
-  tool("read_page", "Read a cited source chunk or section when query_docs needs audit detail. For INSPECT responses, read every required follow-up reference before writing. Pass the exact citation ID into the 'chunkId' parameter (works for chunk, heading, and code-block citations).", {
-    pageId: stringProperty("Optionally pass the exact page citation ID if reading a full page."),
-    chunkId: stringProperty("The exact citation ID (e.g. heading_auth_123 or code_auth) or followUpRef chunkId to read."),
-    heading: stringProperty("Optional heading name. Ignored if chunkId is provided."),
-    maxChars: charLimitProperty(),
-    fullPage: { type: "boolean", description: "Set to true to read the full page instead of just the chunk." },
-  }, []),
+  tool("read_page", "Read the exact source reference returned by query_docs. Pass its ref unchanged; required reads must be completed before implementation.", {
+    ref: stringProperty("Exact AgentDocs reference, for example agentdocs://pages/page_id.md#chunk_id."),
+  }, ["ref"]),
   tool("search_docs", "Search built documentation artifacts.", {
     query: stringProperty(),
     limit: integerProperty(),
@@ -100,6 +138,7 @@ const RESOURCES = [
   resource("agentdocs://AGENTS.md", "text/markdown"),
   resource("agentdocs://manifest.json", "application/json"),
   resource("agentdocs://agent-map.json", "application/json"),
+  resource("agentdocs://documentation-map.json", "application/json"),
 ];
 
 const RESOURCE_TEMPLATES = [
@@ -107,8 +146,7 @@ const RESOURCE_TEMPLATES = [
   { uriTemplate: "agentdocs://pages/{pageId}.md", name: "pages", mimeType: "text/markdown" },
 ];
 
-export function createMcpRequestHandler(options: McpServerOptions) {
-  const service = new ArtifactService(options);
+export function createMcpRequestHandler(options: McpServerOptions, service = new ArtifactService(options)) {
   return async (request: JsonRpcRequest): Promise<JsonRpcResponse | undefined> => {
     if (request.id === undefined) {
       return undefined;
@@ -131,28 +169,32 @@ export function createMcpRequestHandler(options: McpServerOptions) {
 
 export async function serveAgentDocsMcp(options: McpServerOptions): Promise<void> {
   const artifacts = new ArtifactService(options);
-  await artifacts.validateArtifacts();
-  const handle = createMcpRequestHandler(options);
-  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-  for await (const line of input) {
-    if (line.trim().length === 0) {
-      continue;
+  try {
+    await artifacts.validateArtifacts();
+    const handle = createMcpRequestHandler(options, artifacts);
+    const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+    for await (const line of input) {
+      if (line.trim().length === 0) {
+        continue;
+      }
+      let request: JsonRpcRequest;
+      try {
+        request = parseRequest(line);
+      } catch (error) {
+        process.stdout.write(`${JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          error: protocolError(error),
+        })}\n`);
+        continue;
+      }
+      const response = await handle(request);
+      if (response !== undefined) {
+        process.stdout.write(`${JSON.stringify(response)}\n`);
+      }
     }
-    let request: JsonRpcRequest;
-    try {
-      request = parseRequest(line);
-    } catch (error) {
-      process.stdout.write(`${JSON.stringify({
-        jsonrpc: "2.0",
-        id: null,
-        error: protocolError(error),
-      })}\n`);
-      continue;
-    }
-    const response = await handle(request);
-    if (response !== undefined) {
-      process.stdout.write(`${JSON.stringify(response)}\n`);
-    }
+  } finally {
+    await artifacts.close();
   }
 }
 
@@ -207,6 +249,17 @@ async function callTool(
   try {
     let result: unknown;
     switch (name) {
+      case "browse_docs":
+        result = await service.browseDocs({
+          ref: optionalString(args.ref),
+          cursor: optionalString(args.cursor),
+          limit: optionalInteger(args.limit),
+          relations: optionalRelations(args.relations),
+        });
+        break;
+      case "read_docs":
+        result = await service.readDocs(requiredString(args.ref, "ref"));
+        break;
       case "search_docs":
         result = await service.searchDocs(
           requiredString(args.query, "query"),
@@ -220,17 +273,14 @@ async function callTool(
           requiredString(args.goal, "goal"),
           optionalString(args.task),
           isRecord(args.facets) ? stringRecord(args.facets) : undefined,
-          optionalInteger(args.limit),
+          {
+            scopeRefs: optionalStringArray(args.scopeRefs, "scopeRefs"),
+            navigationCursor: optionalString(args.navigationCursor),
+          },
         );
         break;
       case "read_page":
-        result = await service.readPage({
-          pageId: optionalString(args.pageId),
-          chunkId: optionalString(args.chunkId),
-          heading: optionalString(args.heading),
-          maxChars: optionalInteger(args.maxChars),
-          fullPage: optionalBoolean(args.fullPage),
-        });
+        result = await service.readPage(requiredString(args.ref, "ref"));
         break;
       case "get_page": {
         const page = await service.getPage(requiredString(args.pageId, "pageId"));
@@ -323,13 +373,42 @@ function toolResult(name: string, result: unknown) {
 }
 
 function formatToolText(name: string, result: unknown): string {
+  if (name === "browse_docs" && isBrowseDocsResponse(result)) {
+    return formatBrowseDocs(result);
+  }
   if (name === "query_docs" && isQueryDocsResponse(result)) {
     return formatQueryDocs(result);
   }
-  if (name === "read_page" && isReadPageResponse(result)) {
-    return formatReadPage(result);
+  if ((name === "read_docs" || name === "read_page") && isReadPageResponse(result)) {
+    return formatReadPage(result, name);
   }
   return JSON.stringify(result);
+}
+
+function formatBrowseDocs(result: BrowseDocsResponse): string {
+  const lines = [
+    `${result.node.kind}: ${result.node.label}`,
+    `Ref: ${result.node.ref}`,
+    result.node.preview === undefined ? undefined : `Preview: ${result.node.preview}`,
+  ].filter((line): line is string => line !== undefined);
+  if (result.breadcrumbs.length > 0) {
+    lines.push(`Path: ${result.breadcrumbs.map((node) => node.label).join(" > ")}`);
+  }
+  for (const relation of result.relations) {
+    lines.push("", `${relation.direction} ${relation.type}:`);
+    for (const node of relation.nodes) {
+      const counts = [
+        node.childCount > 0 ? `children=${node.childCount}` : undefined,
+        node.evidenceCount > 0 ? `evidence=${node.evidenceCount}` : undefined,
+      ].filter((value): value is string => value !== undefined);
+      lines.push(`- ${node.label} (${node.kind}): ${node.ref}${counts.length === 0 ? "" : ` [${counts.join(", ")}]`}`);
+      if (node.preview !== undefined) lines.push(`  ${node.preview}`);
+    }
+  }
+  if (!result.complete && result.nextCursor !== undefined) {
+    lines.push("", `More relations remain: browse_docs ref=${result.node.ref} cursor=${result.nextCursor}.`);
+  }
+  return lines.join("\n");
 }
 
 function formatQueryDocs(result: QueryDocsResponse): string {
@@ -344,6 +423,10 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   if (result.readiness.gaps.length > 0) {
     lines.push("", "Requirement gaps:", ...result.readiness.gaps.map((gap) =>
       `- ${gap.status}: ${gap.requirement}${gap.ref === undefined ? "" : ` [read: ${gap.ref}]`}`));
+  }
+  if (result.requirements.length > 0) {
+    lines.push("", "Requirement coverage:", ...result.requirements.map((requirement) =>
+      `- ${requirement.status}: ${requirement.value} (${requirement.source})`));
   }
   if (result.steps.length > 0) {
     lines.push("", "Steps:", ...result.steps.map((step, index) =>
@@ -367,7 +450,31 @@ function formatQueryDocs(result: QueryDocsResponse): string {
         ? "Read one cited source before implementation:"
       : "Read only if more source detail is needed:";
     lines.push("", followUpLabel, ...result.followUpRefs.map((ref) =>
-      `- ${ref.title}: ${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
+      `- ${ref.title}: read_page ref=${ref.ref}${ref.requiredFor === undefined ? "" : ` (for: ${ref.requiredFor.join(", ")})`}`));
+  }
+  if (result.navigation.branches.length > 0) {
+    lines.push("", "Context map:");
+    for (const branch of result.navigation.branches) {
+      const facetLabel = Object.entries(branch.facets)
+        .map(([key, values]) => `${key}=${values.join("|")}`)
+        .join(",");
+      lines.push(`- ${branch.title}: ${branch.pageRef}${facetLabel.length === 0 ? "" : ` [facets=${facetLabel}]`}`);
+      for (const heading of branch.headings) {
+        const metadata = [
+          `evidence=${heading.evidenceKinds.join("+") || "none"}`,
+          `children=${heading.childHeadingCount}`,
+          heading.matchedFor.length === 0 ? undefined : `matches=${heading.matchedFor.join("|")}`,
+        ].filter((value): value is string => value !== undefined).join(";");
+        lines.push(`  - ${heading.headingPath.join(" > ")} (${heading.ref}) [${metadata}]`);
+      }
+    }
+  }
+  if (result.navigation.externalReferences.length > 0) {
+    lines.push("", "Unresolved external references:", ...result.navigation.externalReferences.map((reference) =>
+      `- ${reference.label}: ${reference.url} (from ${reference.sourceRef}; not ingested)`));
+  }
+  if (!result.navigation.complete && result.navigation.nextCursor !== undefined) {
+    lines.push("", `More context map remains: query_docs navigationCursor=${result.navigation.nextCursor}.`);
   }
   if (result.citations.length > 0) {
     lines.push("", "Citations:", ...result.citations.map((citation) => {
@@ -378,7 +485,7 @@ function formatQueryDocs(result: QueryDocsResponse): string {
   return lines.join("\n");
 }
 
-function formatReadPage(result: ReadPageResponse): string {
+function formatReadPage(result: ReadPageResponse, toolName: string): string {
   const location = result.section.repoPath ?? result.section.sourceUrl ?? result.section.pageId;
   const heading = result.section.headingPath.length > 0
     ? ` (${result.section.headingPath.join(" > ")})`
@@ -386,15 +493,24 @@ function formatReadPage(result: ReadPageResponse): string {
   return [
     `Source: ${result.section.title}${heading}`,
     `Location: ${location}`,
-    result.section.truncated ? "Note: section truncated by maxChars." : undefined,
+    result.section.complete ? undefined : `More source remains: call ${toolName} with ref=${result.section.nextRef}.`,
     "",
     result.section.text,
   ].filter((line): line is string => line !== undefined).join("\n");
 }
 
+function isBrowseDocsResponse(value: unknown): value is BrowseDocsResponse {
+  return isRecord(value)
+    && isRecord(value.node)
+    && typeof value.node.ref === "string"
+    && Array.isArray(value.breadcrumbs)
+    && Array.isArray(value.relations)
+    && typeof value.complete === "boolean";
+}
+
 function evidenceLabel(evidence: QueryDocsResponse["steps"][number]["evidence"]): string {
   const refs = evidence
-    .map((item) => item.codeBlockId ?? item.headingId ?? item.pageId ?? item.repoPath ?? item.url)
+    .map((item) => item.codeBlockId ?? item.chunkId ?? item.headingId ?? item.pageId ?? item.repoPath ?? item.url)
     .filter((item): item is string => item !== undefined);
   return refs.length === 0 ? "[source]" : `[source: ${refs.slice(0, 2).join(", ")}]`;
 }
@@ -499,14 +615,6 @@ function integerProperty() {
   return { type: "integer", minimum: 1, maximum: 100 };
 }
 
-function contextLimitProperty() {
-  return { type: "integer", minimum: 1, maximum: 3 };
-}
-
-function charLimitProperty() {
-  return { type: "integer", minimum: 1, maximum: 50000 };
-}
-
 function requiredString(value: unknown, name: string): string {
   if (typeof value !== "string") {
     throw new ProtocolError(-32602, `${name} must be a string.`);
@@ -518,6 +626,23 @@ function optionalString(value: unknown): string | undefined {
   return value === undefined ? undefined : requiredString(value, "value");
 }
 
+function optionalStringArray(value: unknown, name: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new ProtocolError(-32602, `${name} must be an array of strings.`);
+  return value.map((item) => requiredString(item, name));
+}
+
+function optionalRelations(value: unknown): DocumentationMapRelationType[] | undefined {
+  const relations = optionalStringArray(value, "relations");
+  if (relations === undefined) return undefined;
+  for (const relation of relations) {
+    if (!DOCUMENTATION_RELATIONS.includes(relation as DocumentationMapRelationType)) {
+      throw new ProtocolError(-32602, `Unknown documentation relation "${relation}".`);
+    }
+  }
+  return relations as DocumentationMapRelationType[];
+}
+
 function optionalInteger(value: unknown): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -526,16 +651,6 @@ function optionalInteger(value: unknown): number | undefined {
     throw new ProtocolError(-32602, "limit must be an integer.");
   }
   return value as number;
-}
-
-function optionalBoolean(value: unknown): boolean | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "boolean") {
-    throw new ProtocolError(-32602, "fullPage must be a boolean.");
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
