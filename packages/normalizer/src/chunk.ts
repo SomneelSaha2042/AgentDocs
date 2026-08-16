@@ -59,6 +59,8 @@ export function chunkMarkdownByHeading(
       chunks.push(ChunkSchema.parse({
         id: `chunk_${hash(`${page.id}:${section.headingPath.join("/")}:table_row:${row.index}:${contentHash}`).slice(0, 16)}`,
         pageId: page.id,
+        sourceOrder: chunks.length,
+        headingId: section.headingId,
         kind: "table_row",
         headingPath: section.headingPath,
         text,
@@ -76,6 +78,8 @@ export function chunkMarkdownByHeading(
         ChunkSchema.parse({
           id: `chunk_${hash(`${page.id}:${section.headingPath.join("/")}:${chunks.length}:${contentHash}`).slice(0, 16)}`,
           pageId: page.id,
+          sourceOrder: chunks.length,
+          headingId: section.headingId,
           kind: "section",
           headingPath: section.headingPath,
           text,

@@ -135,6 +135,8 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
         href: node.url,
         resolvedHref: resolveHref(repoPath, options.sourceUrl, node.url),
         kind: classifyLink(node.url, options.sourceUrl),
+        role: "content",
+        sourceOrder: links.length,
         sourceHeadingId: currentHeadingId,
       });
       return;
@@ -144,6 +146,7 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
       const value = node.value ?? "";
       codeBlocks.push({
         id: `code_${hash(`${pageId}:${codeBlocks.length}:${value}`).slice(0, 16)}`,
+        sourceOrder: codeBlocks.length,
         language: node.lang ?? undefined,
         value,
         sourceHeadingId: currentHeadingId,
@@ -167,6 +170,7 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
       } else {
         merged.push({
           id: `code_${hash(`${pageId}:fence:${recovered.startLine}:${recovered.value}`).slice(0, 16)}`,
+          sourceOrder: merged.length,
           language: recovered.language,
           value: recovered.value,
           sourceHeadingId: recovered.sourceHeadingId,
@@ -204,7 +208,7 @@ export function normalizeMarkdown(options: NormalizeMarkdownOptions): DocPage {
     markdown: normalizedMarkdown,
     headings,
     links,
-    codeBlocks,
+    codeBlocks: codeBlocks.map((block, sourceOrder) => ({ ...block, sourceOrder })),
     frontmatter,
     contentHash,
     discoveredAt: DETERMINISTIC_DISCOVERY_TIME,

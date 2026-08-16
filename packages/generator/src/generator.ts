@@ -11,7 +11,9 @@ import {
   type Chunk,
   type CodeBlock,
   type DocPage,
+  type DocumentationMap,
 } from "@agentdocs/shared";
+import { compileDocumentationMap } from "@agentdocs/navigator";
 
 export type ProjectIdentity = {
   name: string;
@@ -33,6 +35,7 @@ export type GenerateStaticArtifactsOptions = {
 export type GeneratedStaticArtifacts = {
   agentsMd: string;
   agentMap: AgentMap;
+  documentationMap: DocumentationMap;
   llmsTxt: string;
   manifest: Manifest;
   taskPackMarkdown: Record<string, string>;
@@ -289,6 +292,7 @@ export function generateStaticArtifacts(
   const diagnosticsByTask = new Map(generatedTaskPacks.map(({ pack, diagnostics }) => [pack.id, diagnostics]));
   validateTaskPackReferences(taskPacks, inputMap);
   const agentMap = AgentMapSchema.parse({ ...inputMap, taskPacks });
+  const documentationMap = compileDocumentationMap({ agentMap });
   const manifest = ManifestSchema.parse({
     schemaVersion: "0.2.0",
     project: options.project,
@@ -313,6 +317,7 @@ export function generateStaticArtifacts(
   return {
     agentsMd: renderAgentsMd(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     agentMap,
+    documentationMap,
     llmsTxt: renderLlmsTxt(options.project, agentMap, linkedTaskPacks, [...contextRules, ...(options.rules ?? [])]),
     manifest,
     taskPackMarkdown,
@@ -652,6 +657,7 @@ ${linesOrFallback([...rules, "Use only claims supported by source evidence.", "D
 
 - Manifest: manifest.json
 - Agent map: agent-map.json
+- Documentation map: documentation-map.json
 - Chunks: chunks.jsonl
 `;
 }
@@ -703,10 +709,10 @@ ${linesOrFallback([...rules.map((rule) => `- ${rule}`), ...concepts.filter((valu
 
 ## Guidelines for coding agents
 
-- **Retrieve task context first**: Call \`query_docs\` once early in Turn 1 or Turn 2 to get source-backed steps, examples, gotchas, citations, and exact source references.
-- **Follow readiness**: If \`query_docs\` returns \`INSPECT\`, read every required \`followUpRefs[].ref\` before writing. Pass each exact \`agentdocs://...\` ref unchanged and keep following \`nextRef\` until \`read_page\` returns \`complete: true\`. If it returns \`STOP\`, resolve the warning or context conflict before implementing.
-- **Read only cited detail**: Keep \`search_docs\`, \`get_task_context\`, and \`get_page\` for audit and compatibility.
-- **Coding & Implementation**: Once readiness is satisfied, implement and test. Return to cited documentation whenever the task needs further source detail.
+- **Traverse before implementing**: Start at \`agentdocs://map\` with \`browse_docs\`. Follow collections, document sections, authored links, adjacent blocks, and entity occurrences according to the task.
+- **Read selected evidence**: Pass exact page, section, block, or code refs from the map to \`read_docs\`. Keep following \`nextRef\` until the selected source is complete.
+- **Use retrieval as an optional locator**: \`query_docs\`, \`search_docs\`, task packs, and readiness checks remain available as evidence-backed saved views and audit tools; they do not replace map traversal.
+- **Coding & Implementation**: Implement and test only after reading the source evidence selected during traversal. Return to the map whenever the task needs more context.
 
 ## Evidence and source docs
 

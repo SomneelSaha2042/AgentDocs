@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { AgentMapSchema, ManifestSchema, TaskPackSchema } from "@agentdocs/shared";
+import { AgentMapSchema, DocumentationMapSchema, ManifestSchema, TaskPackSchema } from "@agentdocs/shared";
 import { describe, expect, it } from "vitest";
 
 import { generateStaticArtifacts } from "./generator.js";
@@ -103,6 +103,8 @@ pnpm add @example/sdk
 
     expect(first).toEqual(second);
     expect(ManifestSchema.parse(first.manifest)).toEqual(first.manifest);
+    expect(DocumentationMapSchema.parse(first.documentationMap)).toEqual(first.documentationMap);
+    expect(first.documentationMap.nodes.some((node) => node.ref === "agentdocs://map")).toBe(true);
     for (const pack of first.taskPacks) {
       expect(TaskPackSchema.parse(pack)).toEqual(pack);
       expect(pack.evidence.length).toBeGreaterThan(0);

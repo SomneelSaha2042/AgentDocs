@@ -6,6 +6,7 @@ import {
   AgentMapSchema,
   ChunkSchema,
   DocPageSchema,
+  DocumentationMapSchema,
   ManifestSchema,
   TaskPackSchema,
 } from "@agentdocs/shared";
@@ -29,6 +30,7 @@ describe("buildFromSources", () => {
     const first = await buildFromSources({ cwd: REPOSITORY_ROOT, out: output });
     const firstContents = await readFile(first.chunksPath, "utf8");
     const firstAgentMap = await readFile(first.agentMapPath, "utf8");
+    const firstDocumentationMap = await readFile(first.documentationMapPath, "utf8");
     const firstLlmsTxt = await readFile(first.llmsTxtPath!, "utf8");
     const firstAgentsMd = await readFile(first.agentsMdPath!, "utf8");
     const firstManifest = await readFile(first.manifestPath!, "utf8");
@@ -39,6 +41,7 @@ describe("buildFromSources", () => {
     const second = await buildFromSources({ cwd: REPOSITORY_ROOT, out: output });
     expect(await readFile(second.chunksPath, "utf8")).toBe(firstContents);
     expect(await readFile(second.agentMapPath, "utf8")).toBe(firstAgentMap);
+    expect(await readFile(second.documentationMapPath, "utf8")).toBe(firstDocumentationMap);
     expect(await readFile(second.llmsTxtPath!, "utf8")).toBe(firstLlmsTxt);
     expect(await readFile(second.agentsMdPath!, "utf8")).toBe(firstAgentsMd);
     expect(await readFile(second.manifestPath!, "utf8")).toBe(firstManifest);
@@ -54,10 +57,13 @@ describe("buildFromSources", () => {
     expect(chunks.length).toBeGreaterThanOrEqual(3);
     expect(chunks.some((chunk) => chunk.headingPath.includes("Create a client"))).toBe(true);
     const agentMap = AgentMapSchema.parse(JSON.parse(firstAgentMap));
+    const documentationMap = DocumentationMapSchema.parse(JSON.parse(firstDocumentationMap));
     expect(JSON.parse(firstAgentMap).schemaVersion).toBe("0.2.0");
     expect(agentMap.entities.length).toBeGreaterThan(0);
     expect(agentMap.edges.some((edge) => edge.type === "links_to")).toBe(true);
     expect(agentMap.edges.every((edge) => edge.evidence.length > 0)).toBe(true);
+    expect(documentationMap.nodes.some((node) => node.ref === "agentdocs://map")).toBe(true);
+    expect(documentationMap.relations.some((relation) => relation.type === "precedes")).toBe(true);
     expect(agentMap.taskPacks.length).toBeGreaterThan(0);
     for (const taskPack of agentMap.taskPacks) {
       expect(TaskPackSchema.parse(taskPack)).toEqual(taskPack);

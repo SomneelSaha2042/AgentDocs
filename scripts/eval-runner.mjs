@@ -22,6 +22,7 @@ const GENERATED_ARTIFACT_NAMES = new Set([
   "llms.txt",
   "AGENTS.md",
   "agent-map.json",
+  "documentation-map.json",
   "chunks.jsonl",
 ]);
 const PROTECTED_WORKSPACE_FILE_NAMES = new Set([
@@ -1310,7 +1311,7 @@ function assertWorkspaceCommand(command, group) {
   const lower = command.toLowerCase();
   const forbidden = group === "experimental-agentdocs-local-coldstart"
     ? ["..", "raw-docs-corpus", "agentdocs-build"]
-    : ["..", ".agentdocs", "raw-docs-corpus", "agentdocs-build", "agent-map.json", "chunks.jsonl", "task-packs"];
+    : ["..", ".agentdocs", "raw-docs-corpus", "agentdocs-build", "agent-map.json", "documentation-map.json", "chunks.jsonl", "task-packs"];
   const hit = forbidden.find((item) => lower.includes(item));
   if (hit) {
     throw new Error(`Command rejected because it references forbidden path/context marker: ${hit}`);

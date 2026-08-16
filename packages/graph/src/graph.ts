@@ -295,7 +295,9 @@ function comparePages(left: DocPage, right: DocPage): number {
 }
 
 function compareChunks(left: Chunk, right: Chunk): number {
-  return compareStrings(left.id, right.id);
+  return compareStrings(left.pageId, right.pageId)
+    || (left.sourceOrder ?? 0) - (right.sourceOrder ?? 0)
+    || compareStrings(left.id, right.id);
 }
 
 function compareEntities(left: Entity, right: Entity): number {

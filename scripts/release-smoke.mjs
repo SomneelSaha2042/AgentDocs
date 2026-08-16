@@ -38,6 +38,7 @@ await run(["--cwd", cwd, "build", "--check"]);
 await run(["--cwd", cwd, "doctor", "--min-score", "0"]);
 await run(["--cwd", cwd, "export", "--format", "llms", "--to", "public-agentdocs"]);
 await readFile(path.join(cwd, "public-agentdocs", "agent-map.json"), "utf8");
+await readFile(path.join(cwd, "public-agentdocs", "documentation-map.json"), "utf8");
 await run(["--cwd", cwd, "search", "EXAMPLE_API_KEY", "--json"]);
 
 const firstHashes = await artifactHashes(path.join(cwd, ".agentdocs"));

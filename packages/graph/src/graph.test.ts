@@ -62,6 +62,19 @@ const client = new Client({ apiKey: process.env.ACME_API_KEY });
     ).toThrowError(/references missing page/);
   });
 
+  it("stores chunks in source order instead of stable-ID order", () => {
+    const page = normalizeMarkdown({
+      markdown: "# Guide\n\n## First\n\nOne.\n\n## Second\n\nTwo.\n",
+      repoPath: "guide.md",
+    });
+    const chunks = chunkMarkdownByHeading(page);
+
+    const graph = buildAgentMap({ pages: [page], chunks: [...chunks].reverse() });
+
+    expect(graph.chunks.map((chunk) => chunk.headingPath.at(-1))).toEqual(["Guide", "First", "Second"]);
+    expect(graph.chunks.map((chunk) => chunk.sourceOrder)).toEqual([0, 1, 2]);
+  });
+
   it("does not represent relative imports as packages", () => {
     const page = normalizeMarkdown({
       markdown: `# Example

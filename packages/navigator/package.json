@@ -1,5 +1,5 @@
 {
-  "name": "@agentdocs/generator",
+  "name": "@agentdocs/navigator",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,15 +13,13 @@
     "dist"
   ],
   "scripts": {
-    "prebuild": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
     "build": "tsc -p tsconfig.build.json",
-    "pretest": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
+    "pretest": "corepack pnpm --filter @agentdocs/shared build",
     "test": "vitest run src",
-    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build && corepack pnpm --filter @agentdocs/navigator build",
+    "pretypecheck": "corepack pnpm --filter @agentdocs/shared build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@agentdocs/navigator": "workspace:*",
     "@agentdocs/shared": "workspace:*"
   },
   "devDependencies": {

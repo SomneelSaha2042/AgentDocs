@@ -21,6 +21,8 @@ export const LinkSchema = z
     href: z.string(),
     resolvedHref: z.string().optional(),
     kind: z.enum(["internal", "external", "anchor", "asset", "unknown"]),
+    role: z.enum(["content", "navigation", "breadcrumb", "toc", "pagination"]).optional(),
+    sourceOrder: z.number().int().nonnegative().optional(),
     sourceHeadingId: z.string().optional(),
     isBroken: z.boolean().optional(),
   })
@@ -29,6 +31,7 @@ export const LinkSchema = z
 export const CodeBlockSchema = z
   .object({
     id: z.string().min(1),
+    sourceOrder: z.number().int().nonnegative().optional(),
     language: z.string().optional(),
     value: z.string(),
     sourceHeadingId: z.string().optional(),
@@ -99,6 +102,8 @@ export const ChunkSchema = z
   .object({
     id: z.string().min(1),
     pageId: z.string().min(1),
+    sourceOrder: z.number().int().nonnegative().optional(),
+    headingId: z.string().min(1).optional(),
     kind: z.enum(["section", "table_row"]).default("section"),
     headingPath: z.array(z.string().min(1)),
     text: z.string().min(1),
@@ -573,6 +578,118 @@ export const ContextNavigationSchema = z
     externalReferences: z.array(ContextExternalReferenceSchema),
     complete: z.boolean(),
     nextCursor: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const DocumentationMapNodeKindSchema = z.enum([
+  "root",
+  "collection",
+  "page",
+  "section",
+  "block",
+  "code_block",
+  "entity",
+  "task",
+]);
+
+export const DocumentationMapRelationTypeSchema = z.enum([
+  "contains",
+  "precedes",
+  "follows",
+  "mentions",
+  "occurs_in",
+  "context_for",
+  ...EdgeTypeSchema.options,
+]);
+
+export const DocumentationMapNodeSchema = z
+  .object({
+    ref: z.string().min(1),
+    kind: DocumentationMapNodeKindSchema,
+    label: z.string().min(1),
+    preview: z.string().optional(),
+    pageId: z.string().min(1).optional(),
+    targetId: z.string().min(1).optional(),
+    entityId: z.string().min(1).optional(),
+    entityType: EntityTypeSchema.optional(),
+    headingPath: z.array(z.string().min(1)).default([]),
+    sourceUrl: z.string().optional(),
+    repoPath: z.string().min(1).optional(),
+    facets: z.record(z.array(z.string().min(1))).default({}),
+    order: z.number().int().nonnegative().default(0),
+    childCount: z.number().int().nonnegative().default(0),
+    evidenceCount: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+
+export const DocumentationMapRelationSchema = z
+  .object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    type: DocumentationMapRelationTypeSchema,
+  })
+  .strict();
+
+export const DocumentationMapSchema = z
+  .object({
+    schemaVersion: z.literal("1.0.0"),
+    sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    rootRef: z.literal("agentdocs://map"),
+    nodes: z.array(DocumentationMapNodeSchema).min(1),
+    relations: z.array(DocumentationMapRelationSchema),
+  })
+  .strict()
+  .superRefine((map, context) => {
+    const refs = new Set<string>();
+    for (const [index, node] of map.nodes.entries()) {
+      if (refs.has(node.ref)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate documentation map node ref "${node.ref}".`, path: ["nodes", index, "ref"] });
+      }
+      refs.add(node.ref);
+    }
+    if (!refs.has(map.rootRef)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: `Documentation map root "${map.rootRef}" was not found.`, path: ["rootRef"] });
+    }
+    const relationKeys = new Set<string>();
+    const childCounts = new Map<string, number>();
+    for (const [index, relation] of map.relations.entries()) {
+      if (!refs.has(relation.from)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Relation source "${relation.from}" was not found.`, path: ["relations", index, "from"] });
+      }
+      if (!refs.has(relation.to)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Relation target "${relation.to}" was not found.`, path: ["relations", index, "to"] });
+      }
+      const key = `${relation.from}\u0000${relation.type}\u0000${relation.to}`;
+      if (relationKeys.has(key)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate documentation map relation.", path: ["relations", index] });
+      }
+      relationKeys.add(key);
+      if (relation.type === "contains") childCounts.set(relation.from, (childCounts.get(relation.from) ?? 0) + 1);
+    }
+    for (const [index, node] of map.nodes.entries()) {
+      const expected = childCounts.get(node.ref) ?? 0;
+      if (node.childCount !== expected) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Node childCount is ${node.childCount}; expected ${expected}.`, path: ["nodes", index, "childCount"] });
+      }
+    }
+  });
+
+export const DocumentationMapRelationGroupSchema = z
+  .object({
+    type: DocumentationMapRelationTypeSchema,
+    direction: z.enum(["outgoing", "incoming"]),
+    nodes: z.array(DocumentationMapNodeSchema),
+  })
+  .strict();
+
+export const BrowseDocsResponseSchema = z
+  .object({
+    node: DocumentationMapNodeSchema,
+    breadcrumbs: z.array(DocumentationMapNodeSchema),
+    relations: z.array(DocumentationMapRelationGroupSchema),
+    complete: z.boolean(),
+    nextCursor: z.string().min(1).optional(),
+    estimatedTokens: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -1094,6 +1211,13 @@ export type ContextNavigationHeading = z.infer<typeof ContextNavigationHeadingSc
 export type ContextExternalReference = z.infer<typeof ContextExternalReferenceSchema>;
 export type ContextNavigationBranch = z.infer<typeof ContextNavigationBranchSchema>;
 export type ContextNavigation = z.infer<typeof ContextNavigationSchema>;
+export type DocumentationMapNodeKind = z.infer<typeof DocumentationMapNodeKindSchema>;
+export type DocumentationMapRelationType = z.infer<typeof DocumentationMapRelationTypeSchema>;
+export type DocumentationMapNode = z.infer<typeof DocumentationMapNodeSchema>;
+export type DocumentationMapRelation = z.infer<typeof DocumentationMapRelationSchema>;
+export type DocumentationMap = z.infer<typeof DocumentationMapSchema>;
+export type DocumentationMapRelationGroup = z.infer<typeof DocumentationMapRelationGroupSchema>;
+export type BrowseDocsResponse = z.infer<typeof BrowseDocsResponseSchema>;
 export type ReadPageResponse = z.infer<typeof ReadPageResponseSchema>;
 export type GoalBundle = z.infer<typeof GoalBundleSchema>;
 export type ContextBundle = z.infer<typeof ContextBundleSchema>;
